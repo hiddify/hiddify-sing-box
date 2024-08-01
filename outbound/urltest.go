@@ -2,6 +2,7 @@ package outbound
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"sync"
 	"time"
@@ -308,6 +309,18 @@ func (g *URLTestGroup) Close() error {
 }
 
 func (g *URLTestGroup) Select(network string) (adapter.Outbound, bool) {
+	if g.selectedOutboundTCP == nil {
+		g.logger.Debug(fmt.Sprintf("=================Selecting for %s current=null", network))
+	} else {
+		g.logger.Debug(fmt.Sprintf("=================Selecting for %s current=%s", network, RealTag(g.selectedOutboundTCP)))
+	}
+	for _, detour := range g.outbounds {
+		if history := g.history.LoadURLTestHistory(RealTag(detour)); history != nil {
+			g.logger.Trace(fmt.Sprintf("%s\t%s:%s\t%d\t%v", detour.Network(), RealTag(detour), detour.Tag(), history.Delay, history.Time))
+		} else {
+			g.logger.Trace(fmt.Sprintf("%s\t%s:%s\t-\t-", detour.Network(), RealTag(detour), detour.Tag()))
+		}
+	}
 	var minDelay uint16 = TimeoutDelay
 	var minOutbound adapter.Outbound
 	switch network {
@@ -339,15 +352,18 @@ func (g *URLTestGroup) Select(network string) (adapter.Outbound, bool) {
 			minOutbound = detour
 		}
 	}
+
 	if minOutbound == nil {
 		for _, detour := range g.outbounds {
 			if !common.Contains(detour.Network(), network) {
 				continue
 			}
+			g.logger.Debug("   Selected ", detour.Tag())
 			return detour, false
 		}
 		return nil, false
 	}
+	g.logger.Debug("   Selected ", minOutbound.Tag(), " delay", minDelay)
 	return minOutbound, true
 }
 
