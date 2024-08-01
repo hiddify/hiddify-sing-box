@@ -439,7 +439,7 @@ func (g *URLTestGroup) urlTest(ctx context.Context, force bool) (map[string]uint
 			})
 			resultAccess.Lock()
 			result[tag] = t
-			g.performUpdateCheck()
+			//			g.performUpdateCheck()
 			resultAccess.Unlock()
 
 			return nil, nil
