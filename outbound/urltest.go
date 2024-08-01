@@ -151,14 +151,14 @@ func (s *URLTest) DialContext(ctx context.Context, network string, destination M
 		return s.group.interruptGroup.NewConn(conn, interrupt.IsExternalConnectionFromContext(ctx)), nil
 	}
 
-	if !s.group.pauseManager.IsNetworkPaused() && s.group.tcpConnectionFailureCount.IncrementConditionReset(MinFailureToReset) {
-		s.logger.Warn("TCP URLTest Outbound ", s.tag, " (", outboundToString(s.group.selectedOutboundTCP), ") failed to connect for ", MinFailureToReset, " times==> test proxies again!")
-		s.group.selectedOutboundTCP = nil
-		s.CheckOutbounds()
-	}
-
 	s.logger.ErrorContext(ctx, err)
 	s.group.history.DeleteURLTestHistory(outbound.Tag())
+	s.logger.Trace("netwokr paused?", s.group.pauseManager.IsNetworkPaused())
+	// if !s.group.pauseManager.IsNetworkPaused() && s.group.tcpConnectionFailureCount.IncrementConditionReset(MinFailureToReset) {
+	s.logger.Warn("TCP URLTest Outbound ", s.tag, " (", outboundToString(s.group.selectedOutboundTCP), ") failed to connect for ", MinFailureToReset, " times==> test proxies again!")
+	s.group.selectedOutboundTCP = nil
+	s.CheckOutbounds()
+	// }
 	return nil, err
 }
 
@@ -444,9 +444,6 @@ func (g *URLTestGroup) urlTest(ctx context.Context, force bool) (map[string]uint
 			})
 			resultAccess.Lock()
 			result[tag] = t
-			if tag != detour_.Tag() {
-				g.logger.Trace("ERRRRRRRRRRRRRROR ", detour.Tag(), " is different from:", tag)
-			}
 			g.checkForOutboundChange(detour_, t)
 			resultAccess.Unlock()
 			return nil, nil
@@ -466,22 +463,22 @@ func (g *URLTestGroup) checkForOutboundChange(detour adapter.Outbound, newDelay 
 	// Define a helper function to check and update outbound
 	checkAndUpdateOutbound := func(currentOutbound adapter.Outbound, outboundType string) bool {
 		if currentOutbound == nil {
-			g.logger.Trace("No selected", outboundType, "Outbound. Updating to", detour.Tag(), "delay:", newDelay)
+			// g.logger.Trace("No selected", outboundType, "Outbound. Updating to", detour.Tag(), "delay:", newDelay)
 			return true
 		}
 
 		history := g.history.LoadURLTestHistory(RealTag(currentOutbound))
 		if history == nil {
-			g.logger.Trace("Updating", outboundType, "outbound: no history for", currentOutbound.Tag(), "updating to", detour.Tag(), "delay:", newDelay)
+			// g.logger.Trace("Updating", outboundType, "outbound: no history for", currentOutbound.Tag(), "updating to", detour.Tag(), "delay:", newDelay)
 			return true
 		}
 
 		if history.Delay > (newDelay + g.tolerance) {
-			g.logger.Trace("Updating", outboundType, "outbound: old", currentOutbound.Tag(), "has delay of", history.Delay, "found better! Updating to", detour.Tag(), "delay:", newDelay)
+			// g.logger.Trace("Updating", outboundType, "outbound: old", currentOutbound.Tag(), "has delay of", history.Delay, "found better! Updating to", detour.Tag(), "delay:", newDelay)
 			return true
 		}
 
-		g.logger.Trace("No better", outboundType, "outbound: old", currentOutbound.Tag(), "has delay of", history.Delay, "old with tolerance ", g.tolerance, " is better than the proposed", detour.Tag(), "delay:", newDelay)
+		// g.logger.Trace("No better", outboundType, "outbound: old", currentOutbound.Tag(), "has delay of", history.Delay, "old with tolerance ", g.tolerance, " is better than the proposed", detour.Tag(), "delay:", newDelay)
 		return false
 	}
 
@@ -491,12 +488,12 @@ func (g *URLTestGroup) checkForOutboundChange(detour adapter.Outbound, newDelay 
 
 	// Perform update if necessary
 	if updateTCP || updateUDP {
-		g.logger.Debug("Outbound", detour.Tag(), "delay", newDelay, "is better for UDP:", updateUDP, "TCP:", updateTCP)
+		g.logger.Debug("Changing Outbound to ", detour.Tag(), "Delay:", newDelay, "Better for UDP:", updateUDP, "TCP:", updateTCP)
 		g.performUpdate(detour, updateTCP, updateUDP)
 	}
 }
 func (g *URLTestGroup) performUpdate(detour adapter.Outbound, updateTCP bool, updateUDP bool) {
-	g.logger.Info("Changing outbound to ", detour.Tag(), " udp:", updateUDP, " tcp:", updateTCP)
+	// g.logger.Info("Changing outbound to ", detour.Tag(), " udp:", updateUDP, " tcp:", updateTCP)
 	var updated bool
 	if updateTCP {
 		g.selectedOutboundTCP = detour
