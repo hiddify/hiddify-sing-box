@@ -458,48 +458,40 @@ func (g *URLTestGroup) urlTest(ctx context.Context, force bool) (map[string]uint
 }
 
 func (g *URLTestGroup) checkForOutboundChange(detour adapter.Outbound, newDelay uint16) {
+	// Early return if delay is invalid
 	if newDelay == 0 || newDelay == TimeoutDelay {
 		return
 	}
-	var updateTCP bool
-	var updateUDP bool
-	currentTcpOutbound := g.selectedOutboundTCP
-	if currentTcpOutbound == nil {
-		g.logger.Trace("no selectedOutboundTCP updating to ", detour.Tag(), " delay:", newDelay)
-		updateTCP = true
-	} else {
 
-		history := g.history.LoadURLTestHistory(RealTag(currentTcpOutbound))
-		if history == nil {
-			g.logger.Trace("Updating tcp outbound: no history for ", currentTcpOutbound.Tag(), "  updating to ", detour.Tag(), " delay:", newDelay)
-			updateTCP = true
-		} else if history.Delay > newDelay+g.tolerance {
-			g.logger.Trace("Updating tcp outbound: old ", currentTcpOutbound.Tag(), " has delay of ", history.Delay, " found better! updating to ", detour.Tag(), " delay:", newDelay)
-			updateTCP = true
-		} else {
-			g.logger.Trace("No better tcp outbound: old ", currentTcpOutbound.Tag(), " has delay of ", history.Delay, " old is better than the proposed ", detour.Tag(), " delay:", newDelay)
-			updateTCP = false
+	// Define a helper function to check and update outbound
+	checkAndUpdateOutbound := func(currentOutbound adapter.Outbound, outboundType string) bool {
+		if currentOutbound == nil {
+			g.logger.Trace("No selected", outboundType, "Outbound. Updating to", detour.Tag(), "delay:", newDelay)
+			return true
 		}
-	}
-	currentUdpOutbound := g.selectedOutboundUDP
-	if currentUdpOutbound == nil {
-		g.logger.Trace("no selectedOutboundTCP updating to ", detour.Tag(), " delay:", newDelay)
-		updateTCP = true
-	} else {
-		history := g.history.LoadURLTestHistory(RealTag(currentUdpOutbound))
+
+		history := g.history.LoadURLTestHistory(RealTag(currentOutbound))
 		if history == nil {
-			g.logger.Trace("Updating udp outbound: no history for ", currentUdpOutbound.Tag(), "  updating to ", detour.Tag(), " delay:", newDelay)
-			updateUDP = true
-		} else if history.Delay > newDelay+g.tolerance {
-			g.logger.Trace("Updating udp outbound: old ", currentUdpOutbound.Tag(), " has delay of ", history.Delay, " found better! updating to ", detour.Tag(), " delay:", newDelay)
-			updateUDP = true
-		} else {
-			g.logger.Trace("No better udp outbound: old ", currentUdpOutbound.Tag(), " has delay of ", history.Delay, " old is better than the proposed ", detour.Tag(), " delay:", newDelay)
-			updateUDP = false
+			g.logger.Trace("Updating", outboundType, "outbound: no history for", currentOutbound.Tag(), "updating to", detour.Tag(), "delay:", newDelay)
+			return true
 		}
+
+		if history.Delay > (newDelay + g.tolerance) {
+			g.logger.Trace("Updating", outboundType, "outbound: old", currentOutbound.Tag(), "has delay of", history.Delay, "found better! Updating to", detour.Tag(), "delay:", newDelay)
+			return true
+		}
+
+		g.logger.Trace("No better", outboundType, "outbound: old", currentOutbound.Tag(), "has delay of", history.Delay, "old with tolerance ", g.tolerance, " is better than the proposed", detour.Tag(), "delay:", newDelay)
+		return false
 	}
+
+	// Check TCP and UDP outbounds
+	updateTCP := checkAndUpdateOutbound(g.selectedOutboundTCP, "TCP")
+	updateUDP := checkAndUpdateOutbound(g.selectedOutboundUDP, "UDP")
+
+	// Perform update if necessary
 	if updateTCP || updateUDP {
-		g.logger.Debug("outbound ", detour.Tag(), " delay", newDelay, " is better for udp:", updateUDP, " tcp:", updateTCP)
+		g.logger.Debug("Outbound", detour.Tag(), "delay", newDelay, "is better for UDP:", updateUDP, "TCP:", updateTCP)
 		g.performUpdate(detour, updateTCP, updateUDP)
 	}
 }
