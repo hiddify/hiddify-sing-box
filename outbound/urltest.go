@@ -2,7 +2,6 @@ package outbound
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"sync"
 	"time"
@@ -152,9 +151,9 @@ func (s *URLTest) DialContext(ctx context.Context, network string, destination M
 	}
 
 	s.logger.ErrorContext(ctx, err)
+	s.logger.Debug("TCP Outbound Failed! Network Paused? ", s.group.pauseManager.IsNetworkPaused(), " fail count:", s.group.tcpConnectionFailureCount.Get(false), "/", MinFailureToReset)
 	if !s.group.pauseManager.IsNetworkPaused() && s.group.tcpConnectionFailureCount.IncrementConditionReset(MinFailureToReset) {
 		s.group.history.DeleteURLTestHistory(outbound.Tag())
-		s.logger.Trace("netwokr paused?", s.group.pauseManager.IsNetworkPaused())
 		s.logger.Warn("TCP URLTest Outbound ", s.tag, " (", outboundToString(s.group.selectedOutboundTCP), ") failed to connect for ", MinFailureToReset, " times==> test proxies again!")
 		s.group.selectedOutboundTCP = nil
 		s.CheckOutbounds()
@@ -177,13 +176,15 @@ func (s *URLTest) ListenPacket(ctx context.Context, destination M.Socksaddr) (ne
 		s.group.udpConnectionFailureCount.Reset()
 		return s.group.interruptGroup.NewPacketConn(conn, interrupt.IsExternalConnectionFromContext(ctx)), nil
 	}
-	if !s.group.pauseManager.IsNetworkPaused() && s.group.udpConnectionFailureCount.IncrementConditionReset(MinFailureToReset) {
-		s.logger.Info("Hiddify! UDP URLTest Outbound ", s.tag, " (", outboundToString(s.group.selectedOutboundUDP), ") failed to connect for ", MinFailureToReset, " times==> test proxies again!")
-		s.group.selectedOutboundUDP = nil
-		s.group.urlTest(ctx, true)
-	}
 	s.logger.ErrorContext(ctx, err)
-	s.group.history.DeleteURLTestHistory(outbound.Tag())
+	s.logger.Debug("UDP Outbound Failed! Network Paused? ", s.group.pauseManager.IsNetworkPaused(), " fail count:", s.group.udpConnectionFailureCount.Get(false), "/", MinFailureToReset)
+	if !s.group.pauseManager.IsNetworkPaused() && s.group.udpConnectionFailureCount.IncrementConditionReset(MinFailureToReset) {
+		s.group.history.DeleteURLTestHistory(outbound.Tag())
+		s.logger.Info("UDP URLTest Outbound ", s.tag, " (", outboundToString(s.group.selectedOutboundUDP), ") failed to connect for ", MinFailureToReset, " times==> test proxies again!")
+		s.group.selectedOutboundUDP = nil
+		s.CheckOutbounds()
+	}
+
 	return nil, err
 }
 
@@ -309,18 +310,18 @@ func (g *URLTestGroup) Close() error {
 }
 
 func (g *URLTestGroup) Select(network string) (adapter.Outbound, bool) {
-	if g.selectedOutboundTCP == nil {
-		g.logger.Debug(fmt.Sprintf("=================Selecting for %s current=null", network))
-	} else {
-		g.logger.Debug(fmt.Sprintf("=================Selecting for %s current=%s", network, RealTag(g.selectedOutboundTCP)))
-	}
-	for _, detour := range g.outbounds {
-		if history := g.history.LoadURLTestHistory(RealTag(detour)); history != nil {
-			g.logger.Trace(fmt.Sprintf("%s\t%s:%s\t%d\t%v", detour.Network(), RealTag(detour), detour.Tag(), history.Delay, history.Time))
-		} else {
-			g.logger.Trace(fmt.Sprintf("%s\t%s:%s\t-\t-", detour.Network(), RealTag(detour), detour.Tag()))
-		}
-	}
+	// if g.selectedOutboundTCP == nil {
+	// 	g.logger.Debug(fmt.Sprintf("=================Selecting for %s current=null", network))
+	// } else {
+	// 	g.logger.Debug(fmt.Sprintf("=================Selecting for %s current=%s", network, RealTag(g.selectedOutboundTCP)))
+	// }
+	// for _, detour := range g.outbounds {
+	// 	if history := g.history.LoadURLTestHistory(RealTag(detour)); history != nil {
+	// 		g.logger.Trace(fmt.Sprintf("%s\t%s:%s\t%d\t%v", detour.Network(), RealTag(detour), detour.Tag(), history.Delay, history.Time))
+	// 	} else {
+	// 		g.logger.Trace(fmt.Sprintf("%s\t%s:%s\t-\t-", detour.Network(), RealTag(detour), detour.Tag()))
+	// 	}
+	// }
 	var minDelay uint16 = TimeoutDelay
 	var minOutbound adapter.Outbound
 	switch network {
@@ -358,12 +359,12 @@ func (g *URLTestGroup) Select(network string) (adapter.Outbound, bool) {
 			if !common.Contains(detour.Network(), network) {
 				continue
 			}
-			g.logger.Debug("   Selected ", detour.Tag())
+			// g.logger.Debug("   Selected ", detour.Tag())
 			return detour, false
 		}
 		return nil, false
 	}
-	g.logger.Debug("   Selected ", minOutbound.Tag(), " delay", minDelay)
+	// g.logger.Debug("   Selected ", minOutbound.Tag(), " delay", minDelay)
 	return minOutbound, true
 }
 
