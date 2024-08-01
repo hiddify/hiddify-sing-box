@@ -152,13 +152,13 @@ func (s *URLTest) DialContext(ctx context.Context, network string, destination M
 	}
 
 	s.logger.ErrorContext(ctx, err)
-	s.group.history.DeleteURLTestHistory(outbound.Tag())
-	s.logger.Trace("netwokr paused?", s.group.pauseManager.IsNetworkPaused())
-	// if !s.group.pauseManager.IsNetworkPaused() && s.group.tcpConnectionFailureCount.IncrementConditionReset(MinFailureToReset) {
-	s.logger.Warn("TCP URLTest Outbound ", s.tag, " (", outboundToString(s.group.selectedOutboundTCP), ") failed to connect for ", MinFailureToReset, " times==> test proxies again!")
-	s.group.selectedOutboundTCP = nil
-	s.CheckOutbounds()
-	// }
+	if !s.group.pauseManager.IsNetworkPaused() && s.group.tcpConnectionFailureCount.IncrementConditionReset(MinFailureToReset) {
+		s.group.history.DeleteURLTestHistory(outbound.Tag())
+		s.logger.Trace("netwokr paused?", s.group.pauseManager.IsNetworkPaused())
+		s.logger.Warn("TCP URLTest Outbound ", s.tag, " (", outboundToString(s.group.selectedOutboundTCP), ") failed to connect for ", MinFailureToReset, " times==> test proxies again!")
+		s.group.selectedOutboundTCP = nil
+		s.CheckOutbounds()
+	}
 	return nil, err
 }
 
