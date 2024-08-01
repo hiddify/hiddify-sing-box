@@ -326,14 +326,14 @@ func (g *URLTestGroup) Select(network string) (adapter.Outbound, bool) {
 	switch network {
 	case N.NetworkTCP:
 		if g.selectedOutboundTCP != nil {
-			if history := g.history.LoadURLTestHistory(RealTag(g.selectedOutboundTCP)); history != nil && history.Delay != TimeoutDelay {
+			if history := g.history.LoadURLTestHistory(RealTag(g.selectedOutboundTCP)); history != nil && history.Delay != TimeoutDelay && history.Delay != 0 {
 				minOutbound = g.selectedOutboundTCP
 				minDelay = history.Delay
 			}
 		}
 	case N.NetworkUDP:
 		if g.selectedOutboundUDP != nil {
-			if history := g.history.LoadURLTestHistory(RealTag(g.selectedOutboundUDP)); history != nil && history.Delay != TimeoutDelay {
+			if history := g.history.LoadURLTestHistory(RealTag(g.selectedOutboundUDP)); history != nil && history.Delay != TimeoutDelay && history.Delay != 0 {
 				minOutbound = g.selectedOutboundUDP
 				minDelay = history.Delay
 			}
@@ -344,7 +344,7 @@ func (g *URLTestGroup) Select(network string) (adapter.Outbound, bool) {
 			continue
 		}
 		history := g.history.LoadURLTestHistory(RealTag(detour))
-		if history == nil || history.Delay == TimeoutDelay {
+		if history == nil || history.Delay == TimeoutDelay || history.Delay == 0 {
 			continue
 		}
 		if minDelay == 0 || minDelay == TimeoutDelay || minDelay > history.Delay+g.tolerance {
@@ -414,7 +414,7 @@ func (g *URLTestGroup) urlTest(ctx context.Context, force bool) (map[string]uint
 			continue
 		}
 		history := g.history.LoadURLTestHistory(realTag)
-		if !force && history != nil && history.Delay != TimeoutDelay && time.Now().Sub(history.Time) < g.interval {
+		if !force && history != nil && history.Delay != TimeoutDelay && history.Delay != 0 && time.Now().Sub(history.Time) < g.interval {
 			continue
 		}
 		checked[realTag] = true
