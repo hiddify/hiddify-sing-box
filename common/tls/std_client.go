@@ -4,18 +4,55 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"fmt"
+	"io"
 	"net"
 	"net/netip"
 	"os"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/sagernet/sing-box/option"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/ntp"
 )
 
+type ClientSessionCache struct {
+	cache map[string]*tls.ClientSessionState
+	mutex sync.Mutex
+}
+
+func NewClientSessionCache() *ClientSessionCache {
+	return &ClientSessionCache{
+		cache: make(map[string]*tls.ClientSessionState),
+	}
+}
+
+func (c *ClientSessionCache) Get(sessionKey string) (*tls.ClientSessionState, bool) {
+	_ = sessionKey // To stop linter from complaining
+	sessionKey = "unused"
+	c.mutex.Lock()
+	session, ok := c.cache[sessionKey]
+	c.mutex.Unlock()
+	return session, ok
+}
+
+func (c *ClientSessionCache) Put(sessionKey string, cs *tls.ClientSessionState) {
+	_ = sessionKey
+	sessionKey = "unused"
+	c.mutex.Lock()
+	if cs == nil {
+		delete(c.cache, sessionKey)
+	} else {
+		c.cache[sessionKey] = cs
+	}
+	c.mutex.Unlock()
+}
+
 type STDClientConfig struct {
-	config *tls.Config
+	config              *tls.Config
+	obSessionTicketOpts *option.OutboundSessionTicketOptions
 }
 
 func (s *STDClientConfig) ServerName() string {
@@ -39,11 +76,62 @@ func (s *STDClientConfig) Config() (*STDConfig, error) {
 }
 
 func (s *STDClientConfig) Client(conn net.Conn) (Conn, error) {
-	return tls.Client(conn, s.config), nil
+	tlsConfig := s.config.Clone()
+	if s.obSessionTicketOpts != nil && s.obSessionTicketOpts.Enabled && tlsConfig.ServerName == s.obSessionTicketOpts.RealDomain {
+		s.obSessionTicketOpts.Mutex.Lock()
+		t := time.Now().Unix()
+		if (t - s.obSessionTicketOpts.LastUpdate) >= s.obSessionTicketOpts.TimeoutSecs {
+			s.obSessionTicketOpts.SessionState = NewClientSessionCache()
+			tlsConfig.ClientSessionCache = s.obSessionTicketOpts.SessionState
+			tlsConfig.SessionTicketsDisabled = false
+			client := tls.Client(conn, tlsConfig)
+			err := client.Handshake()
+			if err != nil {
+				client.Close()
+				s.obSessionTicketOpts.Mutex.Unlock()
+				return nil, E.New(fmt.Sprintf("Failed to obtain session ticket: %v", err))
+			}
+			_, err = client.Write([]byte{1, 2, 3})
+			if err != nil {
+				client.Close()
+				s.obSessionTicketOpts.Mutex.Unlock()
+				return nil, E.New(fmt.Sprintf("Failed to obtain session ticket: %v", err))
+			}
+			_, err = io.ReadAll(client)
+			if err != nil {
+				client.Close()
+				s.obSessionTicketOpts.Mutex.Unlock()
+				return nil, E.New(fmt.Sprintf("Failed to obtain session ticket: %v", err))
+			}
+			client.Close()
+			s.obSessionTicketOpts.LastUpdate = t
+			s.obSessionTicketOpts.Mutex.Unlock()
+			return nil, E.New("Got the session ticket, attempting to connect...")
+		}
+		s.obSessionTicketOpts.Mutex.Unlock()
+		tlsConfig.InsecureSkipVerify = true // We are using custom verification, this is fine
+		tlsConfig.VerifyConnection = func(state tls.ConnectionState) error {
+			verifyOptions := x509.VerifyOptions{
+				DNSName:       s.config.ServerName,
+				Intermediates: x509.NewCertPool(),
+			}
+			for _, cert := range state.PeerCertificates[1:] {
+				verifyOptions.Intermediates.AddCert(cert)
+			}
+			_, err := state.PeerCertificates[0].Verify(verifyOptions)
+			return err
+		}
+		tlsConfig.SessionTicketsDisabled = false
+		tlsConfig.ClientSessionCache = s.obSessionTicketOpts.SessionState
+		tlsConfig.ServerName = s.obSessionTicketOpts.FakeDomain
+		//tlsConfig.ServerName = s.obSessionTicketOpts.RealDomain
+		//tlsConfig.ServerName = ""
+	}
+	return tls.Client(conn, tlsConfig), nil
 }
 
 func (s *STDClientConfig) Clone() Config {
-	return &STDClientConfig{s.config.Clone()}
+	return &STDClientConfig{s.config.Clone(), s.obSessionTicketOpts}
 }
 
 func NewSTDClient(ctx context.Context, serverAddress string, options option.OutboundTLSOptions) (Config, error) {
@@ -132,5 +220,5 @@ func NewSTDClient(ctx context.Context, serverAddress string, options option.Outb
 		}
 		tlsConfig.RootCAs = certPool
 	}
-	return &STDClientConfig{&tlsConfig}, nil
+	return &STDClientConfig{&tlsConfig, options.SessionTicket}, nil
 }
