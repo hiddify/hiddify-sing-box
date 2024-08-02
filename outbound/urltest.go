@@ -409,6 +409,7 @@ func (g *URLTestGroup) urlTest(ctx context.Context, force bool) (map[string]uint
 	}
 	defer g.checking.Store(false)
 	g.logger.Trace("Requesting URL Test Force=", force)
+	changeOutboundOnTheFly := force || g.selectedOutboundTCP == nil
 	b, _ := batch.New(ctx, batch.WithConcurrencyNum[any](10))
 	checked := make(map[string]bool)
 	var resultAccess sync.Mutex
@@ -445,7 +446,9 @@ func (g *URLTestGroup) urlTest(ctx context.Context, force bool) (map[string]uint
 			})
 			resultAccess.Lock()
 			result[tag] = t
-			g.checkForOutboundChange(detour_, t)
+			if changeOutboundOnTheFly {
+				g.checkForOutboundChange(detour_, t)
+			}
 			resultAccess.Unlock()
 			return nil, nil
 		})
