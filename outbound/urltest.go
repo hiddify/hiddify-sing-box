@@ -511,7 +511,7 @@ func (g *URLTestGroup) performUpdate(detour adapter.Outbound, updateTCP bool, up
 	}
 
 	if updated {
-		g.interruptGroup.Interrupt(g.interruptExternalConnections)
+		// g.interruptGroup.Interrupt(g.interruptExternalConnections)
 	}
 }
 
