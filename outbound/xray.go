@@ -87,19 +87,36 @@ type Xray struct {
 	proxyStr     string
 }
 
-func getRandomFreePort() uint16 {
-	for {
-		port := rand.Intn(25535) + 30000 // range 30000 to 65535
-		l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+var usedPorts = make(map[int]struct{})
+
+func getRandomFreePort() (uint16, error) {
+	const (
+		minPort     = 30000
+		maxPort     = 65000
+		maxAttempts = 1000 // Avoid potential infinite loop
+	)
+
+	for i := 0; i < maxAttempts; i++ {
+		port := rand.Intn(maxPort-minPort+1) + minPort // range 30000 to 65535
+		if _, used := usedPorts[port]; used {
+			continue
+		}
+		// Check TCP port
+		tcpListener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 		if err == nil {
-			l.Close()
-			l, err := net.ListenPacket("udp", fmt.Sprintf("127.0.0.1:%d", port))
+			defer tcpListener.Close()
+
+			// Check UDP port
+			udpListener, err := net.ListenPacket("udp", fmt.Sprintf("127.0.0.1:%d", port))
 			if err == nil {
-				l.Close()
-				return uint16(port)
+				defer udpListener.Close()
+				usedPorts[port] = struct{}{}
+				return uint16(port), nil
 			}
 		}
 	}
+
+	return 0, fmt.Errorf("failed to find a free port after %d attempts", maxAttempts)
 }
 func NewXray(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.XrayOutboundOptions) (*Xray, error) {
 	newuuid, err := uuid.NewV4()
@@ -107,20 +124,20 @@ func NewXray(ctx context.Context, router adapter.Router, logger log.ContextLogge
 		return nil, err
 	}
 	userpass := newuuid.String()
-	port := getRandomFreePort()
+	port, _ := getRandomFreePort()
 	outbounds := []map[string]any{}
 	if options.XrayOutboundJson != nil {
 		xrayconf := *options.XrayOutboundJson
 		if options.Fragment == nil || options.Fragment.Packets == "" {
 			xrayconf["sockopt"] = map[string]any{
-				"mark": 0x20000,//router.DefaultMark(),//0x20000
+				"mark": router.DefaultMark(), //0x20000
 			}
 		} else {
 			xrayconf["sockopt"] = map[string]any{
 				"dialerProxy":      "fragment",
 				"tcpKeepAliveIdle": 100,
 				"tcpNoDelay":       true,
-				"mark":             0x20000,//router.DefaultMark(),//0x20000
+				"mark":             router.DefaultMark(), //0x20000
 			}
 		}
 		outbounds = append(outbounds, xrayconf)
@@ -138,7 +155,7 @@ func NewXray(ctx context.Context, router adapter.Router, logger log.ContextLogge
 				"sockopt": map[string]any{
 					"tcpKeepAliveIdle": 100,
 					"tcpNoDelay":       true,
-					"mark":             0x20000,//router.DefaultMark(),//0x20000
+					"mark":             router.DefaultMark(), //0x20000
 				},
 			},
 		})
@@ -179,7 +196,7 @@ func NewXray(ctx context.Context, router adapter.Router, logger log.ContextLogge
 
 	// options.XrayOutboundJson
 	reader := bytes.NewReader(jsonData)
-	
+
 	xrayConfig, err := core.LoadConfig("json", reader)
 	if err != nil {
 		return nil, err
@@ -287,6 +304,7 @@ func (w *Xray) Start() error {
 	return w.xrayInstance.Start()
 }
 func (w *Xray) Close() error {
+	usedPorts = make(map[int]struct{})
 	return w.xrayInstance.Close()
 }
 
