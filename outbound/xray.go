@@ -113,14 +113,14 @@ func NewXray(ctx context.Context, router adapter.Router, logger log.ContextLogge
 		xrayconf := *options.XrayOutboundJson
 		if options.Fragment == nil || options.Fragment.Packets == "" {
 			xrayconf["sockopt"] = map[string]any{
-				"mark": router.DefaultMark(),
+				"mark": 0x20000,//router.DefaultMark(),//0x20000
 			}
 		} else {
 			xrayconf["sockopt"] = map[string]any{
 				"dialerProxy":      "fragment",
 				"tcpKeepAliveIdle": 100,
 				"tcpNoDelay":       true,
-				"mark":             router.DefaultMark(),
+				"mark":             0x20000,//router.DefaultMark(),//0x20000
 			}
 		}
 		outbounds = append(outbounds, xrayconf)
@@ -138,6 +138,7 @@ func NewXray(ctx context.Context, router adapter.Router, logger log.ContextLogge
 				"sockopt": map[string]any{
 					"tcpKeepAliveIdle": 100,
 					"tcpNoDelay":       true,
+					"mark":             0x20000,//router.DefaultMark(),//0x20000
 				},
 			},
 		})
@@ -178,7 +179,7 @@ func NewXray(ctx context.Context, router adapter.Router, logger log.ContextLogge
 
 	// options.XrayOutboundJson
 	reader := bytes.NewReader(jsonData)
-
+	
 	xrayConfig, err := core.LoadConfig("json", reader)
 	if err != nil {
 		return nil, err
