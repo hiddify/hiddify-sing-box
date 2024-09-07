@@ -1,5 +1,10 @@
 package option
 
+import (
+	"crypto/tls"
+	"sync"
+)
+
 type InboundTLSOptions struct {
 	Enabled         bool                   `json:"enabled,omitempty"`
 	ServerName      string                 `json:"server_name,omitempty"`
@@ -35,20 +40,31 @@ func (o *InboundTLSOptionsContainer) ReplaceInboundTLSOptions(options *InboundTL
 }
 
 type OutboundTLSOptions struct {
-	Enabled         bool                    `json:"enabled,omitempty"`
-	DisableSNI      bool                    `json:"disable_sni,omitempty"`
-	ServerName      string                  `json:"server_name,omitempty"`
-	Insecure        bool                    `json:"insecure,omitempty"`
-	ALPN            Listable[string]        `json:"alpn,omitempty"`
-	MinVersion      string                  `json:"min_version,omitempty"`
-	MaxVersion      string                  `json:"max_version,omitempty"`
-	CipherSuites    Listable[string]        `json:"cipher_suites,omitempty"`
-	Certificate     Listable[string]        `json:"certificate,omitempty"`
-	CertificatePath string                  `json:"certificate_path,omitempty"`
-	ECH             *OutboundECHOptions     `json:"ech,omitempty"`
-	UTLS            *OutboundUTLSOptions    `json:"utls,omitempty"`
-	Reality         *OutboundRealityOptions `json:"reality,omitempty"`
-	TLSTricks       *TLSTricksOptions      `json:"tls_tricks,omitempty"`
+	Enabled         bool                          `json:"enabled,omitempty"`
+	DisableSNI      bool                          `json:"disable_sni,omitempty"`
+	ServerName      string                        `json:"server_name,omitempty"`
+	Insecure        bool                          `json:"insecure,omitempty"`
+	ALPN            Listable[string]              `json:"alpn,omitempty"`
+	MinVersion      string                        `json:"min_version,omitempty"`
+	MaxVersion      string                        `json:"max_version,omitempty"`
+	CipherSuites    Listable[string]              `json:"cipher_suites,omitempty"`
+	Certificate     Listable[string]              `json:"certificate,omitempty"`
+	CertificatePath string                        `json:"certificate_path,omitempty"`
+	ECH             *OutboundECHOptions           `json:"ech,omitempty"`
+	UTLS            *OutboundUTLSOptions          `json:"utls,omitempty"`
+	Reality         *OutboundRealityOptions       `json:"reality,omitempty"`
+	TLSTricks       *TLSTricksOptions             `json:"tls_tricks,omitempty"`
+	SessionTicket   *OutboundSessionTicketOptions `json:"session_ticket,omitempty"`
+}
+
+type OutboundSessionTicketOptions struct {
+	Enabled      bool   `json:"enabled,omitempty"`
+	FakeDomain   string `json:"fake_domain,omitempty"`
+	RealDomain   string `json:"real_domain,omitempty"`
+	TimeoutSecs  int64  `json:"timeout_secs,omitempty"`
+	SessionState tls.ClientSessionCache
+	LastUpdate   int64
+	Mutex        sync.Mutex
 }
 
 type OutboundTLSOptionsContainer struct {
