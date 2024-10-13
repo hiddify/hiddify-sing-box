@@ -32,6 +32,9 @@ ci_build:
 	go build $(PARAMS) $(MAIN)
 	go build $(MAIN_PARAMS) $(MAIN)
 
+generate_completions:
+	go run -v --tags generate,generate_completions $(MAIN)
+
 install:
 	go build -o $(PREFIX)/bin/$(NAME) $(MAIN_PARAMS) $(MAIN)
 
@@ -71,7 +74,6 @@ release:
 		dist/*.deb \
 		dist/*.rpm \
 		dist/*_amd64.pkg.tar.zst \
-		dist/*_amd64v3.pkg.tar.zst \
 		dist/*_arm64.pkg.tar.zst \
 		dist/release
 	ghr --replace --draft --prerelease -p 3 "v${VERSION}" dist/release
@@ -174,7 +176,7 @@ release_tvos: build_tvos upload_tvos_app_store
 update_apple_version:
 	go run ./cmd/internal/update_apple_version
 
-release_apple: lib_ios update_apple_version release_ios release_macos release_tvos
+release_apple: lib_ios update_apple_version release_ios release_macos release_tvos release_macos_standalone
 
 release_apple_beta: update_apple_version release_ios release_macos release_tvos
 
