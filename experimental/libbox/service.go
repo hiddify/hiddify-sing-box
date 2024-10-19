@@ -35,7 +35,6 @@ type BoxService struct {
 	instance              *box.Box
 	pauseManager          pause.Manager
 	urlTestHistoryStorage *urltest.HistoryStorage
-
 	servicePauseFields
 }
 
@@ -81,6 +80,9 @@ func NewHService(boptions box.Options) (*BoxService, error) {
 	}, nil
 }
 
+func (s *BoxService) UrlTestHistory() *urltest.HistoryStorage {
+	return s.urlTestHistoryStorage
+}
 func (s *BoxService) Start() error {
 	return s.instance.Start()
 }
