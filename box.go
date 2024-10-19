@@ -398,3 +398,10 @@ func (s *Box) Close() error {
 func (s *Box) Router() adapter.Router {
 	return s.router
 }
+
+func (s *Box) AddPreService(name string, service adapter.Service) {
+	s.preServices2[name] = service
+}
+func (s *Box) AddPostService(name string, service adapter.Service) {
+	s.postServices[name] = service
+}
