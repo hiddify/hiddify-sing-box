@@ -12,6 +12,7 @@ import (
 	"github.com/sagernet/sing/common"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
+	"github.com/sagernet/sing/common/observable"
 )
 
 type History struct {
@@ -23,16 +24,21 @@ type HistoryStorage struct {
 	access       sync.RWMutex
 	delayHistory map[string]*History
 	updateHook   observer.Property[int]
+	updateHookv2 *observable.Observer[int]
 }
 
 func NewHistoryStorage() *HistoryStorage {
 	return &HistoryStorage{
 		delayHistory: make(map[string]*History),
+		updateHookv2: observable.NewObserver(observable.NewSubscriber[int](10), 1),
 	}
 }
 
 func (s *HistoryStorage) SetHook(hook observer.Property[int]) {
 	s.updateHook = hook
+}
+func (s *HistoryStorage) Observer() *observable.Observer[int] {
+	return s.updateHookv2
 }
 
 func (s *HistoryStorage) LoadURLTestHistory(tag string) *History {
@@ -67,10 +73,12 @@ func (s *HistoryStorage) notifyUpdated() {
 		// default:
 		// }
 	}
+	s.updateHookv2.Emit(1)
 }
 
 func (s *HistoryStorage) Close() error {
 	s.updateHook = nil
+	s.updateHookv2.Close()
 	return nil
 }
 
