@@ -53,3 +53,7 @@ func (h *InvalidConfig) NewPacketConnection(ctx context.Context, conn N.PacketCo
 	h.logger.InfoContext(ctx, "InvalidConfiged packet connection to ", metadata.Destination)
 	return nil
 }
+
+func (h *InvalidConfig) Type() string {
+	return h.err.Error()
+}

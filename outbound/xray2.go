@@ -99,7 +99,7 @@ import (
 	xnet "github.com/xtls/xray-core/common/net"
 )
 
-var _ adapter.Outbound = (*Xray)(nil)
+var _ adapter.Outbound = (*Xray2)(nil)
 
 type Xray2 struct {
 	myOutboundAdapter

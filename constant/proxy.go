@@ -25,6 +25,7 @@ const (
 	TypeHysteria2     = "hysteria2"
 	TypeCustom        = "custom"
 	TypeXray          = "xray"
+	TypeHExtension    = "hextension"
 	TypeInvalidConfig = "invalid"
 )
 

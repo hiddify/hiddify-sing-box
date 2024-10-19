@@ -58,8 +58,8 @@ github.com/hashicorp/yamux v0.1.1 h1:yrQxtgseBDrq9Y652vSRDvsKCJKOUD+GzTS4Y0Y8pvE
 github.com/hashicorp/yamux v0.1.1/go.mod h1:CtWFDAQgb7dxtzFs4tWbplKIe2jSi3+5vKbgIO0SLnQ=
 github.com/hiddify/wireguard-go v0.0.0-20240727191222-383c1da14ff1 h1:xdbHlZtzs+jijAxy85qal835GglwmjohA/srHT8gm9s=
 github.com/hiddify/wireguard-go v0.0.0-20240727191222-383c1da14ff1/go.mod h1:K4J7/npM+VAMUeUmTa2JaA02JmyheP0GpRBOUvn3ecc=
-github.com/hiddify/xray-core v0.0.0-20241019100018-0bba0dcd5dc9 h1:T1i/E5TgUY3WyI5bCoiVkMgbBEdNnSW2U1wWaotTZwQ=
-github.com/hiddify/xray-core v0.0.0-20241019100018-0bba0dcd5dc9/go.mod h1:D35b6Q0dCRvGKVMJbx18+8vSXtJoyvVVUz2Ww8Yg+T0=
+github.com/hiddify/xray-core v0.0.0-20241019134126-3f94892df016 h1:7nNtURFd+e/SJyq/tnd7NzHBjupolYfc2N+TAWt/SkM=
+github.com/hiddify/xray-core v0.0.0-20241019134126-3f94892df016/go.mod h1:D35b6Q0dCRvGKVMJbx18+8vSXtJoyvVVUz2Ww8Yg+T0=
 github.com/imkira/go-observer/v2 v2.0.0-20230629064422-8e0b61f11f1b h1:1+115FqGoS8p6Iry9AYmrcWDvSveH0F7P2nX1LU00qg=
 github.com/imkira/go-observer/v2 v2.0.0-20230629064422-8e0b61f11f1b/go.mod h1:XCscqBi1KKh7GcVDDAdkT/Cf6WDjnDAA1XM3nwmA0Ag=
 github.com/inconshreveable/mousetrap v1.1.0 h1:wN+x4NVGpMsO7ErUn/mUI3vEoE6Jt13X2s0bqwp9tc8=

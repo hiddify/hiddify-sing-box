@@ -29,8 +29,9 @@ import (
 var _ adapter.Service = (*Box)(nil)
 
 type Box struct {
+	ctx          context.Context
 	createdAt    time.Time
-	router       adapter.Router
+	router       *route.Router
 	inbounds     []adapter.Inbound
 	outbounds    []adapter.Outbound
 	logFactory   log.Factory
@@ -71,7 +72,7 @@ func New(options Options) (*Box, error) {
 		needV2RayAPI = true
 	}
 	var defaultLogWriter io.Writer
-	if options.PlatformInterface != nil {
+	if options.PlatformLogWriter != nil {
 		defaultLogWriter = io.Discard
 	}
 	logFactory, err := log.New(log.Options{
@@ -150,15 +151,9 @@ func New(options Options) (*Box, error) {
 	if len(outbounds) == 0 && lastErr != nil { //hiddify
 		return nil, E.Cause(lastErr, lastErrDesc) //hiddify
 	} //hiddify
-	err = router.Initialize(inbounds, outbounds, func() adapter.Outbound {
-		out, oErr := outbound.New(ctx, router, logFactory.NewLogger("outbound/direct"), "direct", option.Outbound{Type: "direct", Tag: "default"})
-		common.Must(oErr)
-		outbounds = append(outbounds, out)
-		return out
-	})
-	if err != nil {
-		return nil, err
-	}
+
+	//hiddify initalization of router moved to preStart
+
 	if options.PlatformInterface != nil {
 		err = options.PlatformInterface.Initialize(ctx, router)
 		if err != nil {
@@ -195,6 +190,7 @@ func New(options Options) (*Box, error) {
 		preServices2["v2ray api"] = v2rayServer
 	}
 	return &Box{
+		ctx:          ctx,
 		router:       router,
 		inbounds:     inbounds,
 		outbounds:    outbounds,
@@ -247,9 +243,19 @@ func (s *Box) Start() error {
 }
 
 func (s *Box) preStart() error {
+	err := s.router.Initialize(s.inbounds, s.outbounds, func() adapter.Outbound {
+		out, oErr := outbound.New(s.ctx, s.router, s.logFactory.NewLogger("outbound/direct"), "direct", option.Outbound{Type: "direct", Tag: "default"})
+		common.Must(oErr)
+		s.outbounds = append(s.outbounds, out)
+		return out
+	})
+	if err != nil {
+		return err
+	}
+
 	monitor := taskmonitor.New(s.logger, C.StartTimeout)
 	monitor.Start("start logger")
-	err := s.logFactory.Start()
+	err = s.logFactory.Start()
 	monitor.Finish()
 	if err != nil {
 		return E.Cause(err, "start logger")
@@ -404,4 +410,11 @@ func (s *Box) AddPreService(name string, service adapter.Service) {
 }
 func (s *Box) AddPostService(name string, service adapter.Service) {
 	s.postServices[name] = service
+}
+
+func (s *Box) AddInbound(inb adapter.Inbound) {
+	s.inbounds = append(s.inbounds, inb)
+}
+func (s *Box) AddOutbound(out adapter.Outbound) {
+	s.outbounds = append(s.outbounds, out)
 }
