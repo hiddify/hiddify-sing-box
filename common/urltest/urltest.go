@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/imkira/go-observer/v2"
+	"github.com/sagernet/sing-box/common/hiddify/ipinfo"
 	"github.com/sagernet/sing/common"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
@@ -16,8 +17,9 @@ import (
 )
 
 type History struct {
-	Time  time.Time `json:"time"`
-	Delay uint16    `json:"delay"`
+	Time   time.Time      `json:"time"`
+	Delay  uint16         `json:"delay"`
+	IpInfo *ipinfo.IpInfo `json:"ipinfo"`
 }
 
 type HistoryStorage struct {

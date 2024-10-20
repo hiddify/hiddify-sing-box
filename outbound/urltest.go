@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/common/hiddify/ipinfo"
 	"github.com/sagernet/sing-box/common/interrupt"
 	"github.com/sagernet/sing-box/common/urltest"
 	C "github.com/sagernet/sing-box/constant"
@@ -417,10 +418,26 @@ func (g *URLTestGroup) urlTest(ctx context.Context, force bool) (map[string]uint
 			} else {
 				g.logger.Debug("outbound ", tag, " available: ", t, "ms")
 			}
+			var ip *ipinfo.IpInfo
+			if history != nil {
+				ip = history.IpInfo
+			}
+			if ip == nil {
+				newip, t2, err := ipinfo.GetIpInfo(testCtx, detour)
+				if err != nil {
+					g.logger.Debug("outbound ", tag, " IP unavailable (", t2, "ms): ", err)
+				} else {
+					ip = newip
+					t = min(t, t2)
+				}
+
+			}
 			g.history.StoreURLTestHistory(realTag, &urltest.History{
-				Time:  time.Now(),
-				Delay: t,
+				Time:   time.Now(),
+				Delay:  t,
+				IpInfo: ip,
 			})
+
 			resultAccess.Lock()
 			result[tag] = t
 			g.performUpdateCheck()
