@@ -64,7 +64,7 @@ func NewHService(boptions box.Options) (*BoxService, error) {
 	ctx = filemanager.WithDefault(ctx, sWorkingPath, sTempPath, sUserID, sGroupID)
 	urlTestHistoryStorage := urltest.NewHistoryStorage()
 	ctx = service.ContextWithPtr(ctx, urlTestHistoryStorage)
-
+	boptions.Context = ctx
 	instance, err := box.New(boptions)
 	if err != nil {
 		cancel()
