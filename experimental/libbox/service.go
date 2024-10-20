@@ -83,6 +83,9 @@ func NewHService(boptions box.Options) (*BoxService, error) {
 func (s *BoxService) UrlTestHistory() *urltest.HistoryStorage {
 	return s.urlTestHistoryStorage
 }
+func (s *BoxService) Context() context.Context {
+	return s.ctx
+}
 func (s *BoxService) Start() error {
 	return s.instance.Start()
 }
