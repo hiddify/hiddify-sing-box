@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/user"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
@@ -842,6 +843,13 @@ func (r *Router) NeedWIFIState() bool {
 }
 
 func (r *Router) RouteConnection(ctx context.Context, conn net.Conn, metadata adapter.InboundContext) error {
+	defer func() {
+		if rec := recover(); rec != nil {
+			r.logger.ErrorContext(ctx, "PANIC route tcp ",
+				"recover", rec,
+				"stack", string(debug.Stack()))
+		}
+	}()
 	if r.pauseManager.IsDevicePaused() {
 		return E.New("reject connection to ", metadata.Destination, " while device paused")
 	}
@@ -977,6 +985,13 @@ func (r *Router) RouteConnection(ctx context.Context, conn net.Conn, metadata ad
 }
 
 func (r *Router) RoutePacketConnection(ctx context.Context, conn N.PacketConn, metadata adapter.InboundContext) error {
+	defer func() {
+		if rec := recover(); rec != nil {
+			r.logger.ErrorContext(ctx, "PANIC route udp",
+				"recover", rec,
+				"stack", string(debug.Stack()))
+		}
+	}()
 	if r.pauseManager.IsDevicePaused() {
 		return E.New("reject packet connection to ", metadata.Destination, " while device paused")
 	}

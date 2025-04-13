@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"runtime/debug"
 	"strings"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -15,6 +16,7 @@ import (
 	"github.com/sagernet/sing-box/option"
 
 	dns "github.com/sagernet/sing-dns"
+	"github.com/sagernet/sing/common/bufio"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 	"github.com/xtls/xray-core/core"
@@ -110,7 +112,7 @@ type Xray2 struct {
 	resolve      bool
 	xrayInstance *core.Instance
 	proxyStr     string
-	xlogger      xlogInstance
+	xlogger      *xlogInstance
 }
 
 const defaultXrayConfig = `{
@@ -144,7 +146,7 @@ func contains(slice []string, item string) bool {
 	return false
 }
 
-func NewXray2(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.XrayOutboundOptions) (*Xray2, error) {
+func NewXray2(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.XrayOutboundOptions) (xray_ret *Xray2, err_ret error) {
 	// var defConfig map[string]any
 	// err := json.Unmarshal([]byte(defaultXrayConfig), &defConfig)
 	// if err != nil {
@@ -156,7 +158,13 @@ func NewXray2(ctx context.Context, router adapter.Router, logger log.ContextLogg
 	// 	return nil, err
 
 	// }
-
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Error("Xray2 outbound panic: ", r)
+			xray_ret = nil
+			err_ret = fmt.Errorf("invalid Xray Config: %v", r)
+		}
+	}()
 	if options.XConfig == nil {
 		return nil, errors.New("xray config is nil")
 	}
@@ -249,15 +257,18 @@ func NewXray2(ctx context.Context, router adapter.Router, logger log.ContextLogg
 		fmt.Printf("Error marshaling to JSON: %v", err)
 	}
 
-	fmt.Printf(string(jsonData))
+	// fmt.Printf(string(jsonData))
 
 	xlogger := xlogInstance{
 		singlogger: logger,
 		started:    false,
 	}
 	reader := bytes.NewReader(jsonData)
-
+	xlog.RegisterHandler(&xlogger)
 	xrayFinalConfig, err := core.LoadConfig("json", reader)
+	if err != nil {
+		return nil, err
+	}
 	server, err := core.NewWithContext(ctx, xrayFinalConfig)
 	xlog.RegisterHandler(&xlogger)
 	if err != nil {
@@ -283,7 +294,7 @@ func NewXray2(ctx context.Context, router adapter.Router, logger log.ContextLogg
 		// client:       socks.NewClient(outboundDialer, socksNet, socks.Version5, "", ""),
 		resolve:      !hasDnsHandler,
 		xrayInstance: server,
-		xlogger:      xlogger,
+		xlogger:      &xlogger,
 		proxyStr:     "X" + protocol,
 	}
 	// uotOptions := common.PtrValueOrDefault(options.UDPOverTCP)
@@ -297,8 +308,6 @@ func NewXray2(ctx context.Context, router adapter.Router, logger log.ContextLogg
 }
 
 func readXrayConfig(jsonData string) (*conf.Config, error) {
-	// options.XrayOutboundJson
-
 	xrayConfig := conf.Config{}
 	err := json.Unmarshal([]byte(jsonData), &xrayConfig)
 	if err != nil {
@@ -308,12 +317,6 @@ func readXrayConfig(jsonData string) (*conf.Config, error) {
 }
 
 func (h *Xray2) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
-	defer func() {
-		if r := recover(); r != nil {
-			h.logger.ErrorContext(ctx, "Xray2 panic: ", r)
-		}
-	}()
-
 	ctx, metadata := adapter.ExtendContext(ctx)
 	metadata.Outbound = h.tag
 	metadata.Destination = destination
@@ -335,11 +338,6 @@ func (h *Xray2) DialContext(ctx context.Context, network string, destination M.S
 }
 
 func (h *Xray2) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
-	defer func() {
-		if r := recover(); r != nil {
-			h.logger.ErrorContext(ctx, "Xray2 udp panic: ", r)
-		}
-	}()
 	ctx, metadata := adapter.ExtendContext(ctx)
 	metadata.Outbound = h.tag
 	metadata.Destination = destination
@@ -356,8 +354,15 @@ func (h *Xray2) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.
 		return packetConn, nil
 	}
 
-	h.logger.InfoContext(ctx, "outbound packet connection to ", destination)
-	return core.DialUDP(ctx, h.xrayInstance)
+	// conn, err := h.DialContext(ctx, N.NetworkUDP, destination)
+	conn, err := core.DialUDP(ctx, h.xrayInstance)
+	if err != nil {
+		h.logger.InfoContext(ctx, "dial udp failed ", err)
+		return nil, err
+	}
+
+	// return bufio.NewUnbindPacketConnWithAddr(conn, destination), err
+	return bufio.NewBindPacketConn(conn, destination), err
 }
 
 func (h *Xray2) NewConnection(ctx context.Context, conn net.Conn, metadata adapter.InboundContext) error {
@@ -405,7 +410,12 @@ func (x *xlogInstance) Handle(msg xlog.Message) {
 	msgstr := fmt.Sprint("X:", msg)
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Println(msgstr)
+			fmt.Println("connection tcp panic",
+				"recover", r,
+				"stack", string(debug.Stack()))
+			x.singlogger.Error("connection tcp panic",
+				"recover", r,
+				"stack", string(debug.Stack()))
 		}
 	}()
 	if !x.started {
