@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/common/dialer"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
@@ -113,6 +114,7 @@ type Xray2 struct {
 	xrayInstance *core.Instance
 	proxyStr     string
 	xlogger      *xlogInstance
+	directDialer N.Dialer
 }
 
 const defaultXrayConfig = `{
@@ -165,6 +167,11 @@ func NewXray2(ctx context.Context, router adapter.Router, logger log.ContextLogg
 			err_ret = fmt.Errorf("invalid Xray Config: %v", r)
 		}
 	}()
+	directDialer, err := dialer.New(router, options.DialerOptions)
+	if err != nil {
+		return nil, err
+	}
+
 	if options.XConfig == nil {
 		return nil, errors.New("xray config is nil")
 	}
@@ -296,6 +303,7 @@ func NewXray2(ctx context.Context, router adapter.Router, logger log.ContextLogg
 		xrayInstance: server,
 		xlogger:      &xlogger,
 		proxyStr:     "X" + protocol,
+		directDialer: directDialer,
 	}
 	// uotOptions := common.PtrValueOrDefault(options.UDPOverTCP)
 	// if uotOptions.Enabled {
@@ -320,6 +328,11 @@ func (h *Xray2) DialContext(ctx context.Context, network string, destination M.S
 	ctx, metadata := adapter.ExtendContext(ctx)
 	metadata.Outbound = h.tag
 	metadata.Destination = destination
+	// h.logger.Info(ctx, "DialContext ", destination, fmt.Sprintf("%++v", metadata))
+	if metadata.Protocol == "dns" && ((network == "tcp" && destination.Port == 443) || (network == "udp" && destination.Port == 853)) {
+		// 	// TODO fix tls DNS
+		return h.directDialer.DialContext(ctx, network, destination)
+	}
 	if h.resolve && destination.IsFqdn() {
 		destinationAddresses, err := h.router.LookupDefault(ctx, destination.Fqdn)
 		if err != nil {
@@ -334,6 +347,7 @@ func (h *Xray2) DialContext(ctx context.Context, network string, destination M.S
 	case N.NetworkUDP:
 		dest = xnet.UDPDestination(xnet.ParseAddress(destination.AddrString()), xnet.Port(destination.Port))
 	}
+	// h.logger.Info(ctx, "Dialing ", dest)
 	return core.Dial(ctx, h.xrayInstance, dest)
 }
 
@@ -341,7 +355,7 @@ func (h *Xray2) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.
 	ctx, metadata := adapter.ExtendContext(ctx)
 	metadata.Outbound = h.tag
 	metadata.Destination = destination
-
+	// h.logger.Info(ctx, "ListenPacket ", destination, fmt.Sprintf("%++v", metadata))
 	if h.resolve && destination.IsFqdn() {
 		destinationAddresses, err := h.router.LookupDefault(ctx, destination.Fqdn)
 		if err != nil {
@@ -353,16 +367,24 @@ func (h *Xray2) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.
 		}
 		return packetConn, nil
 	}
+	// h.logger.Info(ctx, "DialingUDP ", destination)
+	if true {
+		conn, err := h.DialContext(ctx, N.NetworkUDP, destination)
+		// conn, err := core.DialUDP(ctx, h.xrayInstance)
+		if err != nil {
+			h.logger.InfoContext(ctx, "dial udp failed ", err)
+			return nil, err
+		}
 
-	// conn, err := h.DialContext(ctx, N.NetworkUDP, destination)
-	conn, err := core.DialUDP(ctx, h.xrayInstance)
-	if err != nil {
-		h.logger.InfoContext(ctx, "dial udp failed ", err)
-		return nil, err
+		return bufio.NewUnbindPacketConnWithAddr(conn, destination), err
+	} else {
+		conn, err := core.DialUDP(ctx, h.xrayInstance)
+		if err != nil {
+			h.logger.InfoContext(ctx, "dial udp failed ", err)
+			return nil, err
+		}
+		return bufio.NewBindPacketConn(conn, destination), err
 	}
-
-	// return bufio.NewUnbindPacketConnWithAddr(conn, destination), err
-	return bufio.NewBindPacketConn(conn, destination), err
 }
 
 func (h *Xray2) NewConnection(ctx context.Context, conn net.Conn, metadata adapter.InboundContext) error {
