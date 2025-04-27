@@ -172,12 +172,13 @@ func (s *URLTest) DialContext(ctx context.Context, network string, destination M
 	}
 
 	if !s.group.pauseManager.IsNetworkPaused() && s.group.tcpConnectionFailureCount.IncrementConditionReset(MinFailureToReset) {
-		s.logger.Warn("TCP URLTest Outbound ", s.tag, " (", outboundToString(s.group.selectedOutboundTCP), ") failed to connect for ", MinFailureToReset, " times==> test proxies again!")
+		s.logger.Warn("TCP URLTest Outbound ", s.tag, " (", outboundToString(outbound), ") failed to connect for ", MinFailureToReset, " times==> test proxies again!")
 		s.group.history.StoreURLTestHistory(outbound.Tag(), &urltest.History{
 			Time:  time.Now(),
 			Delay: TimeoutDelay,
 		})
 		if !s.group.checking.Load() {
+			s.group.selectedOutboundUDP = nil
 			s.group.selectedOutboundTCP = nil
 		}
 		// s.group.performUpdateCheck()
@@ -206,7 +207,7 @@ func (s *URLTest) ListenPacket(ctx context.Context, destination M.Socksaddr) (ne
 		return s.group.interruptGroup.NewPacketConn(conn, interrupt.IsExternalConnectionFromContext(ctx)), nil
 	}
 	if !s.group.pauseManager.IsNetworkPaused() && s.group.udpConnectionFailureCount.IncrementConditionReset(MinFailureToReset) {
-		s.logger.Info("Hiddify! UDP URLTest Outbound ", s.tag, " (", outboundToString(s.group.selectedOutboundUDP), ") failed to connect for ", MinFailureToReset, " times==> test proxies again!")
+		s.logger.Info("Hiddify! UDP URLTest Outbound ", s.tag, " (", outboundToString(outbound), ") failed to connect for ", MinFailureToReset, " times==> test proxies again!")
 
 		s.group.history.StoreURLTestHistory(outbound.Tag(), &urltest.History{
 			Time:  time.Now(),
@@ -214,6 +215,7 @@ func (s *URLTest) ListenPacket(ctx context.Context, destination M.Socksaddr) (ne
 		})
 		if !s.group.checking.Load() {
 			s.group.selectedOutboundUDP = nil
+			s.group.selectedOutboundTCP = nil
 		}
 		// s.group.performUpdateCheck()
 		// s.CheckOutbounds()
@@ -276,6 +278,8 @@ type URLTestGroup struct {
 	udpConnectionFailureCount MinZeroAtomicInt64
 
 	currentLinkIndex int
+
+	lastForceRecheck time.Time
 }
 
 func NewURLTestGroup(
@@ -415,7 +419,7 @@ func (g *URLTestGroup) Select(network string) (adapter.Outbound, bool) {
 }
 
 func (g *URLTestGroup) loopCheck() {
-	if time.Now().Sub(g.lastActive.Load()) > g.interval {
+	if time.Since(g.lastActive.Load()) > g.interval {
 		g.lastActive.Store(time.Now())
 		g.CheckOutbounds(false)
 	}
@@ -425,7 +429,7 @@ func (g *URLTestGroup) loopCheck() {
 			return
 		case <-g.ticker.C:
 		}
-		if time.Now().Sub(g.lastActive.Load()) > g.idleTimeout {
+		if time.Since(g.lastActive.Load()) > g.idleTimeout {
 			g.access.Lock()
 			g.ticker.Stop()
 			g.ticker = nil
@@ -456,18 +460,46 @@ func (g *URLTestGroup) urlTestEx(ctx context.Context, force bool, force_check_ev
 	if t := g.selectedOutboundUDP; t != nil && t != g.selectedOutboundTCP {
 		go g.urltestImp(t, nil)
 	}
-	result := make(map[string]uint16)
+
+	if force_check_even_previous_not_completed && time.Since(g.lastForceRecheck) < 15*time.Second {
+		return make(map[string]uint16), nil
+	}
+
 	if g.checking.Swap(true) {
 		if !force_check_even_previous_not_completed {
-			return result, nil
+			return make(map[string]uint16), nil
 		}
 		if g.checkingEx.Swap(true) {
 			g.performUpdateCheck()
-			return result, nil
+			return make(map[string]uint16), nil
 		}
+		defer g.checkingEx.Store(false)
+		g.lastForceRecheck = time.Now()
 	}
 	defer g.checking.Store(false)
-	defer g.checkingEx.Store(false)
+
+	result, err := g.urlTestExImp(ctx, force, force_check_even_previous_not_completed)
+	if err != nil {
+		return nil, err
+	}
+	if !force_check_even_previous_not_completed && g.currentLinkIndex == 0 {
+		for i := 1; i < len(g.links); i++ {
+			result, err := g.urlTestExImp(ctx, force, force_check_even_previous_not_completed)
+			if err != nil {
+				return nil, err
+			}
+			if g.hasOneAvailableOutbound() {
+				g.currentLinkIndex = i
+				return result, nil
+			}
+
+		}
+	}
+	return result, nil
+}
+
+func (g *URLTestGroup) urlTestExImp(ctx context.Context, force bool, force_check_even_previous_not_completed bool) (map[string]uint16, error) {
+	result := make(map[string]uint16)
 	ipbatch, _ := batch.New(ctx, batch.WithConcurrencyNum[string](10))
 	b, _ := batch.New(ctx, batch.WithConcurrencyNum[any](10))
 	checked := make(map[string]bool)
@@ -479,7 +511,7 @@ func (g *URLTestGroup) urlTestEx(ctx context.Context, force bool, force_check_ev
 			continue
 		}
 		history := g.history.LoadURLTestHistory(realTag)
-		if !force && !isTimeout(history) && time.Now().Sub(history.Time) < g.interval {
+		if !force && !isTimeout(history) && time.Since(history.Time) < g.interval {
 			continue
 		}
 		checked[realTag] = true
@@ -488,6 +520,9 @@ func (g *URLTestGroup) urlTestEx(ctx context.Context, force bool, force_check_ev
 			continue
 		}
 		b.Go(realTag, func() (any, error) {
+			if !force_check_even_previous_not_completed && g.checkingEx.Load() {
+				return nil, nil
+			}
 			t := g.urltestImp(p, ipbatch)
 			resultAccess.Lock()
 			result[tag] = t
@@ -498,16 +533,8 @@ func (g *URLTestGroup) urlTestEx(ctx context.Context, force bool, force_check_ev
 	}
 	b.Wait()
 	ipbatch.Wait()
+
 	g.performUpdateCheck()
-	if !g.hasOneAvailableOutbound() {
-		// 	// g.fetchUnknownOutboundsIpInfo()
-		// } else {
-		g.currentLinkIndex = (g.currentLinkIndex + 1) % len(g.links)
-		if g.currentLinkIndex != 0 {
-			g.urlTest(ctx, force)
-		}
-	}
-	return result, nil
 }
 
 func (g *URLTestGroup) ForceRecheckOutbound(outboundTag string) error {
