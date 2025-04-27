@@ -171,21 +171,7 @@ func (s *URLTest) DialContext(ctx context.Context, network string, destination M
 		return s.group.interruptGroup.NewConn(conn, interrupt.IsExternalConnectionFromContext(ctx)), nil
 	}
 
-	if !s.group.pauseManager.IsNetworkPaused() && s.group.tcpConnectionFailureCount.IncrementConditionReset(MinFailureToReset) {
-		s.logger.Warn("TCP URLTest Outbound ", s.tag, " (", outboundToString(outbound), ") failed to connect for ", MinFailureToReset, " times==> test proxies again!")
-		s.group.history.StoreURLTestHistory(outbound.Tag(), &urltest.History{
-			Time:  time.Now(),
-			Delay: TimeoutDelay,
-		})
-		if !s.group.checking.Load() {
-			s.group.selectedOutboundUDP = nil
-			s.group.selectedOutboundTCP = nil
-		}
-		// s.group.performUpdateCheck()
-		// s.CheckOutbounds()
-		s.group.urlTestEx(ctx, true, true)
-
-	}
+	s.checkFailureCount(ctx, outbound.Tag(), &s.group.tcpConnectionFailureCount)
 
 	s.logger.ErrorContext(ctx, err)
 
@@ -206,10 +192,16 @@ func (s *URLTest) ListenPacket(ctx context.Context, destination M.Socksaddr) (ne
 		s.group.udpConnectionFailureCount.Reset()
 		return s.group.interruptGroup.NewPacketConn(conn, interrupt.IsExternalConnectionFromContext(ctx)), nil
 	}
-	if !s.group.pauseManager.IsNetworkPaused() && s.group.udpConnectionFailureCount.IncrementConditionReset(MinFailureToReset) {
-		s.logger.Info("Hiddify! UDP URLTest Outbound ", s.tag, " (", outboundToString(outbound), ") failed to connect for ", MinFailureToReset, " times==> test proxies again!")
+	s.checkFailureCount(ctx, outbound.Tag(), &s.group.udpConnectionFailureCount)
+	s.logger.ErrorContext(ctx, err)
+	return nil, err
+}
 
-		s.group.history.StoreURLTestHistory(outbound.Tag(), &urltest.History{
+func (s *URLTest) checkFailureCount(ctx context.Context, outbound string, counter *MinZeroAtomicInt64) {
+	if !s.group.pauseManager.IsNetworkPaused() && counter.IncrementConditionReset(MinFailureToReset) {
+		s.logger.Info("Hiddify!  URLTest Outbound ", s.tag, " (", outbound, ") failed to connect for ", MinFailureToReset, " times==> test proxies again!")
+
+		s.group.history.StoreURLTestHistory(outbound, &urltest.History{
 			Time:  time.Now(),
 			Delay: TimeoutDelay,
 		})
@@ -222,18 +214,27 @@ func (s *URLTest) ListenPacket(ctx context.Context, destination M.Socksaddr) (ne
 		s.group.urlTestEx(ctx, true, true)
 
 	}
-	s.logger.ErrorContext(ctx, err)
-	return nil, err
 }
 
 func (s *URLTest) NewConnection(ctx context.Context, conn net.Conn, metadata adapter.InboundContext) error {
 	ctx = interrupt.ContextWithIsExternalConnection(ctx)
-	return NewConnection(ctx, s, conn, metadata)
+	err := NewConnection(ctx, s, conn, metadata)
+	if err == nil {
+		return nil
+	}
+	s.checkFailureCount(ctx, s.Now(), &s.group.tcpConnectionFailureCount)
+	return err
 }
 
 func (s *URLTest) NewPacketConnection(ctx context.Context, conn N.PacketConn, metadata adapter.InboundContext) error {
 	ctx = interrupt.ContextWithIsExternalConnection(ctx)
-	return NewPacketConnection(ctx, s, conn, metadata)
+	s.checkFailureCount(ctx, s.Now(), &s.group.tcpConnectionFailureCount)
+	err := NewPacketConnection(ctx, s, conn, metadata)
+	if err == nil {
+		return nil
+	}
+	s.checkFailureCount(ctx, s.Now(), &s.group.tcpConnectionFailureCount)
+	return err
 }
 
 func (s *URLTest) InterfaceUpdated() {
@@ -244,8 +245,6 @@ func (s *URLTest) InterfaceUpdated() {
 
 	// go s.group.CheckOutbounds(true)
 	go s.group.urlTestEx(s.ctx, true, true)
-
-	return
 }
 
 type URLTestGroup struct {
@@ -535,6 +534,8 @@ func (g *URLTestGroup) urlTestExImp(ctx context.Context, force bool, force_check
 	ipbatch.Wait()
 
 	g.performUpdateCheck()
+
+	return result, nil
 }
 
 func (g *URLTestGroup) ForceRecheckOutbound(outboundTag string) error {
