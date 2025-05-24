@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -212,6 +213,17 @@ func (e *Endpoint) Start(postStart bool) error {
 	e.tunDevice.SetDevice(wgDevice)
 	var ipcConf strings.Builder
 	ipcConf.WriteString(e.ipcConf)
+	if e.options.Amnezia != nil {
+		ipcConf.WriteString("\njc=" + strconv.Itoa(e.options.Amnezia.JC) + "\n")
+		ipcConf.WriteString("jmin=" + strconv.Itoa(e.options.Amnezia.JMin) + "\n")
+		ipcConf.WriteString("jmax=" + strconv.Itoa(e.options.Amnezia.JMax) + "\n")
+		ipcConf.WriteString("s1=" + strconv.Itoa(e.options.Amnezia.S1) + "\n")
+		ipcConf.WriteString("s2=" + strconv.Itoa(e.options.Amnezia.S2) + "\n")
+		ipcConf.WriteString("h1=" + strconv.FormatUint(uint64(e.options.Amnezia.H1), 10) + "\n")
+		ipcConf.WriteString("h2=" + strconv.FormatUint(uint64(e.options.Amnezia.H2), 10) + "\n")
+		ipcConf.WriteString("h3=" + strconv.FormatUint(uint64(e.options.Amnezia.H3), 10) + "\n")
+		ipcConf.WriteString("h4=" + strconv.FormatUint(uint64(e.options.Amnezia.H4), 10) + "\n")
+	}
 	for _, peer := range e.peers {
 		ipcConf.WriteString(peer.GenerateIpcLines())
 	}

@@ -193,6 +193,14 @@ func (c *ClientBind) Send(bufs [][]byte, ep conn.Endpoint, offset int) error {
 	return nil
 }
 
+// SendWithoutModify sends bufs exactly like Send. This bind proxies packets
+// through a regular N.Dialer connection rather than a raw socket, so there
+// is no lower-level "modify on send" behavior (e.g. GSO segmentation) to
+// skip — the two paths are identical here.
+func (c *ClientBind) SendWithoutModify(bufs [][]byte, ep conn.Endpoint, offset int) error {
+	return c.Send(bufs, ep, offset)
+}
+
 func (c *ClientBind) ParseEndpoint(s string) (conn.Endpoint, error) {
 	ap, err := netip.ParseAddrPort(s)
 	if err != nil {
