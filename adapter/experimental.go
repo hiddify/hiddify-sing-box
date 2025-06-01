@@ -59,6 +59,8 @@ type CacheFile interface {
 	StoreGroupExpand(group string, expand bool) error
 	LoadRuleSet(tag string) *SavedBinary
 	SaveRuleSet(tag string, set *SavedBinary) error
+	LoadCloudflareProfile(tag string) *SavedBinary
+	SaveCloudflareProfile(tag string, set *SavedBinary) error
 }
 
 type SavedBinary struct {

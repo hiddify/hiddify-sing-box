@@ -39,6 +39,22 @@ type WireGuardPeer struct {
 	FakePacketsMode  string `json:"fake_packets_mode,omitempty"`
 }
 
+type WireGuardWarpEndpointOptions struct {
+	System     bool                  `json:"system,omitempty"`
+	Name       string                `json:"name,omitempty"`
+	ListenPort uint16                `json:"listen_port,omitempty"`
+	UDPTimeout badoption.Duration    `json:"udp_timeout,omitempty"`
+	Workers    int                   `json:"workers,omitempty"`
+	Amnezia    *WireGuardAmnezia     `json:"amnezia,omitempty"`
+	Profile    *WireGuardWarpProfile `json:"profile,omitempty"`
+	DialerOptions
+}
+
+type WireGuardWarpProfile struct {
+	Detour   string `json:"detour,omitempty"`
+	Recreate bool   `json:"recreate,omitempty"`
+}
+
 type LegacyWireGuardOutboundOptions struct {
 	DialerOptions
 	SystemInterface bool                             `json:"system_interface,omitempty"`

@@ -485,3 +485,36 @@ func (c *CacheFile) SaveRuleSet(tag string, set *adapter.SavedBinary) error {
 		return bucket.Put([]byte(tag), setBinary)
 	})
 }
+
+func (c *CacheFile) LoadCloudflareProfile(tag string) *adapter.SavedBinary {
+	var savedProfile adapter.SavedBinary
+	err := c.DB.View(func(t *bbolt.Tx) error {
+		bucket := c.bucket(t, bucketRuleSet)
+		if bucket == nil {
+			return os.ErrNotExist
+		}
+		profileBinary := bucket.Get([]byte(tag))
+		if len(profileBinary) == 0 {
+			return os.ErrInvalid
+		}
+		return savedProfile.UnmarshalBinary(profileBinary)
+	})
+	if err != nil {
+		return nil
+	}
+	return &savedProfile
+}
+
+func (c *CacheFile) SaveCloudflareProfile(tag string, set *adapter.SavedBinary) error {
+	return c.DB.Batch(func(t *bbolt.Tx) error {
+		bucket, err := c.createBucket(t, bucketRuleSet)
+		if err != nil {
+			return err
+		}
+		profileBinary, err := set.MarshalBinary()
+		if err != nil {
+			return err
+		}
+		return bucket.Put([]byte(tag), profileBinary)
+	})
+}
