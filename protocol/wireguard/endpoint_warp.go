@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/netip"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -20,23 +21,22 @@ import (
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/service"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-func RegisterWarpEndpoint(registry *endpoint.Registry) {
-	endpoint.Register[option.WireGuardWarpEndpointOptions](registry, C.TypeWARP, NewWarpEndpoint)
+func RegisterWARPEndpoint(registry *endpoint.Registry) {
+	endpoint.Register[option.WireGuardWARPEndpointOptions](registry, C.TypeWARP, NewWARPEndpoint)
 }
 
-type WarpEndpoint struct {
+type WARPEndpoint struct {
 	endpoint.Adapter
-	endpoint adapter.Endpoint
-	ctx      context.Context
-	router   adapter.Router
-	logger   log.ContextLogger
-	tag      string
-	options  option.WireGuardWarpEndpointOptions
+	endpoint     adapter.Endpoint
+	startHandler func()
+
+	mtx sync.Mutex
 }
 
-func NewWarpEndpoint(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.WireGuardWarpEndpointOptions) (adapter.Endpoint, error) {
+func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.WireGuardWARPEndpointOptions) (adapter.Endpoint, error) {
 	var dependencies []string
 	if options.Detour != "" {
 		dependencies = append(dependencies, options.Detour)
@@ -46,128 +46,170 @@ func NewWarpEndpoint(ctx context.Context, router adapter.Router, logger log.Cont
 			dependencies = append(dependencies, options.Profile.Detour)
 		}
 	}
-	return &WarpEndpoint{
+	warpEndpoint := &WARPEndpoint{
 		Adapter: endpoint.NewAdapter(C.TypeWARP, tag, []string{N.NetworkTCP, N.NetworkUDP}, dependencies),
-		ctx:     ctx,
-		router:  router,
-		logger:  logger,
-		tag:     tag,
-		options: options,
-	}, nil
+	}
+	warpEndpoint.mtx.Lock()
+	warpEndpoint.startHandler = func() {
+		defer warpEndpoint.mtx.Unlock()
+		cacheFile := service.FromContext[adapter.CacheFile](ctx)
+		var config *C.WARPConfig
+		var err error
+		if !options.Profile.Recreate && cacheFile != nil && cacheFile.StoreWARPConfig() {
+			savedProfile := cacheFile.LoadWARPConfig(tag)
+			if savedProfile != nil {
+				if err = json.Unmarshal(savedProfile.Content, &config); err != nil {
+					logger.ErrorContext(ctx, err)
+					return
+				}
+			}
+		}
+		if config == nil {
+			var privateKey wgtypes.Key
+			if options.Profile.PrivateKey != "" {
+				privateKey, err = wgtypes.ParseKey(options.Profile.PrivateKey)
+				if err != nil {
+					logger.ErrorContext(ctx, err)
+					return
+				}
+			} else {
+				privateKey, err = wgtypes.GeneratePrivateKey()
+				if err != nil {
+					logger.ErrorContext(ctx, err)
+					return
+				}
+			}
+			opts := make([]cloudflare.CloudflareApiOption, 0, 1)
+			if options.Profile != nil {
+				if options.Profile.Detour != "" {
+					detour, ok := service.FromContext[adapter.OutboundManager](ctx).Outbound(options.Profile.Detour)
+					if !ok {
+						logger.ErrorContext(ctx, E.New("outbound detour not found: ", options.Profile.Detour))
+						return
+					}
+					opts = append(opts, cloudflare.WithDialContext(func(ctx context.Context, network, addr string) (net.Conn, error) {
+						return detour.DialContext(ctx, network, M.ParseSocksaddr(addr))
+					}))
+				}
+			}
+			api := cloudflare.NewCloudflareApi(opts...)
+			var profile *cloudflare.CloudflareProfile
+			if options.Profile.AuthToken != "" && options.Profile.ID != "" {
+				profile, err = api.GetProfile(ctx, options.Profile.AuthToken, options.Profile.ID)
+				if err != nil {
+					logger.ErrorContext(ctx, err)
+					return
+				}
+			} else {
+				profile, err = api.CreateProfile(ctx, privateKey.PublicKey().String())
+				if err != nil {
+					logger.ErrorContext(ctx, err)
+					return
+				}
+			}
+			config = &C.WARPConfig{
+				PrivateKey: privateKey.String(),
+				Interface:  profile.Config.Interface,
+				Peers:      profile.Config.Peers,
+			}
+			if cacheFile != nil && cacheFile.StoreWARPConfig() {
+				content, err := json.Marshal(config)
+				if err != nil {
+					logger.ErrorContext(ctx, err)
+					return
+				}
+				cacheFile.SaveWARPConfig(tag, &adapter.SavedBinary{
+					LastUpdated: time.Now(),
+					Content:     content,
+					LastEtag:    "",
+				})
+			}
+		}
+		peer := config.Peers[0]
+		hostParts := strings.Split(peer.Endpoint.Host, ":")
+		warpEndpoint.endpoint, err = NewEndpoint(
+			ctx,
+			router,
+			logger,
+			tag,
+			option.WireGuardEndpointOptions{
+				System:        options.System,
+				Name:          options.Name,
+				ListenPort:    options.ListenPort,
+				UDPTimeout:    options.UDPTimeout,
+				Workers:       options.Workers,
+				Amnezia:       options.Amnezia,
+				DialerOptions: options.DialerOptions,
+
+				Address: badoption.Listable[netip.Prefix]{
+					netip.MustParsePrefix(config.Interface.Addresses.V4 + "/32"),
+					netip.MustParsePrefix(config.Interface.Addresses.V6 + "/128"),
+				},
+				PrivateKey: config.PrivateKey,
+				Peers: []option.WireGuardPeer{
+					{
+						Address:   hostParts[0],
+						Port:      uint16(peer.Endpoint.Ports[rand.Intn(len(peer.Endpoint.Ports))]),
+						PublicKey: peer.PublicKey,
+						AllowedIPs: badoption.Listable[netip.Prefix]{
+							netip.MustParsePrefix("0.0.0.0/0"),
+							netip.MustParsePrefix("::/0"),
+						},
+					},
+				},
+				MTU: 1280,
+			},
+		)
+		if err != nil {
+			logger.ErrorContext(ctx, err)
+			return
+		}
+		if err = warpEndpoint.endpoint.Start(adapter.StartStateStart); err != nil {
+			logger.ErrorContext(ctx, err)
+			return
+		}
+		if err = warpEndpoint.endpoint.Start(adapter.StartStatePostStart); err != nil {
+			logger.ErrorContext(ctx, err)
+			return
+		}
+	}
+	return warpEndpoint, nil
 }
 
-func (w *WarpEndpoint) Start(stage adapter.StartStage) error {
+func (w *WARPEndpoint) Start(stage adapter.StartStage) error {
 	if stage != adapter.StartStatePostStart {
 		return nil
 	}
-	cacheFile := service.FromContext[adapter.CacheFile](w.ctx)
-	var profile *cloudflare.CloudflareProfile
-	var err error
-	if !w.options.Profile.Recreate {
-		if cacheFile != nil {
-			savedProfile := cacheFile.LoadCloudflareProfile(w.tag)
-			if savedProfile != nil {
-				err := json.Unmarshal(savedProfile.Content, &profile)
-				if err != nil {
-					return err
-				}
-			}
-		}
-	}
-	if profile == nil {
-		opts := make([]cloudflare.CloudflareApiOption, 0, 1)
-		if w.options.Profile != nil {
-			if w.options.Profile.Detour != "" {
-				detour, ok := service.FromContext[adapter.OutboundManager](w.ctx).Outbound(w.options.Profile.Detour)
-				if !ok {
-					return E.New("outbound detour not found: ", w.options.Profile.Detour)
-				}
-				opts = append(opts, cloudflare.WithDialContext(func(ctx context.Context, network, addr string) (net.Conn, error) {
-					return detour.DialContext(ctx, network, M.ParseSocksaddr(addr))
-				}))
-			}
-		}
-		api := cloudflare.NewCloudeflareApi(opts...)
-		profile, err = api.CreateProfile(w.ctx)
-		if err != nil {
-			return err
-		}
-		if cacheFile != nil {
-			content, err := json.Marshal(profile)
-			if err != nil {
-				return err
-			}
-			cacheFile.SaveCloudflareProfile(w.tag, &adapter.SavedBinary{
-				LastUpdated: time.Now(),
-				Content:     content,
-				LastEtag:    "",
-			})
-		}
-	}
-	peer := profile.Config.Peers[0]
-	hostParts := strings.Split(peer.Endpoint.Host, ":")
-	w.endpoint, err = NewEndpoint(
-		w.ctx,
-		w.router,
-		w.logger,
-		w.tag,
-		option.WireGuardEndpointOptions{
-			System:        w.options.System,
-			Name:          w.options.Name,
-			ListenPort:    w.options.ListenPort,
-			UDPTimeout:    w.options.UDPTimeout,
-			Workers:       w.options.Workers,
-			Amnezia:       w.options.Amnezia,
-			DialerOptions: w.options.DialerOptions,
-
-			Address: badoption.Listable[netip.Prefix]{
-				netip.MustParsePrefix(profile.Config.Interface.Addresses.V4 + "/32"),
-				netip.MustParsePrefix(profile.Config.Interface.Addresses.V6 + "/128"),
-			},
-			PrivateKey: profile.Config.PrivateKey,
-			Peers: []option.WireGuardPeer{
-				{
-					Address:   hostParts[0],
-					Port:      uint16(peer.Endpoint.Ports[rand.Intn(len(peer.Endpoint.Ports))]),
-					PublicKey: peer.PublicKey,
-					AllowedIPs: badoption.Listable[netip.Prefix]{
-						netip.MustParsePrefix("0.0.0.0/0"),
-						netip.MustParsePrefix("::/0"),
-					},
-				},
-			},
-			MTU: 1280,
-		},
-	)
-	if err != nil {
-		return err
-	}
-	if err := w.endpoint.Start(adapter.StartStateStart); err != nil {
-		return err
-	}
-	if err := w.endpoint.Start(adapter.StartStatePostStart); err != nil {
-		return err
-	}
+	go w.startHandler()
 	return nil
 }
 
-func (w *WarpEndpoint) Close() error {
-	if w.endpoint == nil {
-		return E.New("endpoint not initialized")
+func (w *WARPEndpoint) Close() error {
+	if err := w.isEndpointInitialized(); err != nil {
+		return err
 	}
 	return w.endpoint.Close()
 }
 
-func (w *WarpEndpoint) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
-	if w.endpoint == nil {
-		return nil, E.New("endpoint not initialized")
+func (w *WARPEndpoint) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
+	if err := w.isEndpointInitialized(); err != nil {
+		return nil, err
 	}
 	return w.endpoint.DialContext(ctx, network, destination)
 }
 
-func (w *WarpEndpoint) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
-	if w.endpoint == nil {
-		return nil, E.New("endpoint not initialized")
+func (w *WARPEndpoint) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
+	if err := w.isEndpointInitialized(); err != nil {
+		return nil, err
 	}
 	return w.endpoint.ListenPacket(ctx, destination)
+}
+
+func (w *WARPEndpoint) isEndpointInitialized() error {
+	w.mtx.Lock()
+	defer w.mtx.Unlock()
+	if w.endpoint == nil {
+		return E.New("endpoint not initialized")
+	}
+	return nil
 }

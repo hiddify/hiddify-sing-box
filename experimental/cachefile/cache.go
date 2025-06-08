@@ -54,6 +54,7 @@ type CacheFile struct {
 	storeRDRC         bool
 	storeDNS          bool
 	disableExpire     bool
+	storeWARPConfig   bool
 	rdrcTimeout       time.Duration
 	optimisticTimeout time.Duration
 	bufferSize        int
@@ -110,21 +111,22 @@ func New(ctx context.Context, logger logger.Logger, options option.CacheFileOpti
 	flushTimer := time.NewTimer(time.Hour)
 	flushTimer.Stop()
 	return &CacheFile{
-		ctx:           ctx,
-		logger:        logger,
-		path:          filemanager.BasePath(ctx, path),
-		cacheID:       cacheIDBytes,
-		cacheIDText:   options.CacheID,
-		storeFakeIP:   options.StoreFakeIP,
-		storeRDRC:     storeRDRC,
-		storeDNS:      options.StoreDNS,
-		rdrcTimeout:   rdrcTimeout,
-		bufferSize:    bufferSize,
-		flushInterval: time.Duration(options.FlushInterval),
-		pending:       newPendingWrites(),
-		flushTimer:    flushTimer,
-		flushSignal:   make(chan struct{}, 1),
-		done:          make(chan struct{}),
+		ctx:             ctx,
+		logger:          logger,
+		path:            filemanager.BasePath(ctx, path),
+		cacheID:         cacheIDBytes,
+		cacheIDText:     options.CacheID,
+		storeFakeIP:     options.StoreFakeIP,
+		storeRDRC:       storeRDRC,
+		storeDNS:        options.StoreDNS,
+		storeWARPConfig: options.StoreWARPConfig,
+		rdrcTimeout:     rdrcTimeout,
+		bufferSize:      bufferSize,
+		flushInterval:   time.Duration(options.FlushInterval),
+		pending:         newPendingWrites(),
+		flushTimer:      flushTimer,
+		flushSignal:     make(chan struct{}, 1),
+		done:            make(chan struct{}),
 	}
 }
 
@@ -486,35 +488,39 @@ func (c *CacheFile) SaveRuleSet(tag string, set *adapter.SavedBinary) error {
 	})
 }
 
-func (c *CacheFile) LoadCloudflareProfile(tag string) *adapter.SavedBinary {
-	var savedProfile adapter.SavedBinary
+func (c *CacheFile) StoreWARPConfig() bool {
+	return c.storeWARPConfig
+}
+
+func (c *CacheFile) LoadWARPConfig(tag string) *adapter.SavedBinary {
+	var savedConfig adapter.SavedBinary
 	err := c.DB.View(func(t *bbolt.Tx) error {
 		bucket := c.bucket(t, bucketRuleSet)
 		if bucket == nil {
 			return os.ErrNotExist
 		}
-		profileBinary := bucket.Get([]byte(tag))
-		if len(profileBinary) == 0 {
+		configBinary := bucket.Get([]byte(tag))
+		if len(configBinary) == 0 {
 			return os.ErrInvalid
 		}
-		return savedProfile.UnmarshalBinary(profileBinary)
+		return savedConfig.UnmarshalBinary(configBinary)
 	})
 	if err != nil {
 		return nil
 	}
-	return &savedProfile
+	return &savedConfig
 }
 
-func (c *CacheFile) SaveCloudflareProfile(tag string, set *adapter.SavedBinary) error {
+func (c *CacheFile) SaveWARPConfig(tag string, set *adapter.SavedBinary) error {
 	return c.DB.Batch(func(t *bbolt.Tx) error {
 		bucket, err := c.createBucket(t, bucketRuleSet)
 		if err != nil {
 			return err
 		}
-		profileBinary, err := set.MarshalBinary()
+		configBinary, err := set.MarshalBinary()
 		if err != nil {
 			return err
 		}
-		return bucket.Put([]byte(tag), profileBinary)
+		return bucket.Put([]byte(tag), configBinary)
 	})
 }
