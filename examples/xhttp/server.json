@@ -1,65 +1,63 @@
 {
-  "log":{
-    "level":"error"
+  "log": {
+    "level": "error"
   },
-  "dns":{
-    "servers":[
+  "dns": {
+    "servers": [
       {
-        "address":"local",
-        "detour":"direct"
+        "address": "local",
+        "detour": "direct"
       }
     ]
   },
-  "inbounds":[
+  "inbounds": [
     {
-      "type":"vless",
-      "tag":"vless-out",
-      "listen":"0.0.0.0",
-      "listen_port":443,
-      "tls":{
-        "enabled":true,
-        "server_name":"example.com",
-        "certificate_path":"/path/to/fullchain.pem",
-        "key_path":"/path/to/privkey.pem",
-        "alpn":[
-          "h2" // h3 for QUIC
-        ]
-      },
-      "users":[
+      "type": "vless",
+      "tag": "vless-out",
+      "listen": "0.0.0.0",
+      "listen_port": 443,
+      "users": [
         {
-          "name":"user",
-          "uuid":"3179dce2-2ff9-413c-85b4-c1d53ed41668"
+          "name": "user",
+          "uuid": "3179dce2-2ff9-413c-85b4-c1d53ed41668"
         }
       ],
-      "transport":{
-        "type":"xhttp",
-        "mode":"stream-up",
-        "path":"/xhttp"
+      "tls": {
+        "enabled": true,
+        "server_name": "example.com",
+        "alpn": "h2", // h3 for QUIC
+        "certificate_path": "/path/to/fullchain.pem",
+        "key_path": "/path/to/privkey.pem"
+      },
+      "transport": {
+        "type": "xhttp",
+        "mode": "stream-up",
+        "path": "/xhttp",
       }
     }
   ],
-  "outbounds":[
+  "outbounds": [
     {
-      "type":"direct",
-      "tag":"direct"
+      "type": "direct",
+      "tag": "direct"
     },
     {
-      "type":"dns",
-      "tag":"dns-out"
+      "type": "dns",
+      "tag": "dns-out"
     }
   ],
-  "route":{
-    "rules":[
+  "route": {
+    "rules": [
       {
-        "protocol":"dns",
-        "outbound":"dns-out"
+        "protocol": "dns",
+        "outbound": "dns-out"
       },
       {
-        "port":53,
-        "outbound":"dns-out"
+        "port": 53,
+        "outbound": "dns-out"
       }
     ],
-    "final":"direct",
-    "auto_detect_interface":true
+    "final": "direct",
+    "auto_detect_interface": true
   }
 }

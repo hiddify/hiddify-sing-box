@@ -1,79 +1,75 @@
 {
-  "log":{
-    "level":"error"
+  "log": {
+    "level": "error"
   },
-  "dns":{
-    "servers":[
+  "dns": {
+    "servers": [
       {
-        "address":"local",
-        "detour":"direct"
+        "address": "local",
+        "detour": "direct"
       }
     ]
   },
-  "endpoints":[
+  "endpoints": [
     {
-      "type":"warp",
-      "tag":"warp-out",
-      "system":false,
-      "name":"",
-      "listen_port":10000,
-      "udp_timeout":"",
-      "workers":0,
-      "profile":{
-        "detour":"direct",
-        "recreate":false,
-        // for getting existing WARP device profile
-        "id":"",
-        "private_key":"",
-        "auth_token":""
+      "type": "warp",
+      "tag": "warp-out",
+      "listen_port": 10000,
+      "udp_timeout": "5m0s",
+      "amnezia": {
+        "jc": 120,
+        "jmin": 23,
+        "jmax": 911,
+        "h1": 1,
+        "h2": 2,
+        "h3": 3,
+        "h4": 4
       },
-      "amnezia":{
-        "jc":120,
-        "jmin":23,
-        "jmax":911,
-        "h1":1,
-        "h2":2,
-        "h3":3,
-        "h4":4
+      "profile": {
+        "detour": "direct",
+        // for getting existing WARP device profile
+        "id": "",
+        "private_key": "",
+        "auth_token": ""
       }
       // Dial Fields
     }
   ],
-  "inbounds":[
+  "inbounds": [
     {
-      "type":"mixed",
-      "tag":"mixed-in",
-      "listen_port":7897
+      "type": "mixed",
+      "tag": "mixed-in",
+      "listen_port": 7897
     }
   ],
-  "outbounds":[
+  "outbounds": [
     {
-      "type":"direct",
-      "tag":"direct"
+      "type": "direct",
+      "tag": "direct"
     },
     {
-      "type":"dns",
-      "tag":"dns-out"
+      "type": "dns",
+      "tag": "dns-out"
     }
   ],
-  "route":{
-    "rules":[
+  "route": {
+    "rules": [
       {
-        "protocol":"dns",
-        "outbound":"dns-out"
+        "protocol": "dns",
+        "outbound": "dns-out"
       },
       {
-        "port":53,
-        "outbound":"dns-out"
+        "port": 53,
+        "outbound": "dns-out"
       }
     ],
-    "final":"warp-out",
-    "auto_detect_interface":true
+    "final": "warp-out",
+    "auto_detect_interface": true
   },
-  "experimental":{
-    "cache_file":{
-      "enabled":true,
-      "store_warp_config":true
+  "experimental": {
+    "cache_file": {
+      "enabled": true,
+      "store_warp_config": true
     }
   }
 }
