@@ -168,6 +168,7 @@ func (s *Selector) ListenPacket(ctx context.Context, destination M.Socksaddr) (n
 func (s *Selector) NewConnection(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
 	ctx = interrupt.ContextWithIsExternalConnection(ctx)
 	selected := s.selected.Load()
+	conn = s.interruptGroup.NewConn(conn, interrupt.IsExternalConnectionFromContext(ctx))
 	if outboundHandler, isHandler := selected.(adapter.ConnectionHandler); isHandler {
 		outboundHandler.NewConnection(ctx, conn, metadata, onClose)
 	} else {
@@ -178,6 +179,7 @@ func (s *Selector) NewConnection(ctx context.Context, conn net.Conn, metadata ad
 func (s *Selector) NewPacketConnection(ctx context.Context, conn N.PacketConn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
 	ctx = interrupt.ContextWithIsExternalConnection(ctx)
 	selected := s.selected.Load()
+	conn = s.interruptGroup.NewSingPacketConn(conn, interrupt.IsExternalConnectionFromContext(ctx))
 	if outboundHandler, isHandler := selected.(adapter.PacketConnectionHandler); isHandler {
 		outboundHandler.NewPacketConnection(ctx, conn, metadata, onClose)
 	} else {
