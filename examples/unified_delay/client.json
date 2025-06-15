@@ -1,0 +1,79 @@
+{
+  "log": {
+    "level": "error"
+  },
+  "dns": {
+    "servers": [
+      {
+        "address": "local",
+        "detour": "direct"
+      }
+    ]
+  },
+  "endpoints": [
+    {
+      "type": "warp",
+      "tag": "warp-out",
+      "listen_port": 10000,
+      "udp_timeout": "5m0s",
+      "amnezia": {
+        "jc": 120,
+        "jmin": 23,
+        "jmax": 911,
+        "h1": 1,
+        "h2": 2,
+        "h3": 3,
+        "h4": 4
+      },
+      "profile": {
+        "detour": "direct"
+      }
+    }
+  ],
+  "inbounds": [
+    {
+      "type": "mixed",
+      "tag": "mixed-in",
+      "listen_port": 7897
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct"
+    },
+    {
+      "type": "selector",
+      "tag": "select-out",
+      "outbounds": [
+        "direct",
+        "warp-out"
+      ],
+      "default": "direct",
+      "interrupt_exist_connections": true
+    },
+    {
+      "type": "dns",
+      "tag": "dns-out"
+    }
+  ],
+  "route": {
+    "rules": [
+      {
+        "protocol": "dns",
+        "outbound": "dns-out"
+      },
+      {
+        "port": 53,
+        "outbound": "dns-out"
+      }
+    ],
+    "final": "direct",
+    "auto_detect_interface": true
+  },
+  "experimental": {
+    "unified_delay": {
+      "enabled": true
+    }
+  }
+}

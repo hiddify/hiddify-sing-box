@@ -1,0 +1,56 @@
+{
+  "log": {
+    "level": "error"
+  },
+  "dns": {
+    "servers": [
+      {
+        "address": "local",
+        "detour": "direct"
+      }
+    ]
+  },
+  "inbounds": [
+    {
+      "type": "mixed",
+      "tag": "mixed-in",
+      "listen_port": 7897
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct"
+    },
+    {
+      "type": "mieru",
+      "tag": "mieru-out",
+      "server": "example.com",
+      "server_port": 27017,
+      "server_ports": "27017-27019",
+      "transport": "TCP",
+      "username": "username",
+      "password": "password",
+      "multiplexing": "MULTIPLEXING_LOW"
+      // Dial Fields
+    },
+    {
+      "type": "dns",
+      "tag": "dns-out"
+    }
+  ],
+  "route": {
+    "rules": [
+      {
+        "protocol": "dns",
+        "outbound": "dns-out"
+      },
+      {
+        "port": 53,
+        "outbound": "dns-out"
+      }
+    ],
+    "final": "mieru-out",
+    "auto_detect_interface": true
+  }
+}
