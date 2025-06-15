@@ -33,6 +33,7 @@
 | `hysteria2`    | [Hysteria2](./hysteria2/)       |
 | `anytls`       | [AnyTLS](./anytls/)             |
 | `snell`        | [Snell](./snell/)               |
+| `mieru`        | [Mieru](./mieru/)               |
 | `tor`          | [Tor](./tor/)                   |
 | `ssh`          | [SSH](./ssh/)                   |
 | `dns`          | [DNS](./dns/)                   |
