@@ -6,10 +6,11 @@ import (
 )
 
 type ExperimentalOptions struct {
-	CacheFile *CacheFileOptions `json:"cache_file,omitempty"`
-	ClashAPI  *ClashAPIOptions  `json:"clash_api,omitempty"`
-	V2RayAPI  *V2RayAPIOptions  `json:"v2ray_api,omitempty"`
-	Debug     *DebugOptions     `json:"debug,omitempty"`
+	CacheFile    *CacheFileOptions    `json:"cache_file,omitempty"`
+	ClashAPI     *ClashAPIOptions     `json:"clash_api,omitempty"`
+	V2RayAPI     *V2RayAPIOptions     `json:"v2ray_api,omitempty"`
+	UnifiedDelay *UnifiedDelayOptions `json:"unified_delay,omitempty"`
+	Debug        *DebugOptions        `json:"debug,omitempty"`
 }
 
 type CacheFileOptions struct {
@@ -60,4 +61,8 @@ type V2RayStatsServiceOptions struct {
 	Inbounds  []string `json:"inbounds,omitempty"`
 	Outbounds []string `json:"outbounds,omitempty"`
 	Users     []string `json:"users,omitempty"`
+}
+
+type UnifiedDelayOptions struct {
+	Enabled bool `json:"enabled,omitempty"`
 }

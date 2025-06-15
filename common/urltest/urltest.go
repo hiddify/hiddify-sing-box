@@ -190,6 +190,15 @@ func urlTest(ctx context.Context, link string, detour N.Dialer) (t uint16, err e
 		return
 	}
 	resp.Body.Close()
+	if IsUnifiedDelayFromContext(ctx) {
+		second := time.Now()
+		resp, err = client.Do(req)
+		if err != nil {
+			return
+		}
+		resp.Body.Close()
+		start = second
+	}
 	t = uint16(time.Since(start) / time.Millisecond)
 	return
 }
