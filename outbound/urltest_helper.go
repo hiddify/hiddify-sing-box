@@ -13,30 +13,45 @@ import (
 	"github.com/sagernet/sing/common/batch"
 )
 
-func CheckOutbound(logger log.Logger, ctx context.Context, history *urltest.HistoryStorage, router adapter.Router, url string, outbound adapter.Outbound, ipbatch *batch.Batch[string]) uint16 {
-	realTag := RealTag(outbound)
-	testCtx, cancel := context.WithTimeout(ctx, C.TCPTimeout)
+func urltestTimeout(ctx context.Context, logger log.Logger, realTag string, outbound adapter.Outbound, url string, history *urltest.HistoryStorage, timeout time.Duration) *urltest.History {
+	testCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	t, err := urltest.URLTest(testCtx, url, outbound)
-	if outbound.Type() == C.TypeWireGuard { // double check for wireguard
-		t1, err1 := urltest.URLTest(testCtx, url, outbound)
-		if err1 == nil {
-			t = t1
-			err = err1
-		}
-	}
 	if err != nil || t == 0 {
 		t = TimeoutDelay
 	}
+
 	his := history.StoreURLTestHistory(realTag, &urltest.History{
 		Time:  time.Now(),
 		Delay: t,
 	})
+	logger.Debug("outbound new ping ", realTag, " = ", his.Delay)
+	return his
+}
 
-	if !isTimeout(his) {
+func CheckOutbound(logger log.Logger, ctx context.Context, history *urltest.HistoryStorage, router adapter.Router, url string, outbound adapter.Outbound, ipbatch *batch.Batch[string]) uint16 {
+	realTag := RealTag(outbound)
+	hisbefore := history.LoadURLTestHistory(realTag)
+	timeout := C.TCPTimeout
+	isTimeoutBefore := isTimeout(hisbefore)
+
+	if !isTimeoutBefore {
+		timeout = time.Duration(max(200, hisbefore.Delay)) * time.Millisecond * 4
+		logger.Debug("outbound is already connected ", realTag, " = ", hisbefore.Delay, " set timeout for new urltest to ", timeout)
+	}
+	his := urltestTimeout(ctx, logger, realTag, outbound, url, history, timeout)
+
+	if outbound.Type() == C.TypeWireGuard && his.Delay > 1000 { // double check for wireguard
+		his = urltestTimeout(ctx, logger, realTag, outbound, url, history, timeout)
+	}
+	if isTimeout(his) && !isTimeoutBefore {
+		his = urltestTimeout(ctx, logger, realTag, outbound, url, history, C.TCPTimeout)
+	}
+
+	if !isTimeout(his) && his.IpInfo == nil {
 		if ipbatch == nil {
 			go CheckIP(logger, ctx, history, router, outbound)
-		} else if his.IpInfo == nil {
+		} else {
 			ipbatch.Go(realTag+"ip", func() (string, error) {
 				CheckIP(logger, ctx, history, router, outbound)
 				return "", nil
@@ -44,7 +59,7 @@ func CheckOutbound(logger log.Logger, ctx context.Context, history *urltest.Hist
 		}
 	}
 
-	return t
+	return his.Delay
 }
 
 func CheckIP(logger log.Logger, ctx context.Context, history *urltest.HistoryStorage, router adapter.Router, outbound adapter.Outbound) {
