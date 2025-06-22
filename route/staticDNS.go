@@ -1,27 +1,43 @@
 package route
 
 import (
+	"context"
 	"fmt"
+	"net"
 	"net/netip"
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
+	"time"
 
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/outbound"
 	dns "github.com/sagernet/sing-dns"
 )
 
+type DnsResult struct {
+	Domain string
+	IPs    []netip.Addr
+}
 type StaticDNS struct {
 	entries          map[string]StaticDNSEntry
+	regexEntries     map[*regexp.Regexp]StaticDNSEntry
 	internalDNSItems map[string]bool
 	router           *Router
+	mu               sync.Mutex
+
+	ipMaps      map[string]*DnsResult
+	ipMapsMutex sync.Mutex
 }
 
 func NewStaticDNS(router *Router, staticIPs map[string][]string) *StaticDNS {
 	s := &StaticDNS{
 		internalDNSItems: make(map[string]bool),
 		router:           router,
+		ipMaps:           map[string]*DnsResult{},
+		entries:          make(map[string]StaticDNSEntry),
+		regexEntries:     make(map[*regexp.Regexp]StaticDNSEntry),
 	}
 	s.createEntries(staticIPs)
 	if router == nil {
@@ -54,29 +70,103 @@ type StaticDNSEntry struct {
 	IPv6 []netip.Addr
 }
 
-func (s *StaticDNS) createEntries(items map[string][]string) {
-	entries := make(map[string]StaticDNSEntry)
+func isBlockedIP(ip string) bool {
+	if strings.HasPrefix(ip, "10.") || strings.HasPrefix(ip, "2001:4188:2:600:10") {
+		return true
+	}
+	return false
+}
 
-	for domain, ips := range items {
-		entry := StaticDNSEntry{}
+func (s *StaticDNS) resolveDomain(ctx context.Context, domain string) *DnsResult {
+	s.ipMapsMutex.Lock()
+	// fmt.Println("pre resolve", domain, ipMaps)
+	if res, ok := s.ipMaps[domain]; ok {
+		s.ipMapsMutex.Unlock()
+		// fmt.Println("aleady", domain, res)
+		return res
+	}
+	s.ipMapsMutex.Unlock()
+	ips := make([]net.IP, 0)
 
-		for _, ipString := range ips {
-			ip, err := netip.ParseAddr(ipString)
+	if ip := net.ParseIP(domain); ip != nil {
+		ips = append(ips, ip)
+	} else {
+		var err error
+		ips, err = net.DefaultResolver.LookupIP(ctx, "ip", domain)
+
+		if err != nil {
+			fmt.Println("error", err, domain, ips)
+			return nil
+		}
+	}
+	// fmt.Println("hresolve", domain, ips)
+	res := &DnsResult{Domain: domain, IPs: make([]netip.Addr, 0)}
+	for _, ip := range ips {
+		ipStr := ip.String()
+		if !isBlockedIP(ipStr) {
+			ipnet, err := netip.ParseAddr(ipStr)
 			if err != nil {
-				fmt.Printf("Invalid IP address for domain %s: %s\n", domain, ipString)
 				continue
 			}
-
-			if ip.Is4() {
-				entry.IPv4 = append(entry.IPv4, ip)
-			} else {
-				entry.IPv6 = append(entry.IPv6, ip)
-			}
+			res.IPs = append(res.IPs, ipnet)
 		}
-		entries[domain] = entry
+	}
+	if len(res.IPs) != 0 {
+		s.ipMapsMutex.Lock()
+		s.ipMaps[domain] = res
+		s.ipMapsMutex.Unlock()
+
+	}
+	return res
+
+}
+func (s *StaticDNS) getIPs(tag string, domains ...string) []netip.Addr {
+
+	var wg sync.WaitGroup
+	resChan := make(chan *DnsResult, len(domains)*10) // Collect both IPv4 and IPv6
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	for _, d := range domains {
+		wg.Add(1)
+		go func(domain string) {
+			defer wg.Done()
+			resChan <- s.resolveDomain(ctx, d)
+		}(d)
 	}
 
-	s.entries = entries
+	go func() {
+		wg.Wait()
+		close(resChan)
+	}()
+
+	var res []netip.Addr = make([]netip.Addr, 0)
+	for dnsres := range resChan {
+		if dnsres != nil {
+			res = append(res, dnsres.IPs...)
+		}
+	}
+
+	return res
+}
+
+func (s *StaticDNS) createEntries(items map[string][]string) {
+
+	var wg sync.WaitGroup
+
+	for domain, domainList := range items {
+		wg.Add(1)
+		go func(d string, dList []string) {
+			defer wg.Done()
+			ips := s.getIPs(d, dList...)
+			fmt.Println("d", d, "list", dList, "ips", ips)
+			if len(ips) > 0 {
+				s.add2staticDns(d, ips)
+			}
+		}(domain, domainList)
+	}
+	wg.Wait()
+
 }
 
 func errorIfEmpty(addrs []netip.Addr) ([]netip.Addr, error) {
@@ -105,8 +195,9 @@ func (s *StaticDNS) Add2staticDnsIfInternal(domain string, addrs []netip.Addr) {
 }
 
 func (s *StaticDNS) add2staticDns(domain string, addrs []netip.Addr) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	entry := StaticDNSEntry{}
-
 	for _, ip := range addrs {
 		if isBlocked(ip) {
 			continue
@@ -120,7 +211,19 @@ func (s *StaticDNS) add2staticDns(domain string, addrs []netip.Addr) {
 	if len(entry.IPv4) == 0 && len(entry.IPv6) == 0 {
 		return
 	}
-	s.entries[domain] = entry
+	if strings.HasPrefix(domain, "re:") {
+		regexPattern := strings.TrimPrefix(domain, "re:")
+		re, err := regexp.Compile(regexPattern)
+		if err != nil {
+			fmt.Printf("Invalid regex: %s\n", regexPattern)
+			return
+		}
+
+		s.regexEntries[re] = entry
+	} else {
+		s.entries[domain] = entry
+	}
+
 }
 
 func (s *StaticDNS) IsInternal(domain string) bool {
@@ -129,12 +232,25 @@ func (s *StaticDNS) IsInternal(domain string) bool {
 	}
 	return false
 }
+func (s *StaticDNS) regexMatch(domain string) (StaticDNSEntry, error) {
+	if staticDns, ok := s.entries[domain]; ok {
+		return staticDns, nil
+	}
 
+	for re, entry := range s.regexEntries {
+		fmt.Println("Matching ", domain, "with ", re, "res=", re.MatchString(domain))
+		if re.MatchString(domain) {
+			return entry, nil
+		}
+	}
+	return StaticDNSEntry{}, fmt.Errorf("NotFound")
+}
 func (s *StaticDNS) lookupStaticIP(domain string, strategy uint8, skipInternal bool) ([]netip.Addr, error) {
 	if skipInternal && s.IsInternal(domain) {
 		return nil, fmt.Errorf("Internal")
 	}
-	if staticDns, ok := s.entries[domain]; ok {
+
+	if staticDns, err := s.regexMatch(domain); err == nil {
 		switch strategy {
 		case dns.DomainStrategyUseIPv4:
 			return errorIfEmpty(staticDns.IPv4)
@@ -156,6 +272,7 @@ func (s *StaticDNS) lookupStaticIP(domain string, strategy uint8, skipInternal b
 			return errorIfEmpty(append(staticDns.IPv4, staticDns.IPv6...))
 
 		}
+
 	} else {
 		ip := getIpOfSslip(domain)
 		if ip != "" {
