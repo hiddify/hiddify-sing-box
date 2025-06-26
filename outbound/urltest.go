@@ -27,7 +27,7 @@ import (
 
 const (
 	TimeoutDelay      = 65535
-	MinFailureToReset = 3
+	MinFailureToReset = 10
 )
 
 var (
@@ -192,13 +192,14 @@ func (s *URLTest) ListenPacket(ctx context.Context, destination M.Socksaddr) (ne
 		s.group.udpConnectionFailureCount.Reset()
 		return s.group.interruptGroup.NewPacketConn(conn, interrupt.IsExternalConnectionFromContext(ctx)), nil
 	}
-	s.checkFailureCount(ctx, outbound.Tag(), &s.group.udpConnectionFailureCount)
+	s.checkFailureCount(ctx, RealTag(outbound), &s.group.udpConnectionFailureCount)
 	s.logger.ErrorContext(ctx, err)
 	return nil, err
 }
 
 func (s *URLTest) checkFailureCount(ctx context.Context, outbound string, counter *MinZeroAtomicInt64) {
 	if !s.group.pauseManager.IsNetworkPaused() && counter.IncrementConditionReset(MinFailureToReset) {
+
 		s.logger.Info("Hiddify!  URLTest Outbound ", s.tag, " (", outbound, ") failed to connect for ", MinFailureToReset, " times==> test proxies again!")
 
 		s.group.history.StoreURLTestHistory(outbound, &urltest.History{
@@ -209,9 +210,15 @@ func (s *URLTest) checkFailureCount(ctx context.Context, outbound string, counte
 			s.group.selectedOutboundUDP = nil
 			s.group.selectedOutboundTCP = nil
 		}
-		// s.group.performUpdateCheck()
+		s.group.performUpdateCheck()
+		if out := s.group.selectedOutboundTCP; out != nil {
+			his := s.group.history.LoadURLTestHistory(RealTag(out))
+			if his == nil || his.Delay == TimeoutDelay {
+				s.group.urlTestEx(ctx, true, true)
+			}
+		}
+
 		// s.CheckOutbounds()
-		s.group.urlTestEx(ctx, true, true)
 
 	}
 }
@@ -640,8 +647,12 @@ func (g *URLTestGroup) performUpdateCheck() {
 	if outbound, exists := g.Select(N.NetworkTCP); outbound != nil && (g.selectedOutboundTCP == nil || (exists && outbound != g.selectedOutboundTCP)) {
 		tcpOutbound = outbound
 	}
-	if outbound, exists := g.Select(N.NetworkUDP); outbound != nil && (g.selectedOutboundUDP == nil || (exists && outbound != g.selectedOutboundUDP)) {
-		udpOutbound = outbound
+	if tcpOutbound != nil && common.Contains(tcpOutbound.Network(), N.NetworkUDP) {
+		udpOutbound = tcpOutbound
+	} else {
+		if outbound, exists := g.Select(N.NetworkUDP); outbound != nil && (g.selectedOutboundUDP == nil || (exists && outbound != g.selectedOutboundUDP)) {
+			udpOutbound = outbound
+		}
 	}
 	g.forceUpdateOutbound(tcpOutbound, udpOutbound)
 }
