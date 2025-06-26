@@ -45,6 +45,7 @@ func (r *RuleSetItem) Match(metadata *adapter.InboundContext) bool {
 	metadata.IPCIDRAcceptEmpty = r.ipCidrAcceptEmpty
 	for _, ruleSet := range r.setList {
 		if ruleSet.Match(metadata) {
+			// fmt.Println("rule ", ruleSet.Name(), " matched to ", metadata.Domain, " dst ", metadata.Destination)
 			return true
 		}
 	}

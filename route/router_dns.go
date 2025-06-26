@@ -11,7 +11,7 @@ import (
 	C "github.com/sagernet/sing-box/constant"
 
 	//"github.com/sagernet/sing-box/log"
-	"github.com/sagernet/sing-dns"
+	dns "github.com/sagernet/sing-dns"
 	"github.com/sagernet/sing/common/cache"
 	E "github.com/sagernet/sing/common/exceptions"
 	F "github.com/sagernet/sing/common/format"
@@ -207,46 +207,53 @@ func (r *Router) Lookup(ctx context.Context, domain string, strategy dns.DomainS
 		rule              adapter.DNSRule
 		ruleIndex         int
 	)
-	ruleIndex = -1
-	for {
-		var (
-			dnsCtx       context.Context
-			addressLimit bool
-		)
-		dnsCtx, transport, transportStrategy, rule, ruleIndex = r.matchDNS(ctx, false, ruleIndex, true)
-		dnsCtx = adapter.OverrideContext(dnsCtx)
-		if strategy == dns.DomainStrategyAsIS {
-			strategy = transportStrategy
-		}
-
-		responseAddrs, err = r.staticDns.lookupStaticIP(domain, strategy, true)
-
-		if err == nil && responseAddrs != nil && len(responseAddrs) > 0 {
-			r.dnsLogger.DebugContext(ctx, "Static IP responsefor ", domain, " ", responseAddrs[0])
-		} else if rule != nil && rule.WithAddressLimit() {
-			addressLimit = true
-			responseAddrs, err = r.dnsClient.LookupWithResponseCheck(dnsCtx, transport, domain, strategy, func(responseAddrs []netip.Addr) bool {
-				metadata.DestinationAddresses = responseAddrs
-				return rule.MatchAddressLimit(metadata)
-			})
-		} else {
-			addressLimit = false
-			responseAddrs, err = r.dnsClient.Lookup(dnsCtx, transport, domain, strategy)
-		}
-		if err != nil {
-			if errors.Is(err, dns.ErrResponseRejectedCached) {
-				r.dnsLogger.DebugContext(ctx, "response rejected for ", domain, " (cached)")
-			} else if errors.Is(err, dns.ErrResponseRejected) {
-				r.dnsLogger.DebugContext(ctx, "response rejected for ", domain)
-			} else {
-				r.dnsLogger.ErrorContext(ctx, E.Cause(err, "lookup failed for ", domain))
+	responseAddrs, err = r.staticDns.lookupStaticIP(domain, strategy, true)
+	matchedTag := "<nil>"
+	if err == nil && responseAddrs != nil && len(responseAddrs) > 0 {
+		r.dnsLogger.DebugContext(ctx, "Static IP responsefor ", domain, " ", responseAddrs[0])
+	} else {
+		ruleIndex = -1
+		for {
+			var (
+				dnsCtx       context.Context
+				addressLimit bool
+			)
+			dnsCtx, transport, transportStrategy, rule, ruleIndex = r.matchDNS(ctx, false, ruleIndex, true)
+			dnsCtx = adapter.OverrideContext(dnsCtx)
+			if strategy == dns.DomainStrategyAsIS {
+				strategy = transportStrategy
 			}
-		} else if len(responseAddrs) == 0 {
-			r.dnsLogger.ErrorContext(ctx, "lookup failed for ", domain, ": empty result")
-			err = dns.RCodeNameError
-		}
-		if !addressLimit || err == nil {
-			break
+
+			if rule != nil && rule.WithAddressLimit() {
+				addressLimit = true
+				responseAddrs, err = r.dnsClient.LookupWithResponseCheck(dnsCtx, transport, domain, strategy, func(responseAddrs []netip.Addr) bool {
+					metadata.DestinationAddresses = responseAddrs
+					return rule.MatchAddressLimit(metadata)
+				})
+			} else {
+				addressLimit = false
+				responseAddrs, err = r.dnsClient.Lookup(dnsCtx, transport, domain, strategy)
+			}
+			ruleName := "<nil>"
+			if rule != nil {
+				ruleName = rule.String()
+			}
+			if err != nil {
+				if errors.Is(err, dns.ErrResponseRejectedCached) {
+					r.dnsLogger.DebugContext(ctx, "response rule=", ruleName, " rejected for ", domain, " (cached)")
+				} else if errors.Is(err, dns.ErrResponseRejected) {
+					r.dnsLogger.DebugContext(ctx, "response rule=", ruleName, " rejected for ", domain)
+				} else {
+					r.dnsLogger.ErrorContext(ctx, E.Cause(err, "lookup rule=", ruleName, " failed for ", domain))
+				}
+			} else if len(responseAddrs) == 0 {
+				r.dnsLogger.ErrorContext(ctx, "lookup rule=", ruleName, " failed for ", domain, ": empty result")
+				err = dns.RCodeNameError
+			}
+			if !addressLimit || err == nil {
+				matchedTag = ruleName
+				break
+			}
 		}
 	}
 
@@ -256,7 +263,7 @@ func (r *Router) Lookup(ctx context.Context, domain string, strategy dns.DomainS
 	responseAddrs = r.filterBlocked(ctx, domain, strategy, responseAddrs)
 
 	if len(responseAddrs) > 0 {
-		r.dnsLogger.InfoContext(ctx, "lookup succeed for ", domain, ": ", strings.Join(F.MapToString(responseAddrs), " "))
+		r.dnsLogger.InfoContext(ctx, "lookup succeed for ", domain, ": ", strings.Join(F.MapToString(responseAddrs), " "), " rule=", matchedTag)
 		r.staticDns.Add2staticDnsIfInternal(domain, responseAddrs)
 	} else if err != nil {
 		r.dnsLogger.ErrorContext(ctx, E.Cause(err, "lookup failed for ", domain))
