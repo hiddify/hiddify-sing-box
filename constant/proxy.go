@@ -9,6 +9,8 @@ const (
 	TypeBlock              = "block"
 	TypeDNS                = "dns"
 	TypeSOCKS              = "socks"
+	TypeTunnelClient       = "tunnel_client"
+	TypeTunnelServer       = "tunnel_server"
 	TypeHTTP               = "http"
 	TypeMixed              = "mixed"
 	TypeShadowsocks        = "shadowsocks"
@@ -132,6 +134,10 @@ func ProxyDisplayName(proxyType string) string {
 		return "xray"
 	case TypeCustom:
 		return "custom"
+	case TypeTunnelClient:
+		return "Tunnel Client"
+	case TypeTunnelServer:
+		return "Tunnel Server"
 	default:
 		return "Unknown"
 	}

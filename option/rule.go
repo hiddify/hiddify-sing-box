@@ -159,6 +159,8 @@ type RawDefaultRule struct {
 	SourcePortRange          badoption.Listable[string]                                                  `json:"source_port_range,omitempty"`
 	Port                     badoption.Listable[uint16]                                                  `json:"port,omitempty"`
 	PortRange                badoption.Listable[string]                                                  `json:"port_range,omitempty"`
+	TunnelSource             badoption.Listable[string]                                                  `json:"tunnel_source,omitempty"`
+	TunnelDestination        badoption.Listable[string]                                                  `json:"tunnel_destination,omitempty"`
 	ProcessName              badoption.Listable[string]                                                  `json:"process_name,omitempty"`
 	ProcessPath              badoption.Listable[string]                                                  `json:"process_path,omitempty"`
 	ProcessPathRegex         badoption.Listable[string]                                                  `json:"process_path_regex,omitempty"`

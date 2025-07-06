@@ -1,0 +1,62 @@
+{
+  "log": {
+    "level": "error"
+  },
+  "dns": {
+    "servers": [
+      {
+        "address": "local",
+        "detour": "direct"
+      }
+    ]
+  },
+  "endpoints": [
+    {
+      "type": "tunnel_server",
+      "tag": "tunnel",
+      "uuid": "f79f7678-55e7-432d-a15f-6e8ab2b7fe13",
+      "users": [
+        {
+          "uuid": "9b65b7e1-04c8-4717-8f45-2aa61fd25937",
+          "key": "1c9b2ccf-b0c0-4c26-868d-a55a4edad3fe"
+        }
+      ],
+      "inbound": {
+        "type": "vless",
+        "tag": "vless-in",
+        "listen": "0.0.0.0",
+        "listen_port": 8000,
+        "users": [
+          {
+            "name": "vless",
+            "uuid": "9b65b7e1-04c8-4717-8f45-2aa61fd25937"
+          }
+        ]
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct-out"
+    },
+    {
+      "type": "dns",
+      "tag": "dns-out"
+    }
+  ],
+  "route": {
+    "rules": [
+      {
+        "protocol": "dns",
+        "outbound": "dns-out"
+      },
+      {
+        "port": 53,
+        "outbound": "dns-out"
+      }
+    ],
+    "final": "direct-out",
+    "auto_detect_interface": true
+  }
+}

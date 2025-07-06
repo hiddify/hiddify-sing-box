@@ -45,14 +45,16 @@ type InboundManager interface {
 }
 
 type InboundContext struct {
-	Inbound     string
-	InboundType string
-	IPVersion   uint8
-	Network     string
-	Source      M.Socksaddr
-	Destination M.Socksaddr
-	User        string
-	Outbound    string
+	Inbound           string
+	InboundType       string
+	IPVersion         uint8
+	Network           string
+	Source            M.Socksaddr
+	Destination       M.Socksaddr
+	TunnelSource      string
+	TunnelDestination string
+	User              string
+	Outbound          string
 
 	// power report
 

@@ -442,6 +442,9 @@ func applyRouteOptionsOverride(metadata *adapter.InboundContext, routeOptions *R
 			Fqdn: metadata.Destination.Fqdn,
 		}
 	}
+	if routeOptions.OverrideTunnelDestination != "" {
+		metadata.TunnelDestination = routeOptions.OverrideTunnelDestination
+	}
 	if routeOptions.UDPTimeout > 0 {
 		metadata.UDPTimeout = routeOptions.UDPTimeout
 	}

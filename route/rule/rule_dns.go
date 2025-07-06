@@ -271,6 +271,16 @@ func NewDefaultDNSRule(ctx context.Context, logger log.ContextLogger, options op
 		rule.destinationPortItems = append(rule.destinationPortItems, item)
 		rule.allItems = append(rule.allItems, item)
 	}
+	if len(options.TunnelSource) > 0 {
+		item := NewTunnelSourceItem(options.TunnelSource)
+		rule.items = append(rule.items, item)
+		rule.allItems = append(rule.allItems, item)
+	}
+	if len(options.TunnelDestination) > 0 {
+		item := NewTunnelDestinationItem(options.TunnelDestination)
+		rule.items = append(rule.items, item)
+		rule.allItems = append(rule.allItems, item)
+	}
 	if len(options.ProcessName) > 0 {
 		item := NewProcessItem(options.ProcessName)
 		rule.items = append(rule.items, item)
