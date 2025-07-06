@@ -1,12 +1,20 @@
-# sing-box
+# sing-box-extended
 
-The universal proxy platform.
+Sing-box with extended features.
 
-[![Packaging status](https://repology.org/badge/vertical-allrepos/sing-box.svg)](https://repology.org/project/sing-box/versions)
+## Features
 
-## Documentation
+* Amnezia
+* WARP
+* Tunneling
+* Mieru
+* XHTTP
+* SDNS (DNSCrypt)
+* Unified delay
 
-https://sing-box.sagernet.org
+## Examples
+
+https://github.com/shtorm-7/sing-box-extended/tree/extended/examples
 
 ## License
 
