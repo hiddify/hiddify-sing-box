@@ -88,9 +88,7 @@ func NewClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr, opt
 		return xmuxClient.XmuxConn.(DialerClient), xmuxClient
 	}
 	getRequestURL2 := getRequestURL
-	getHTTPClient2 := func() (DialerClient, *XmuxClient) {
-		return nil, nil
-	}
+	getHTTPClient2 := getHTTPClient
 	if options.Download != nil {
 		options2 := options.Download
 		dialer2 := dialer
