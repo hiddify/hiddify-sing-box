@@ -13,6 +13,7 @@ import (
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
+	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
@@ -116,7 +117,7 @@ func (c *ClientEndpoint) ListenPacket(ctx context.Context, destination M.Socksad
 }
 
 func (c *ClientEndpoint) Close() error {
-	return nil
+	return common.Close(c.outbound)
 }
 
 func (c *ClientEndpoint) startInboundConn() error {
