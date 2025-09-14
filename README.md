@@ -4,7 +4,7 @@ Sing-box with extended features.
 
 ## Features
 
-* Amnezia
+* Amnezia 1.5
 * WARP
 * Tunneling
 * Mieru
