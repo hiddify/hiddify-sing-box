@@ -214,15 +214,67 @@ func (e *Endpoint) Start(postStart bool) error {
 	var ipcConf strings.Builder
 	ipcConf.WriteString(e.ipcConf)
 	if e.options.Amnezia != nil {
-		ipcConf.WriteString("\njc=" + strconv.Itoa(e.options.Amnezia.JC) + "\n")
-		ipcConf.WriteString("jmin=" + strconv.Itoa(e.options.Amnezia.JMin) + "\n")
-		ipcConf.WriteString("jmax=" + strconv.Itoa(e.options.Amnezia.JMax) + "\n")
-		ipcConf.WriteString("s1=" + strconv.Itoa(e.options.Amnezia.S1) + "\n")
-		ipcConf.WriteString("s2=" + strconv.Itoa(e.options.Amnezia.S2) + "\n")
-		ipcConf.WriteString("h1=" + strconv.FormatUint(uint64(e.options.Amnezia.H1), 10) + "\n")
-		ipcConf.WriteString("h2=" + strconv.FormatUint(uint64(e.options.Amnezia.H2), 10) + "\n")
-		ipcConf.WriteString("h3=" + strconv.FormatUint(uint64(e.options.Amnezia.H3), 10) + "\n")
-		ipcConf.WriteString("h4=" + strconv.FormatUint(uint64(e.options.Amnezia.H4), 10) + "\n")
+		if e.options.Amnezia.JC > 0 {
+			ipcConf.WriteString("\njc=" + strconv.Itoa(e.options.Amnezia.JC))
+		}
+		if e.options.Amnezia.JMin > 0 {
+			ipcConf.WriteString("\njmin=" + strconv.Itoa(e.options.Amnezia.JMin))
+		}
+		if e.options.Amnezia.JMax > 0 {
+			ipcConf.WriteString("\njmax=" + strconv.Itoa(e.options.Amnezia.JMax))
+		}
+		if e.options.Amnezia.S1 > 0 {
+			ipcConf.WriteString("\ns1=" + strconv.Itoa(e.options.Amnezia.S1))
+		}
+		if e.options.Amnezia.S2 > 0 {
+			ipcConf.WriteString("\ns2=" + strconv.Itoa(e.options.Amnezia.S2))
+		}
+		if e.options.Amnezia.S3 > 0 {
+			ipcConf.WriteString("\ns3=" + strconv.Itoa(e.options.Amnezia.S3))
+		}
+		if e.options.Amnezia.S4 > 0 {
+			ipcConf.WriteString("\ns4=" + strconv.Itoa(e.options.Amnezia.S4))
+		}
+		if e.options.Amnezia.H1 > 0 {
+			ipcConf.WriteString("\nh1=" + strconv.FormatUint(uint64(e.options.Amnezia.H1), 10))
+		}
+		if e.options.Amnezia.H2 > 0 {
+			ipcConf.WriteString("\nh2=" + strconv.FormatUint(uint64(e.options.Amnezia.H2), 10))
+		}
+		if e.options.Amnezia.H3 > 0 {
+			ipcConf.WriteString("\nh3=" + strconv.FormatUint(uint64(e.options.Amnezia.H3), 10))
+		}
+		if e.options.Amnezia.H4 > 0 {
+			ipcConf.WriteString("\nh4=" + strconv.FormatUint(uint64(e.options.Amnezia.H4), 10))
+		}
+		if e.options.Amnezia.I1 != "" {
+			ipcConf.WriteString("\ni1=" + e.options.Amnezia.I1)
+		}
+		if e.options.Amnezia.I2 != "" {
+			ipcConf.WriteString("\ni2=" + e.options.Amnezia.I2)
+		}
+		if e.options.Amnezia.I3 != "" {
+			ipcConf.WriteString("\ni3=" + e.options.Amnezia.I3)
+		}
+		if e.options.Amnezia.I4 != "" {
+			ipcConf.WriteString("\ni4=" + e.options.Amnezia.I4)
+		}
+		if e.options.Amnezia.I5 != "" {
+			ipcConf.WriteString("\ni5=" + e.options.Amnezia.I5)
+		}
+		if e.options.Amnezia.J1 != "" {
+			ipcConf.WriteString("\nj1=" + e.options.Amnezia.J1)
+		}
+		if e.options.Amnezia.J2 != "" {
+			ipcConf.WriteString("\nj2=" + e.options.Amnezia.J2)
+		}
+		if e.options.Amnezia.J3 != "" {
+			ipcConf.WriteString("\nj3=" + e.options.Amnezia.J3)
+		}
+		if e.options.Amnezia.ITime > 0 {
+			ipcConf.WriteString("\nitime=" + strconv.FormatInt(e.options.Amnezia.ITime, 10))
+		}
+		ipcConf.WriteString("\n")
 	}
 	for _, peer := range e.peers {
 		ipcConf.WriteString(peer.GenerateIpcLines())

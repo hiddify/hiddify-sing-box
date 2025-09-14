@@ -40,17 +40,17 @@ type WireGuardPeer struct {
 }
 
 type WireGuardWARPEndpointOptions struct {
-	System     bool                        `json:"system,omitempty"`
-	Name       string                      `json:"name,omitempty"`
-	ListenPort uint16                      `json:"listen_port,omitempty"`
-	UDPTimeout badoption.Duration          `json:"udp_timeout,omitempty"`
-	Workers    int                         `json:"workers,omitempty"`
-	Amnezia    *WireGuardAmnezia           `json:"amnezia,omitempty"`
-	Profile    *WireGuardCloudflareProfile `json:"profile,omitempty"`
+	System     bool               `json:"system,omitempty"`
+	Name       string             `json:"name,omitempty"`
+	ListenPort uint16             `json:"listen_port,omitempty"`
+	UDPTimeout badoption.Duration `json:"udp_timeout,omitempty"`
+	Workers    int                `json:"workers,omitempty"`
+	Amnezia    *WireGuardAmnezia  `json:"amnezia,omitempty"`
+	Profile    WARPProfile        `json:"profile,omitempty"`
 	DialerOptions
 }
 
-type WireGuardCloudflareProfile struct {
+type WARPProfile struct {
 	ID         string `json:"id,omitempty"`
 	PrivateKey string `json:"private_key,omitempty"`
 	AuthToken  string `json:"auth_token,omitempty"`
@@ -85,13 +85,24 @@ type LegacyWireGuardPeer struct {
 }
 
 type WireGuardAmnezia struct {
-	JC   int    `json:"jc,omitempty"`
-	JMin int    `json:"jmin,omitempty"`
-	JMax int    `json:"jmax,omitempty"`
-	S1   int    `json:"s1,omitempty"`
-	S2   int    `json:"s2,omitempty"`
-	H1   uint32 `json:"h1,omitempty"`
-	H2   uint32 `json:"h2,omitempty"`
-	H3   uint32 `json:"h3,omitempty"`
-	H4   uint32 `json:"h4,omitempty"`
+	JC    int    `json:"jc,omitempty"`
+	JMin  int    `json:"jmin,omitempty"`
+	JMax  int    `json:"jmax,omitempty"`
+	S1    int    `json:"s1,omitempty"`
+	S2    int    `json:"s2,omitempty"`
+	S3    int    `json:"s3,omitempty"`
+	S4    int    `json:"s4,omitempty"`
+	H1    uint32 `json:"h1,omitempty"`
+	H2    uint32 `json:"h2,omitempty"`
+	H3    uint32 `json:"h3,omitempty"`
+	H4    uint32 `json:"h4,omitempty"`
+	I1    string `json:"i1,omitempty"`
+	I2    string `json:"i2,omitempty"`
+	I3    string `json:"i3,omitempty"`
+	I4    string `json:"i4,omitempty"`
+	I5    string `json:"i5,omitempty"`
+	J1    string `json:"j1,omitempty"`
+	J2    string `json:"j2,omitempty"`
+	J3    string `json:"j3,omitempty"`
+	ITime int64  `json:"itime,omitempty"`
 }

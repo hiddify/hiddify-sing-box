@@ -84,15 +84,26 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 	var amnezia *wireguard.AmneziaOptions
 	if options.Amnezia != nil {
 		amnezia = &wireguard.AmneziaOptions{
-			JC:   options.Amnezia.JC,
-			JMin: options.Amnezia.JMin,
-			JMax: options.Amnezia.JMax,
-			S1:   options.Amnezia.S1,
-			S2:   options.Amnezia.S2,
-			H1:   options.Amnezia.H1,
-			H2:   options.Amnezia.H2,
-			H3:   options.Amnezia.H3,
-			H4:   options.Amnezia.H4,
+			JC:    options.Amnezia.JC,
+			JMin:  options.Amnezia.JMin,
+			JMax:  options.Amnezia.JMax,
+			S1:    options.Amnezia.S1,
+			S2:    options.Amnezia.S2,
+			S3:    options.Amnezia.S3,
+			S4:    options.Amnezia.S4,
+			H1:    options.Amnezia.H1,
+			H2:    options.Amnezia.H2,
+			H3:    options.Amnezia.H3,
+			H4:    options.Amnezia.H4,
+			I1:    options.Amnezia.I1,
+			I2:    options.Amnezia.I2,
+			I3:    options.Amnezia.I3,
+			I4:    options.Amnezia.I4,
+			I5:    options.Amnezia.I5,
+			J1:    options.Amnezia.J1,
+			J2:    options.Amnezia.J2,
+			J3:    options.Amnezia.J3,
+			ITime: options.Amnezia.ITime,
 		}
 	}
 	wgEndpoint, err := wireguard.NewEndpoint(wireguard.EndpointOptions{

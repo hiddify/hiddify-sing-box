@@ -16,6 +16,7 @@ import (
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
+	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/json/badoption"
 	M "github.com/sagernet/sing/common/metadata"
@@ -41,10 +42,8 @@ func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.Cont
 	if options.Detour != "" {
 		dependencies = append(dependencies, options.Detour)
 	}
-	if options.Profile != nil {
-		if options.Profile.Detour != "" {
-			dependencies = append(dependencies, options.Profile.Detour)
-		}
+	if options.Profile.Detour != "" {
+		dependencies = append(dependencies, options.Profile.Detour)
 	}
 	warpEndpoint := &WARPEndpoint{
 		Adapter: endpoint.NewAdapter(C.TypeWARP, tag, []string{N.NetworkTCP, N.NetworkUDP}, dependencies),
@@ -80,17 +79,15 @@ func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.Cont
 				}
 			}
 			opts := make([]cloudflare.CloudflareApiOption, 0, 1)
-			if options.Profile != nil {
-				if options.Profile.Detour != "" {
-					detour, ok := service.FromContext[adapter.OutboundManager](ctx).Outbound(options.Profile.Detour)
-					if !ok {
-						logger.ErrorContext(ctx, E.New("outbound detour not found: ", options.Profile.Detour))
-						return
-					}
-					opts = append(opts, cloudflare.WithDialContext(func(ctx context.Context, network, addr string) (net.Conn, error) {
-						return detour.DialContext(ctx, network, M.ParseSocksaddr(addr))
-					}))
+			if options.Profile.Detour != "" {
+				detour, ok := service.FromContext[adapter.OutboundManager](ctx).Outbound(options.Profile.Detour)
+				if !ok {
+					logger.ErrorContext(ctx, E.New("outbound detour not found: ", options.Profile.Detour))
+					return
 				}
+				opts = append(opts, cloudflare.WithDialContext(func(ctx context.Context, network, addr string) (net.Conn, error) {
+					return detour.DialContext(ctx, network, M.ParseSocksaddr(addr))
+				}))
 			}
 			api := cloudflare.NewCloudflareApi(opts...)
 			var profile *cloudflare.CloudflareProfile
@@ -185,10 +182,7 @@ func (w *WARPEndpoint) Start(stage adapter.StartStage) error {
 }
 
 func (w *WARPEndpoint) Close() error {
-	if ok := w.isEndpointInitialized(); !ok {
-		return E.New("endpoint not initialized")
-	}
-	return w.endpoint.Close()
+	return common.Close(w.endpoint)
 }
 
 func (w *WARPEndpoint) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
