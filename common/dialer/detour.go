@@ -66,14 +66,6 @@ func (d *DetourDialer) init() {
 	} else {
 		dialer = d.outboundManager.Default()
 	}
-	if !d.defaultOutbound && !d.disableEmptyDirectCheck {
-		if directDialer, isDirect := dialer.(DirectDialer); isDirect {
-			if directDialer.IsEmpty() {
-				d.initErr = E.New("detour to an empty direct outbound makes no sense")
-				return
-			}
-		}
-	}
 	d.dialer = dialer
 }
 
