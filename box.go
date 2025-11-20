@@ -704,10 +704,6 @@ func (s *Box) Endpoint() adapter.EndpointManager {
 	return s.endpoint
 }
 
-func (s *Box) Endpoint() adapter.EndpointManager {
-	return s.endpoint
-}
-
 func (s *Box) CreatedAt() time.Time {
 	return s.createdAt
 }

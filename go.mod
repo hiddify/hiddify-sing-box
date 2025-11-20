@@ -1,9 +1,10 @@
 module github.com/sagernet/sing-box
 
-go 1.25.5
+go 1.27.1
 
 require (
 	filippo.io/age v1.3.1
+	github.com/amnezia-vpn/amneziawg-go v0.2.15
 	github.com/anthropics/anthropic-sdk-go v1.26.0
 	github.com/biter777/countries v1.7.5
 	github.com/caddyserver/certmagic v0.25.3-0.20260421143802-60d9d8b415d6

@@ -20,6 +20,7 @@ const (
 	TypeNaive              = "naive"
 	TypeWireGuard          = "wireguard"
 	TypeWARP               = "warp"
+	TypeAwg                = "awg"
 	TypeHysteria           = "hysteria"
 	TypeTor                = "tor"
 	TypeSSH                = "ssh"
@@ -138,6 +139,8 @@ func ProxyDisplayName(proxyType string) string {
 		return "Tunnel Client"
 	case TypeTunnelServer:
 		return "Tunnel Server"
+	case TypeAwg:
+		return "Awg"
 	default:
 		return "Unknown"
 	}
