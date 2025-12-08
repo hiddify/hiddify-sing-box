@@ -48,7 +48,6 @@
           "h_keep_alive_period": 60
         },
         "download": {
-          "mode": "",
           "host": "example.com",
           "path": "/xhttp",
           "domain_strategy": "prefer_ipv4",
