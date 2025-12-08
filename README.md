@@ -10,6 +10,7 @@ Sing-box with extended features.
 * Mieru
 * XHTTP
 * SDNS (DNSCrypt)
+* Extended wireguard options
 * Unified delay
 
 ## Examples

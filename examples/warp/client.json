@@ -27,7 +27,7 @@
       },
       "profile": {
         "detour": "direct",
-        // for getting existing WARP device profile
+        // For getting existing WARP device profile, else sing-box will create new profile
         "id": "",
         "private_key": "",
         "auth_token": ""
@@ -69,7 +69,7 @@
   "experimental": {
     "cache_file": {
       "enabled": true,
-      "store_warp_config": true
+      "store_warp_config": true // For saving WARP device profiles
     }
   }
 }

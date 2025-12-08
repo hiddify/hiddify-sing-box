@@ -130,13 +130,15 @@ func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.Cont
 			logger,
 			tag,
 			option.WireGuardEndpointOptions{
-				System:        options.System,
-				Name:          options.Name,
-				ListenPort:    options.ListenPort,
-				UDPTimeout:    options.UDPTimeout,
-				Workers:       options.Workers,
-				Amnezia:       options.Amnezia,
-				DialerOptions: options.DialerOptions,
+				System:                     options.System,
+				Name:                       options.Name,
+				ListenPort:                 options.ListenPort,
+				UDPTimeout:                 options.UDPTimeout,
+				Workers:                    options.Workers,
+				PreallocatedBuffersPerPool: options.PreallocatedBuffersPerPool,
+				DisablePauses:              options.DisablePauses,
+				Amnezia:                    options.Amnezia,
+				DialerOptions:              options.DialerOptions,
 
 				Address: badoption.Listable[netip.Prefix]{
 					netip.MustParsePrefix(config.Interface.Addresses.V4 + "/32"),

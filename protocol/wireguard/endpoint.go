@@ -153,8 +153,10 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 				Reserved:                    it.Reserved,
 			}
 		}),
-		Workers: options.Workers,
-		Amnezia: amnezia,
+		Workers:                    options.Workers,
+		PreallocatedBuffersPerPool: options.PreallocatedBuffersPerPool,
+		DisablePauses:              options.DisablePauses,
+		Amnezia:                    amnezia,
 	})
 	if err != nil {
 		return nil, err

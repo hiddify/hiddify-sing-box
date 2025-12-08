@@ -7,20 +7,22 @@ import (
 )
 
 type WireGuardEndpointOptions struct {
-	System       bool                             `json:"system,omitempty"`
-	Name         string                           `json:"name,omitempty"`
-	MTU          uint32                           `json:"mtu,omitempty"`
-	Address      badoption.Listable[netip.Prefix] `json:"address"`
-	PrivateKey   string                           `json:"private_key"`
-	ListenPort   uint16                           `json:"listen_port,omitempty"`
-	Peers        []WireGuardPeer                  `json:"peers,omitempty"`
-	UDPTimeout   badoption.Duration               `json:"udp_timeout,omitempty"`
-	UDPMapping   UDPNATBehavior                   `json:"udp_mapping,omitempty"`
-	UDPFiltering UDPNATBehavior                   `json:"udp_filtering,omitempty"`
-	UDPNATMax    uint32                           `json:"udp_nat_max,omitempty"`
-	Workers      int                              `json:"workers,omitempty"`
-	OnDemand     bool                             `json:"on_demand,omitempty"`
-	Amnezia      *WireGuardAmnezia                `json:"amnezia,omitempty"`
+	System                     bool                             `json:"system,omitempty"`
+	Name                       string                           `json:"name,omitempty"`
+	MTU                        uint32                           `json:"mtu,omitempty"`
+	Address                    badoption.Listable[netip.Prefix] `json:"address"`
+	PrivateKey                 string                           `json:"private_key"`
+	ListenPort                 uint16                           `json:"listen_port,omitempty"`
+	Peers                      []WireGuardPeer                  `json:"peers,omitempty"`
+	UDPTimeout                 badoption.Duration               `json:"udp_timeout,omitempty"`
+	UDPMapping                 UDPNATBehavior                   `json:"udp_mapping,omitempty"`
+	UDPFiltering               UDPNATBehavior                   `json:"udp_filtering,omitempty"`
+	UDPNATMax                  uint32                           `json:"udp_nat_max,omitempty"`
+	Workers                    int                              `json:"workers,omitempty"`
+	OnDemand                   bool                             `json:"on_demand,omitempty"`
+	PreallocatedBuffersPerPool uint32                           `json:"preallocated_buffers_per_pool,omitempty"`
+	DisablePauses              bool                             `json:"disable_pauses,omitempty"`
+	Amnezia                    *WireGuardAmnezia                `json:"amnezia,omitempty"`
 	DialerOptions
 }
 
@@ -40,13 +42,15 @@ type WireGuardPeer struct {
 }
 
 type WireGuardWARPEndpointOptions struct {
-	System     bool               `json:"system,omitempty"`
-	Name       string             `json:"name,omitempty"`
-	ListenPort uint16             `json:"listen_port,omitempty"`
-	UDPTimeout badoption.Duration `json:"udp_timeout,omitempty"`
-	Workers    int                `json:"workers,omitempty"`
-	Amnezia    *WireGuardAmnezia  `json:"amnezia,omitempty"`
-	Profile    WARPProfile        `json:"profile,omitempty"`
+	System                     bool               `json:"system,omitempty"`
+	Name                       string             `json:"name,omitempty"`
+	ListenPort                 uint16             `json:"listen_port,omitempty"`
+	UDPTimeout                 badoption.Duration `json:"udp_timeout,omitempty"`
+	Workers                    int                `json:"workers,omitempty"`
+	PreallocatedBuffersPerPool uint32             `json:"preallocated_buffers_per_pool,omitempty"`
+	DisablePauses              bool               `json:"disable_pauses,omitempty"`
+	Amnezia                    *WireGuardAmnezia  `json:"amnezia,omitempty"`
+	Profile                    WARPProfile        `json:"profile,omitempty"`
 	DialerOptions
 }
 
@@ -67,13 +71,15 @@ type LegacyWireGuardOutboundOptions struct {
 	PrivateKey      string                           `json:"private_key"`
 	Peers           []LegacyWireGuardPeer            `json:"peers,omitempty"`
 	ServerOptions
-	PeerPublicKey string            `json:"peer_public_key"`
-	PreSharedKey  string            `json:"pre_shared_key,omitempty"`
-	Reserved      []uint8           `json:"reserved,omitempty"`
-	Workers       int               `json:"workers,omitempty"`
-	MTU           uint32            `json:"mtu,omitempty"`
-	Network       NetworkList       `json:"network,omitempty"`
-	Amnezia       *WireGuardAmnezia `json:"amnezia,omitempty"`
+	PeerPublicKey              string            `json:"peer_public_key"`
+	PreSharedKey               string            `json:"pre_shared_key,omitempty"`
+	Reserved                   []uint8           `json:"reserved,omitempty"`
+	Workers                    int               `json:"workers,omitempty"`
+	PreallocatedBuffersPerPool uint32            `json:"preallocated_buffers_per_pool,omitempty"`
+	DisablePauses              bool              `json:"disable_pauses,omitempty"`
+	MTU                        uint32            `json:"mtu,omitempty"`
+	Network                    NetworkList       `json:"network,omitempty"`
+	Amnezia                    *WireGuardAmnezia `json:"amnezia,omitempty"`
 }
 
 type LegacyWireGuardPeer struct {

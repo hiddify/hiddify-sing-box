@@ -23,20 +23,22 @@ type EndpointOptions struct {
 	UDPFiltering tun.NATFiltering
 	UDPNATMax    uint32
 
-	InterfaceFinder   control.InterfaceFinder
-	EgressPoolOptions tun.UDPEgressPoolOptions
-	Dialer            N.Dialer
-	CreateDialer      func(interfaceName string) N.Dialer
-	Tag               string
-	Name              string
-	MTU               uint32
-	Address           []netip.Prefix
-	PrivateKey        string
-	ListenPort        uint16
-	ResolvePeer       func(domain string) ([]netip.Addr, error)
-	Peers             []PeerOptions
-	Workers           int
-	Amnezia           *AmneziaOptions
+	InterfaceFinder            control.InterfaceFinder
+	EgressPoolOptions          tun.UDPEgressPoolOptions
+	Dialer                     N.Dialer
+	CreateDialer               func(interfaceName string) N.Dialer
+	Tag                        string
+	Name                       string
+	MTU                        uint32
+	Address                    []netip.Prefix
+	PrivateKey                 string
+	ListenPort                 uint16
+	ResolvePeer                func(domain string) ([]netip.Addr, error)
+	Peers                      []PeerOptions
+	Workers                    int
+	PreallocatedBuffersPerPool uint32
+	DisablePauses              bool
+	Amnezia                    *AmneziaOptions
 }
 
 type PeerOptions struct {

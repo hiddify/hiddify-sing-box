@@ -1,0 +1,52 @@
+{
+  "log": {
+    "level": "error"
+  },
+  "dns": {
+    "servers": [
+      {
+        "type": "local",
+        "tag": "default"
+      }
+    ]
+  },
+  "endpoints": [
+    {
+      "type": "wireguard",
+      "tag": "wireguard-out",
+      "mtu": 1408,
+      "address": null,
+      "private_key": "",
+      "listen_port": 10000,
+      "peers": [
+        {
+          "address": "example.com",
+          "port": 10001,
+          "reserved": "AAAA"
+        }
+      ],
+      "udp_timeout": "5m0s",
+      // Extended options
+      "preallocated_buffers_per_pool": 256, // Set limit for preallocated buffers (can be useful for devices with low RAM)
+      "disable_pauses": true, // Disable pauses when android device in sleep mode
+    }
+  ],
+  "inbounds": [
+    {
+      "type": "mixed",
+      "tag": "mixed-in",
+      "listen_port": 7897
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct"
+    },
+  ],
+  "route": {
+    "final": "wireguard-out",
+    "default_domain_resolver": "default",
+    "auto_detect_interface": true
+  }
+}
