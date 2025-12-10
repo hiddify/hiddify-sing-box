@@ -1,5 +1,7 @@
 package common
 
+import "reflect"
+
 // Must panics if err is not nil.
 func Must(err error) {
 	if err != nil {
@@ -16,4 +18,15 @@ func Must2(v interface{}, err error) interface{} {
 // Error2 returns the err from the 2nd parameter.
 func Error2(v interface{}, err error) error {
 	return err
+}
+
+// CloseIfExists call obj.Close() if obj is not nil.
+func CloseIfExists(obj any) error {
+	if obj != nil {
+		v := reflect.ValueOf(obj)
+		if !v.IsNil() {
+			return Close(obj)
+		}
+	}
+	return nil
 }
