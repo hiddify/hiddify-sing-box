@@ -7,13 +7,25 @@ import (
 	"io"
 	"time"
 
+	"github.com/sagernet/sing-box/hiddify/ipinfo"
 	E "github.com/sagernet/sing/common/exceptions"
+	"github.com/sagernet/sing/common/observable"
 	"github.com/sagernet/sing/common/varbin"
 )
 
 type URLTestHistory struct {
-	Time  time.Time `json:"time"`
-	Delay uint16    `json:"delay"`
+	Time   time.Time      `json:"time"`
+	Delay  uint16         `json:"delay"`
+	IpInfo *ipinfo.IpInfo `json:"ipinfo"`
+}
+
+type URLTestHistoryStorage interface {
+	SetHook(hook *observable.Subscriber[struct{}])
+	LoadURLTestHistory(tag string) *URLTestHistory
+	DeleteURLTestHistory(tag string)
+	StoreURLTestHistory(tag string, history *URLTestHistory) *URLTestHistory
+	AddOnlyIpToHistory(tag string, history *URLTestHistory)
+	Close() error
 }
 
 type V2RayServer interface {
