@@ -11,6 +11,7 @@ import (
 	"github.com/sagernet/sing-box/common/taskmonitor"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
+	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
@@ -263,9 +264,17 @@ func (m *Manager) Create(ctx context.Context, router adapter.Router, logger log.
 		return os.ErrInvalid
 	}
 	outbound, err := m.registry.CreateOutbound(ctx, router, logger, tag, inboundType, options)
-	if err != nil {
-		return err
+	if err != nil { // hiddify fallback to invalid config
+		m.logger.Error(E.New("parse outbound[%d] error: %+v", tag, err))
+		outbound, err = m.registry.CreateOutbound(ctx, router, logger, tag, C.TypeHInvalidConfig, option.HInvalidOptions{
+			InvalidConfig: options,
+			Err:           err,
+		})
+		if err != nil {
+			return err
+		}
 	}
+
 	if m.started {
 		name := "outbound/" + outbound.Type() + "[" + outbound.Tag() + "]"
 		for _, stage := range adapter.ListStartStages {
