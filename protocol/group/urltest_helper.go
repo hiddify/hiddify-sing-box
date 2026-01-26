@@ -16,7 +16,7 @@ import (
 	N "github.com/sagernet/sing/common/network"
 )
 
-const TimeoutDelay = 65000
+const TimeoutDelay = 65535
 
 func urltestTimeout(ctx context.Context, logger log.Logger, realTag string, outbound adapter.Outbound, url string, history adapter.URLTestHistoryStorage, timeout time.Duration) *adapter.URLTestHistory {
 	testCtx, cancel := context.WithTimeout(ctx, timeout)

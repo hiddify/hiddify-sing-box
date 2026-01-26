@@ -98,7 +98,7 @@ func (p *BaseProvider) fetchData(ctx context.Context, detour N.Dialer) (map[stri
 		return nil, 65535, err
 	}
 	if p.UserAgent == "" {
-		p.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"
+		p.UserAgent = C.DefaultBrowserAgent
 	}
 	req.Header.Set("User-Agent", p.UserAgent)
 	start := time.Now()
