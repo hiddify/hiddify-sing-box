@@ -109,6 +109,8 @@ type AbstractDialerOptions struct {
 
 	// Deprecated: migrated to domain resolver
 	DomainStrategy DomainStrategy `json:"domain_strategy,omitempty" schema:"omit"`
+
+	TLSFragment TLSFragmentOptions `json:"tls_fragment,omitempty"` //hiddify
 }
 
 type _DomainResolveOptions struct {
