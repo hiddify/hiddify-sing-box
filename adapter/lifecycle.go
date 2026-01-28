@@ -86,7 +86,7 @@ func Start(ctx context.Context, logger log.ContextLogger, stage StartStage, serv
 		err = service.Start(stage)
 		done()
 		if err != nil {
-			return err
+			return E.New(name, " ", err)
 		}
 	}
 	return nil
