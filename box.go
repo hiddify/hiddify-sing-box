@@ -378,17 +378,20 @@ func New(options Options) (*Box, error) {
 			return nil, E.Cause(err, "initialize outbound[", i, "]")
 		}
 	}
-	allOutboundIsInvalid := true
+	var invalidOutbound *hinvalid.Outbound
 	for _, outbound := range outboundManager.Outbounds() {
-		if outbound.Type() != C.TypeHInvalidConfig {
-			allOutboundIsInvalid = false
+		if outbound.Type() == C.TypeURLTest || outbound.Type() == C.TypeSelector || outbound.Type() == C.TypeDirect {
+			continue
 		}
+		if outbound.Type() == C.TypeHInvalidConfig {
+			invalidOutbound = outbound.(*hinvalid.Outbound)
+			continue
+		}
+		invalidOutbound = nil
+		break
 	}
-	if allOutboundIsInvalid && len(outboundManager.Outbounds()) > 0 {
-		outboundInvalid := outboundManager.Outbounds()[0].(*hinvalid.Outbound)
-		if outboundInvalid.InvalidOptions.Err != nil {
-			return nil, E.Cause(outboundInvalid.InvalidOptions.Err)
-		}
+	if invalidOutbound != nil && invalidOutbound.InvalidOptions.Err != nil {
+		return nil, E.Cause(invalidOutbound.InvalidOptions.Err)
 	}
 
 	for i, certificateProviderOptions := range options.CertificateProviders {

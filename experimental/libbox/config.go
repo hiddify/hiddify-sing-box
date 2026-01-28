@@ -26,6 +26,14 @@ import (
 )
 
 func baseContext(platformInterface PlatformInterface) context.Context {
+	return BaseContext(platformInterface)
+}
+
+func BaseContext(platformInterface PlatformInterface) context.Context {
+	return FromContext(context.Background(), platformInterface)
+}
+
+func FromContext(ctx context.Context, platformInterface PlatformInterface) context.Context {
 	dnsRegistry := include.DNSTransportRegistry()
 	if platformInterface != nil {
 		if localTransport := platformInterface.LocalDNSTransport(); localTransport != nil {
@@ -34,7 +42,7 @@ func baseContext(platformInterface PlatformInterface) context.Context {
 			})
 		}
 	}
-	ctx := context.Background()
+
 	ctx = filemanager.WithDefault(ctx, sWorkingPath, sTempPath, sUserID, sGroupID)
 	return box.Context(ctx, include.InboundRegistry(), include.OutboundRegistry(), include.EndpointRegistry(), dnsRegistry, include.ServiceRegistry(), include.CertificateProviderRegistry())
 }
@@ -53,10 +61,10 @@ func CheckConfig(configContent string) error {
 	if err != nil {
 		return err
 	}
-	return CheckConfigOptions(ctx, &options)
+	return checkConfigOptionsFromContext(ctx, &options)
 }
 
-func CheckConfigOptions(ctx context.Context, options *option.Options) error {
+func checkConfigOptionsFromContext(ctx context.Context, options *option.Options) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	ctx = service.ContextWith[adapter.PlatformInterface](ctx, (*platformInterfaceStub)(nil))
@@ -68,6 +76,9 @@ func CheckConfigOptions(ctx context.Context, options *option.Options) error {
 		instance.Close()
 	}
 	return err
+}
+func CheckConfigOptions(options *option.Options) error {
+	return checkConfigOptionsFromContext(BaseContext(nil), options)
 }
 
 type platformInterfaceStub struct{}
