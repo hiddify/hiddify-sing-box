@@ -1,4 +1,4 @@
-package invalid
+package xray
 
 import (
 	"context"
@@ -10,27 +10,26 @@ import (
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
+	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
-	N "github.com/sagernet/sing/common/network"
 )
 
 func RegisterOutbound(registry *outbound.Registry) {
-	outbound.Register[option.HInvalidOptions](registry, C.TypeHInvalidConfig, New)
+	outbound.Register[option.XrayOutboundOptions](registry, C.TypeXray, New)
 }
 
 type Outbound struct {
 	outbound.Adapter
-	logger         logger.ContextLogger
-	invalidOptions option.HInvalidOptions
+	logger logger.ContextLogger
 }
 
-func New(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, invalidOptions option.HInvalidOptions) (adapter.Outbound, error) {
-	return &Outbound{
-		Adapter:        outbound.NewAdapter(C.TypeHInvalidConfig, tag, []string{N.NetworkTCP, N.NetworkUDP}, nil),
-		logger:         logger,
-		invalidOptions: invalidOptions,
-	}, nil
+func New(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.XrayOutboundOptions) (adapter.Outbound, error) {
+	// return &Outbound{
+	// 	Adapter: outbound.NewAdapter(C.TypeBlock, tag, []string{N.NetworkTCP, N.NetworkUDP}, nil),
+	// 	logger:  logger,
+	// }, nil
+	return nil, E.New("Xray is not implemented yet")
 }
 
 func (h *Outbound) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {

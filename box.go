@@ -32,6 +32,7 @@ import (
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-box/protocol/direct"
+	"github.com/sagernet/sing-box/protocol/hiddify/hinvalid"
 	"github.com/sagernet/sing-box/route"
 	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -377,6 +378,19 @@ func New(options Options) (*Box, error) {
 			return nil, E.Cause(err, "initialize outbound[", i, "]")
 		}
 	}
+	allOutboundIsInvalid := true
+	for _, outbound := range outboundManager.Outbounds() {
+		if outbound.Type() != C.TypeHInvalidConfig {
+			allOutboundIsInvalid = false
+		}
+	}
+	if allOutboundIsInvalid && len(outboundManager.Outbounds()) > 0 {
+		outboundInvalid := outboundManager.Outbounds()[0].(*hinvalid.Outbound)
+		if outboundInvalid.InvalidOptions.Err != nil {
+			return nil, E.Cause(outboundInvalid.InvalidOptions.Err)
+		}
+	}
+
 	for i, certificateProviderOptions := range options.CertificateProviders {
 		var tag string
 		if certificateProviderOptions.Tag != "" {

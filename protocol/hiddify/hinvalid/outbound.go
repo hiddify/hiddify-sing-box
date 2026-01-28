@@ -1,4 +1,4 @@
-package xray
+package hinvalid
 
 import (
 	"context"
@@ -16,19 +16,27 @@ import (
 )
 
 func RegisterOutbound(registry *outbound.Registry) {
-	outbound.Register[option.XrayOutboundOptions](registry, C.TypeBlock, New)
+	outbound.Register[option.HInvalidOptions](registry, C.TypeHInvalidConfig, New)
 }
+
+var _ adapter.Outbound = (*Outbound)(nil)
 
 type Outbound struct {
 	outbound.Adapter
-	logger logger.ContextLogger
+	logger         logger.ContextLogger
+	InvalidOptions option.HInvalidOptions
 }
 
-func New(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.XrayOutboundOptions) (adapter.Outbound, error) {
+func New(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, invalidOptions option.HInvalidOptions) (adapter.Outbound, error) {
 	return &Outbound{
-		Adapter: outbound.NewAdapter(C.TypeBlock, tag, []string{N.NetworkTCP, N.NetworkUDP}, nil),
-		logger:  logger,
+		Adapter:        outbound.NewAdapter(C.TypeHInvalidConfig, tag, []string{N.NetworkTCP, N.NetworkUDP}, nil),
+		logger:         logger,
+		InvalidOptions: invalidOptions,
 	}, nil
+}
+
+func (h *Outbound) Type() string {
+	return C.TypeHInvalidConfig
 }
 
 func (h *Outbound) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
