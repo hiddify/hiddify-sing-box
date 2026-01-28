@@ -53,12 +53,16 @@ func CheckConfig(configContent string) error {
 	if err != nil {
 		return err
 	}
+	return CheckConfigOptions(ctx, &options)
+}
+
+func CheckConfigOptions(ctx context.Context, options *option.Options) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	ctx = service.ContextWith[adapter.PlatformInterface](ctx, (*platformInterfaceStub)(nil))
 	instance, err := box.New(box.Options{
 		Context: ctx,
-		Options: options,
+		Options: *options,
 	})
 	if err == nil {
 		instance.Close()

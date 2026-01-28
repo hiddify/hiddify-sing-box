@@ -19,6 +19,7 @@ import (
 	"github.com/sagernet/sing-box/experimental/deprecated"
 	"github.com/sagernet/sing-box/experimental/locale"
 	"github.com/sagernet/sing-box/log"
+	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-box/protocol/group"
 	"github.com/sagernet/sing-box/service/oomkiller"
 	"github.com/sagernet/sing/common"
@@ -74,6 +75,11 @@ type StartedService struct {
 	clashModeObserver       *observable.Observer[struct{}]
 	notificationSubscriber  *observable.Subscriber[*NotificationEvent]
 	notificationObserver    *observable.Observer[*NotificationEvent]
+
+	connectionEventSubscriber *observable.Subscriber[trafficcontrol.ConnectionEvent]
+	connectionEventObserver   *observable.Observer[trafficcontrol.ConnectionEvent]
+
+	extraServices []adapter.LifecycleService //H
 }
 
 type ServiceOptions struct {
@@ -90,6 +96,7 @@ type ServiceOptions struct {
 	// UserID             int
 	// GroupID            int
 	// SystemProxyEnabled bool
+	ExtraServices []adapter.LifecycleService //H
 }
 
 func NewStartedService(options ServiceOptions) *StartedService {
@@ -107,18 +114,21 @@ func NewStartedService(options ServiceOptions) *StartedService {
 		// userID:           options.UserID,
 		// groupID:          options.GroupID,
 		// systemProxyEnabled:      options.SystemProxyEnabled,
-		serviceStatus:           &ServiceStatus{Status: ServiceStatus_IDLE},
-		serviceStatusSubscriber: observable.NewSubscriber[*ServiceStatus](4),
-		logSubscriber:           observable.NewSubscriber[*log.Entry](128),
-		urlTestSubscriber:       observable.NewSubscriber[struct{}](1),
-		clashModeSubscriber:     observable.NewSubscriber[struct{}](1),
-		notificationSubscriber:  observable.NewSubscriber[*NotificationEvent](notificationQueueSize),
+		serviceStatus:             &ServiceStatus{Status: ServiceStatus_IDLE},
+		serviceStatusSubscriber:   observable.NewSubscriber[*ServiceStatus](4),
+		logSubscriber:             observable.NewSubscriber[*log.Entry](128),
+		urlTestSubscriber:         observable.NewSubscriber[struct{}](1),
+		clashModeSubscriber:       observable.NewSubscriber[struct{}](1),
+		notificationSubscriber:    observable.NewSubscriber[*NotificationEvent](notificationQueueSize),
+		connectionEventSubscriber: observable.NewSubscriber[trafficcontrol.ConnectionEvent](256),
+		extraServices:             options.ExtraServices,
 	}
 	s.serviceStatusObserver = observable.NewObserver(s.serviceStatusSubscriber, 2)
 	s.logObserver = observable.NewObserver(s.logSubscriber, 64)
 	s.urlTestObserver = observable.NewObserver(s.urlTestSubscriber, 1)
 	s.clashModeObserver = observable.NewObserver(s.clashModeSubscriber, 1)
 	s.notificationObserver = observable.NewObserver(s.notificationSubscriber, notificationQueueSize)
+	s.connectionEventObserver = observable.NewObserver(s.connectionEventSubscriber, 256)
 	return s
 }
 
@@ -247,6 +257,12 @@ func (s *StartedService) followInstance(ctx context.Context, run func(ctx contex
 }
 
 func (s *StartedService) StartOrReloadService(ctx context.Context, profileContent string, options *OverrideOptions) error {
+	return s.startOrReloadServiceImp(ctx, nil, profileContent, options)
+}
+func (s *StartedService) StartOrReloadServiceOptions(ctx context.Context, profileOptions option.Options) error {
+	return s.startOrReloadServiceImp(ctx, &profileOptions, "", nil)
+}
+func (s *StartedService) startOrReloadServiceImp(ctx context.Context, profileOptions *option.Options, profileContent string, options *OverrideOptions) error {
 	s.interruptStart()
 	s.lifecycleAccess.Lock()
 	defer s.lifecycleAccess.Unlock()
@@ -275,7 +291,13 @@ func (s *StartedService) StartOrReloadService(ctx context.Context, profileConten
 		s.resetLogs()
 	}
 	s.serviceAccess.Unlock()
-	instance, err := s.newInstance(ctx, profileContent, options, oldInstance != nil)
+	var err error
+	var instance *Instance
+	if profileContent == "" && profileOptions != nil {
+		instance, err = s.newInstanceOptions(ctx, *profileOptions, options, oldInstance != nil)
+	} else {
+		instance, err = s.newInstance(ctx, profileContent, options, oldInstance != nil)
+	}
 	if err != nil {
 		s.serviceAccess.Lock()
 		s.updateStatusError(err)
@@ -285,6 +307,9 @@ func (s *StartedService) StartOrReloadService(ctx context.Context, profileConten
 	instance.urlTestHistoryStorage.AddUpdateHook(s.urlTestSubscriber)
 	if instance.clashMode != nil {
 		instance.clashMode.AddUpdateHook(s.clashModeSubscriber)
+	}
+	for _, extraService := range s.extraServices {
+		instance.Box().AddService(extraService)
 	}
 	s.serviceAccess.Lock()
 	s.instance = instance
@@ -494,6 +519,9 @@ func (s *StartedService) SubscribeStatus(request *SubscribeStatusRequest, server
 	}
 }
 
+func (s *StartedService) ReadStatus() *Status {
+	return s.readStatus()
+}
 func (s *StartedService) readStatus() *Status {
 	var status Status
 	status.Memory = memory.Total()

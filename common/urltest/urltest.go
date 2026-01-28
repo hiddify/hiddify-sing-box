@@ -41,6 +41,13 @@ func (s *HistoryStorage) AddUpdateHook(hook *observable.Subscriber[struct{}]) {
 	s.updateHooks = append(s.updateHooks, hook)
 }
 
+// SetHook satisfies adapter.URLTestHistoryStorage; it behaves like
+// AddUpdateHook (multiple hooks are supported, this does not replace
+// previously registered ones).
+func (s *HistoryStorage) SetHook(hook *observable.Subscriber[struct{}]) {
+	s.AddUpdateHook(hook)
+}
+
 func (s *HistoryStorage) NotifyUpdated() {
 	s.access.RLock()
 	defer s.access.RUnlock()

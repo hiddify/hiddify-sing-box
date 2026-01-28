@@ -16,7 +16,7 @@ import (
 )
 
 func RegisterOutbound(registry *outbound.Registry) {
-	outbound.Register[option.StubOptions](registry, C.TypeBlock, New)
+	outbound.Register[option.HInvalidOptions](registry, C.TypeHInvalidConfig, New)
 }
 
 type Outbound struct {
@@ -25,7 +25,7 @@ type Outbound struct {
 	invalidOptions option.HInvalidOptions
 }
 
-func New(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, invalidOptions option.InvalidOptions) (adapter.Outbound, error) {
+func New(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, invalidOptions option.HInvalidOptions) (adapter.Outbound, error) {
 	return &Outbound{
 		Adapter:        outbound.NewAdapter(C.TypeHInvalidConfig, tag, []string{N.NetworkTCP, N.NetworkUDP}, nil),
 		logger:         logger,

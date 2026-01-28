@@ -35,7 +35,7 @@ func urltestTimeout(ctx context.Context, logger log.Logger, realTag string, outb
 }
 
 func CheckOutbound(logger log.Logger, ctx context.Context, history adapter.URLTestHistoryStorage, router adapter.OutboundManager, url string, outbound adapter.Outbound, ipbatch *batch.Batch[string]) uint16 {
-	realTag := RealTag(outbound)
+	realTag := RealTag(router, outbound)
 	hisbefore := history.LoadURLTestHistory(realTag)
 	timeout := C.TCPTimeout
 	isTimeoutBefore := isTimeout(hisbefore)
@@ -74,7 +74,7 @@ func CheckIP(logger log.Logger, ctx context.Context, history adapter.URLTestHist
 	if history == nil {
 		return
 	}
-	realTag := RealTag(outbound)
+	realTag := RealTag(router, outbound)
 	detour, loaded := router.Outbound(realTag)
 	if !loaded {
 		return
@@ -161,7 +161,7 @@ func (g *URLTestGroup) urlTestExImp(ctx context.Context, force bool, force_check
 	var resultAccess sync.Mutex
 	for _, detour := range g.outbounds {
 		tag := detour.Tag()
-		realTag := RealTag(detour)
+		realTag := RealTag(g.outbound, detour)
 		if checked[realTag] {
 			continue
 		}
@@ -202,7 +202,7 @@ func (g *URLTestGroup) hasOneAvailableOutbound() bool {
 		if !common.Contains(detour.Network(), "tcp") {
 			continue
 		}
-		realTag := RealTag(detour)
+		realTag := RealTag(g.outbound, detour)
 		history := g.history.LoadURLTestHistory(realTag)
 		if isTimeout(history) {
 			continue
@@ -255,7 +255,7 @@ func (g *URLTestGroup) getPreferredOutbound(newOutbound, selectedOutbound adapte
 		return nil, false
 	}
 
-	newHistory := g.history.LoadURLTestHistory(RealTag(newOutbound))
+	newHistory := g.history.LoadURLTestHistory(RealTag(g.outbound, newOutbound))
 	if isTimeout(newHistory) {
 		if newOutbound == selectedOutbound {
 			return nil, true
@@ -267,7 +267,7 @@ func (g *URLTestGroup) getPreferredOutbound(newOutbound, selectedOutbound adapte
 		return newOutbound, false
 	}
 
-	selectedHistory := g.history.LoadURLTestHistory(RealTag(selectedOutbound))
+	selectedHistory := g.history.LoadURLTestHistory(RealTag(g.outbound, selectedOutbound))
 	if isTimeout(selectedHistory) {
 		return newOutbound, false
 	}

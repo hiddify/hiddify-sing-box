@@ -31,4 +31,9 @@ type WireGuardPeer struct {
 	AllowedIPs                  badoption.Listable[netip.Prefix] `json:"allowed_ips,omitempty"`
 	PersistentKeepaliveInterval uint16                           `json:"persistent_keepalive_interval,omitempty"`
 	Reserved                    []uint8                          `json:"reserved,omitempty"`
+
+	FakePackets      string `json:"fake_packets,omitempty"`
+	FakePacketsSize  string `json:"fake_packets_size,omitempty"`
+	FakePacketsDelay string `json:"fake_packets_delay,omitempty"`
+	FakePacketsMode  string `json:"fake_packets_mode,omitempty"`
 }

@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 
-	"github.com/sagernet/sing-box"
+	box "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/trafficcontrol"
 	"github.com/sagernet/sing-box/common/urltest"
@@ -87,12 +87,16 @@ func (s *StartedService) newInstance(ctx context.Context, profileContent string,
 	ctx, _ = locale.ContextWithLocale(s.ctx, selectedLocale.Locale)
 	ctx = service.ExtendContext(ctx)
 	service.MustRegister[deprecated.Manager](ctx, new(deprecatedManager))
-	ctx, cancel := context.WithCancel(ctx)
-	options, err := parseConfig(ctx, profileContent)
+	parseCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	options, err := parseConfig(parseCtx, profileContent)
 	if err != nil {
-		cancel()
 		return nil, err
 	}
+	return s.newInstanceOptions(ctx, options, overrideOptions, reloading)
+}
+func (s *StartedService) newInstanceOptions(ctx context.Context, options option.Options, overrideOptions *OverrideOptions, reloading bool) (*Instance, error) {
+	ctx, cancel := context.WithCancel(ctx)
 	if overrideOptions != nil {
 		for _, inbound := range options.Inbounds {
 			if tunInboundOptions, isTUN := inbound.Options.(*option.TunInboundOptions); isTUN {
@@ -214,4 +218,13 @@ func parseConfig(ctx context.Context, configContent string) (option.Options, err
 		return option.Options{}, E.Cause(err, "decode config")
 	}
 	return options, nil
+}
+
+func (i *Instance) UrlTestHistory() *urltest.HistoryStorage {
+	return i.urlTestHistoryStorage
+}
+
+func (i *Instance) Context() context.Context {
+	return i.ctx
+
 }

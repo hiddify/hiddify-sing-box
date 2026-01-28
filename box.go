@@ -696,3 +696,11 @@ func (s *Box) CloseIdleConnections() {
 func (s *Box) LogFactory() log.Factory {
 	return s.logFactory
 }
+
+func (s *Box) AddService(service adapter.LifecycleService) {
+	s.internalService = append(s.internalService, service)
+}
+
+func (s *Box) Logger() log.ContextLogger {
+	return s.logger
+}
