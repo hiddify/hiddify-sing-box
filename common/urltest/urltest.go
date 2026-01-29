@@ -68,14 +68,14 @@ func (s *HistoryStorage) LoadURLTestHistory(tag string) *adapter.URLTestHistory 
 }
 
 func (s *HistoryStorage) DeleteURLTestHistory(tag string) {
-	s.access.Lock()
 	s.StoreURLTestHistory(tag, &adapter.URLTestHistory{
-		Delay: 65000,
+		Delay: 65535,
 		Time:  time.Now(),
 	})
-	// delete(s.delayHistory, tag)
-	s.notifyUpdated()
-	s.access.Unlock()
+	// s.access.Lock()
+	// // delete(s.delayHistory, tag)
+	// s.access.Unlock()
+	// s.notifyUpdated()
 }
 
 func (s *HistoryStorage) StoreURLTestHistory(tag string, history *adapter.URLTestHistory) *adapter.URLTestHistory {
@@ -104,7 +104,6 @@ func (s *HistoryStorage) AddOnlyIpToHistory(tag string, history *adapter.URLTest
 	}
 	s.access.Unlock()
 	s.notifyUpdated()
-	s.access.Unlock()
 }
 
 func (s *HistoryStorage) notifyUpdated() {

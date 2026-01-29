@@ -106,7 +106,7 @@ func CheckIP(logger log.Logger, ctx context.Context, history adapter.URLTestHist
 }
 
 func isTimeout(history *adapter.URLTestHistory) bool {
-	return history == nil || history.Delay == TimeoutDelay || history.Delay == 0
+	return history == nil || history.Delay >= TimeoutDelay || history.Delay == 0
 }
 
 func (g *URLTestGroup) urlTestEx(ctx context.Context, force bool, force_check_even_previous_not_completed bool) (map[string]uint16, error) {
