@@ -62,7 +62,7 @@ func (c *DefaultDialerClient) OpenStream(ctx context.Context, url string, body i
 	if method == "POST" && !c.options.NoGRPCHeader {
 		req.Header.Set("Content-Type", "application/grpc")
 	}
-	wrc = &WaitReadCloser{Wait: make(chan struct{})}
+	wrc = &WaitReadCloser{ctx: ctx, Wait: make(chan struct{})}
 	go func() {
 		resp, err := c.client.Do(req)
 		if err != nil {
@@ -158,6 +158,7 @@ func (c *DefaultDialerClient) PostPacket(ctx context.Context, url string, body i
 }
 
 type WaitReadCloser struct {
+	ctx  context.Context
 	Wait chan struct{}
 	io.ReadCloser
 }
@@ -174,7 +175,12 @@ func (w *WaitReadCloser) Set(rc io.ReadCloser) {
 
 func (w *WaitReadCloser) Read(b []byte) (int, error) {
 	if w.ReadCloser == nil {
-		if <-w.Wait; w.ReadCloser == nil {
+		select {
+		case <-w.ctx.Done():
+			return 0, w.ctx.Err()
+		case <-w.Wait:
+		}
+		if w.ReadCloser == nil {
 			return 0, io.ErrClosedPipe
 		}
 	}
