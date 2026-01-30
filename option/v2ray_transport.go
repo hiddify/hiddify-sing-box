@@ -128,20 +128,20 @@ type V2RayXHTTPBaseOptions struct {
 	Path                 string                 `json:"path,omitempty"`
 	Headers              map[string]string      `json:"headers,omitempty"`
 	DomainStrategy       DomainStrategy         `json:"domain_strategy,omitempty"`
-	XPaddingBytes        Xbadoption.Range       `json:"x_padding_bytes"`
+	XPaddingBytes        *Xbadoption.Range      `json:"x_padding_bytes,omitempty"`
 	NoGRPCHeader         bool                   `json:"no_grpc_header,omitempty"`
 	NoSSEHeader          bool                   `json:"no_sse_header,omitempty"`
-	ScMaxEachPostBytes   Xbadoption.Range       `json:"sc_max_each_post_bytes"`
-	ScMinPostsIntervalMs Xbadoption.Range       `json:"sc_min_posts_interval_ms"`
+	ScMaxEachPostBytes   *Xbadoption.Range      `json:"sc_max_each_post_bytes,omitempty"`
+	ScMinPostsIntervalMs *Xbadoption.Range      `json:"sc_min_posts_interval_ms,omitempty"`
 	ScMaxBufferedPosts   int64                  `json:"sc_max_buffered_posts,omitempty"`
-	ScStreamUpServerSecs Xbadoption.Range       `json:"sc_stream_up_server_secs"`
-	Xmux                 *V2RayXHTTPXmuxOptions `json:"xmux"`
+	ScStreamUpServerSecs *Xbadoption.Range      `json:"sc_stream_up_server_secs,omitempty"`
+	Xmux                 *V2RayXHTTPXmuxOptions `json:"xmux,omitempty"`
 }
 
 type V2RayXHTTPOptions struct {
-	Mode string `json:"mode"`
+	Mode string `json:"mode,omitempty"`
 	V2RayXHTTPBaseOptions
-	Download *V2RayXHTTPDownloadOptions `json:"download"`
+	Download *V2RayXHTTPDownloadOptions `json:"download,omitempty"`
 }
 
 type V2RayXHTTPDownloadOptions struct {
@@ -189,33 +189,33 @@ func (c *V2RayXHTTPBaseOptions) GetRequestHeader(rawURL string) http.Header {
 }
 
 func (c *V2RayXHTTPBaseOptions) GetNormalizedXPaddingBytes() Xbadoption.Range {
-	if c.XPaddingBytes.To == 0 {
+	if c.XPaddingBytes == nil || c.XPaddingBytes.To == 0 {
 		return Xbadoption.Range{
 			From: 100,
 			To:   1000,
 		}
 	}
-	return c.XPaddingBytes
+	return *c.XPaddingBytes
 }
 
 func (c *V2RayXHTTPBaseOptions) GetNormalizedScMaxEachPostBytes() Xbadoption.Range {
-	if c.ScMaxEachPostBytes.To == 0 {
+	if c.ScMaxEachPostBytes == nil || c.ScMaxEachPostBytes.To == 0 {
 		return Xbadoption.Range{
 			From: 1000000,
 			To:   1000000,
 		}
 	}
-	return c.ScMaxEachPostBytes
+	return *c.ScMaxEachPostBytes
 }
 
 func (c *V2RayXHTTPBaseOptions) GetNormalizedScMinPostsIntervalMs() Xbadoption.Range {
-	if c.ScMinPostsIntervalMs.To == 0 {
+	if c.ScMinPostsIntervalMs == nil || c.ScMinPostsIntervalMs.To == 0 {
 		return Xbadoption.Range{
 			From: 30,
 			To:   30,
 		}
 	}
-	return c.ScMinPostsIntervalMs
+	return *c.ScMinPostsIntervalMs
 }
 
 func (c *V2RayXHTTPBaseOptions) GetNormalizedScMaxBufferedPosts() int {
@@ -227,13 +227,13 @@ func (c *V2RayXHTTPBaseOptions) GetNormalizedScMaxBufferedPosts() int {
 }
 
 func (c *V2RayXHTTPBaseOptions) GetNormalizedScStreamUpServerSecs() Xbadoption.Range {
-	if c.ScStreamUpServerSecs.To == 0 {
+	if c.ScStreamUpServerSecs == nil || c.ScStreamUpServerSecs.To == 0 {
 		return Xbadoption.Range{
 			From: 20,
 			To:   80,
 		}
 	}
-	return c.ScStreamUpServerSecs
+	return *c.ScStreamUpServerSecs
 }
 
 type V2RayXHTTPXmuxOptions struct {

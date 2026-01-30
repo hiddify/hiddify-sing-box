@@ -20,6 +20,9 @@ func (c *Range) Build() *Range {
 }
 
 func (c *Range) MarshalJSON() ([]byte, error) {
+	if c.From == 0 && c.To == 0 {
+		return json.Marshal("")
+	}
 	return json.Marshal(fmt.Sprintf("%d-%d", c.From, c.To))
 }
 
