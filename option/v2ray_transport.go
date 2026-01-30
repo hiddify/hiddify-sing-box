@@ -177,6 +177,10 @@ func (c *V2RayXHTTPBaseOptions) GetRequestHeader(rawURL string) http.Header {
 	for k, v := range c.Headers {
 		header.Add(k, v)
 	}
+	if header.Get("User-Agent") == "" {
+		header.Set("User-Agent", C.DefaultBrowserAgent) //H
+	}
+
 	u, _ := url.Parse(rawURL)
 	// https://www.rfc-editor.org/rfc/rfc7541.html#appendix-B
 	// h2's HPACK Header Compression feature employs a huffman encoding using a static table.

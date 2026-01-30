@@ -81,7 +81,10 @@ func (c *DefaultDialerClient) OpenStream(ctx context.Context, url string, body i
 		}
 		wrc.(*WaitReadCloser).Set(resp.Body)
 	}()
-	<-gotConn.Wait()
+	select {
+	case <-gotConn.Wait():
+	case <-ctx.Done():
+	}
 	return
 }
 
