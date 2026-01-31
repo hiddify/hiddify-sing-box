@@ -41,6 +41,20 @@ var fallbackProviders = []Provider{
 	// NewCloudflareTraceProvider(),
 }
 
+func GetAllIPCheckerDomainsDomains() []string {
+	var domains []string
+	for _, provider := range providers {
+		d, err := url.Parse(provider.GetName())
+		if err != nil {
+			if net.ParseIP(d.Hostname()) != nil {
+				domains = append(domains, d.Hostname())
+			}
+
+		}
+	}
+	return domains
+}
+
 // Provider interface for all IP providers.
 type Provider interface {
 	GetIPInfo(ctx context.Context, dialer N.Dialer) (*IpInfo, uint16, error)
