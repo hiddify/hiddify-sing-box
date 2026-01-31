@@ -34,7 +34,7 @@ func urltestTimeout(ctx context.Context, logger log.Logger, realTag string, outb
 	return his
 }
 
-func CheckOutbound(logger log.Logger, ctx context.Context, history adapter.URLTestHistoryStorage, router adapter.OutboundManager, url string, outbound adapter.Outbound, ipbatch *batch.Batch[string]) uint16 {
+func CheckOutbound(logger log.Logger, ctx context.Context, history adapter.URLTestHistoryStorage, router adapter.OutboundManager, url string, outbound adapter.Outbound, ipbatch *batch.Batch[any]) uint16 {
 	realTag := RealTag(router, outbound)
 	hisbefore := history.LoadURLTestHistory(realTag)
 	timeout := C.TCPTimeout
@@ -57,7 +57,12 @@ func CheckOutbound(logger log.Logger, ctx context.Context, history adapter.URLTe
 		if ipbatch == nil {
 			go CheckIP(logger, ctx, history, router, outbound)
 		} else {
-			ipbatch.Go(realTag+"ip", func() (string, error) {
+			ipbatch.Go(realTag+"ip", func() (any, error) {
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				default:
+				}
 				CheckIP(logger, ctx, history, router, outbound)
 				return "", nil
 			})
@@ -155,7 +160,7 @@ func (g *URLTestGroup) urlTestEx(ctx context.Context, force bool, force_check_ev
 }
 func (g *URLTestGroup) urlTestExImp(ctx context.Context, force bool, force_check_even_previous_not_completed bool) (map[string]uint16, error) {
 	result := make(map[string]uint16)
-	ipbatch, _ := batch.New(ctx, batch.WithConcurrencyNum[string](10))
+	ipbatch, _ := batch.New(ctx, batch.WithConcurrencyNum[any](10))
 	b, _ := batch.New(ctx, batch.WithConcurrencyNum[any](10))
 	checked := make(map[string]bool)
 	var resultAccess sync.Mutex
@@ -175,6 +180,11 @@ func (g *URLTestGroup) urlTestExImp(ctx context.Context, force bool, force_check
 			continue
 		}
 		b.Go(realTag, func() (any, error) {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			default:
+			}
 			if !force_check_even_previous_not_completed && g.checkingEx.Load() {
 				return nil, nil
 			}
@@ -186,14 +196,37 @@ func (g *URLTestGroup) urlTestExImp(ctx context.Context, force bool, force_check
 			return nil, nil
 		})
 	}
-	b.Wait()
-	ipbatch.Wait()
+	if err := WaitBatchesWithContext(ctx, b, ipbatch); err != nil {
+		return nil, err
+	}
 
 	g.performUpdateCheck()
 
 	return result, nil
 }
-func (g *URLTestGroup) urltestImp(outbound adapter.Outbound, ipbatch *batch.Batch[string]) uint16 {
+
+func WaitBatchesWithContext(ctx context.Context, batches ...*batch.Batch[any]) error {
+	done := make(chan error, len(batches))
+
+	for _, b := range batches {
+		go func(b *batch.Batch[any]) {
+			done <- b.Wait()
+		}(b)
+	}
+
+	for i := 0; i < len(batches); i++ {
+		select {
+		case err := <-done:
+			if err != nil {
+				return err
+			}
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return nil
+}
+func (g *URLTestGroup) urltestImp(outbound adapter.Outbound, ipbatch *batch.Batch[any]) uint16 {
 	return CheckOutbound(g.logger, g.ctx, g.history, g.outbound, g.links[g.currentLinkIndex], outbound, ipbatch)
 }
 

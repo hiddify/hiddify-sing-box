@@ -4,11 +4,9 @@ import (
 	"sync"
 )
 
-// Instance is a utility for notifications of something being done.
 type Instance struct {
-	access sync.Mutex
-	c      chan struct{}
-	closed bool
+	once sync.Once
+	c    chan struct{}
 }
 
 // New returns a new Done.
@@ -21,7 +19,7 @@ func New() *Instance {
 // Done returns true if Close() is called.
 func (d *Instance) Done() bool {
 	select {
-	case <-d.Wait():
+	case <-d.c:
 		return true
 	default:
 		return false
@@ -33,17 +31,11 @@ func (d *Instance) Wait() <-chan struct{} {
 	return d.c
 }
 
-// Close marks this Done 'done'. This method may be called multiple times. All calls after first call will have no effect on its status.
+// Close marks this Done 'done'. This method may be called multiple times.
+// All calls after the first call have no effect.
 func (d *Instance) Close() error {
-	d.access.Lock()
-	defer d.access.Unlock()
-
-	if d.closed {
-		return nil
-	}
-
-	d.closed = true
-	close(d.c)
-
+	d.once.Do(func() {
+		close(d.c)
+	})
 	return nil
 }

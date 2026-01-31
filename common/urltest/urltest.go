@@ -3,6 +3,7 @@ package urltest
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"net"
 	"net/http"
 	"net/url"
@@ -122,6 +123,9 @@ func (s *HistoryStorage) Close() error {
 }
 
 func URLTest(ctx context.Context, link string, detour N.Dialer) (uint16, error) {
+	if detour == nil {
+		return 0, fmt.Errorf("urltest dialer is nil")
+	}
 	multiplexOutbound, isMultiplexOutbound := common.Cast[adapter.OutboundWithMultiplex](detour)
 	if isMultiplexOutbound && multiplexOutbound.MultiplexEnabled() {
 		warmContext := adapter.ContextWithKeepSession(ctx)
@@ -196,7 +200,7 @@ func urlTest(ctx context.Context, link string, detour N.Dialer) (t uint16, err e
 	if IsUnifiedDelayFromContext(ctx) {
 		second := time.Now()
 		resp, err = client.Do(req)
-		if err == nil {
+		if err != nil {
 			return
 		}
 		resp.Body.Close()

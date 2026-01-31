@@ -10,7 +10,7 @@ import (
 	"net/http/httptrace"
 	"sync"
 
-	"github.com/sagernet/sing-box/common/xray"
+	common "github.com/sagernet/sing-box/common/xray"
 	"github.com/sagernet/sing-box/common/xray/signal/done"
 	"github.com/sagernet/sing-box/option"
 )
@@ -174,6 +174,12 @@ func (w *WaitReadCloser) Set(rc io.ReadCloser) {
 }
 
 func (w *WaitReadCloser) Read(b []byte) (int, error) {
+	select {
+	case <-w.ctx.Done():
+		return 0, w.ctx.Err()
+	default:
+	}
+
 	if w.ReadCloser == nil {
 		select {
 		case <-w.ctx.Done():
