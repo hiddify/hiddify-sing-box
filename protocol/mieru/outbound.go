@@ -36,7 +36,7 @@ func RegisterOutbound(registry *outbound.Registry) {
 }
 
 func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.MieruOutboundOptions) (adapter.Outbound, error) {
-	outboundDialer, err := dialer.New(ctx, options.DialerOptions, options.ServerIsDomain())
+	outboundDialer, err := dialer.New(ctx, options.DialerOptions, M.IsDomainName(options.Server))
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +123,15 @@ func (md mieruDialer) DialContext(ctx context.Context, network, address string) 
 	return md.dialer.DialContext(ctx, network, addr)
 }
 
-var _ mierucommon.Dialer = (*mieruDialer)(nil)
+func (md mieruDialer) ListenPacket(ctx context.Context, network, laddr, raddr string) (net.PacketConn, error) {
+	addr := M.ParseSocksaddr(raddr)
+	return md.dialer.ListenPacket(ctx, addr)
+}
+
+var (
+	_ mierucommon.Dialer       = (*mieruDialer)(nil)
+	_ mierucommon.PacketDialer = (*mieruDialer)(nil)
+)
 
 // streamer converts a net.PacketConn to a net.Conn.
 type streamer struct {
@@ -156,23 +164,26 @@ func socksAddrToNetAddrSpec(sa M.Socksaddr, network string) (mierumodel.NetAddrS
 	return nas, nil
 }
 
+func getTransportProtocol(transport string) *mierupb.TransportProtocol {
+	switch transport {
+	case "TCP":
+		return mierupb.TransportProtocol_TCP.Enum()
+	case "UDP":
+		return mierupb.TransportProtocol_UDP.Enum()
+	default:
+		return mierupb.TransportProtocol_TCP.Enum()
+	}
+}
 func buildMieruClientConfig(options option.MieruOutboundOptions, dialer mieruDialer) (*mieruclient.ClientConfig, error) {
 	if err := validateMieruOptions(options); err != nil {
 		return nil, fmt.Errorf("failed to validate mieru options: %w", err)
 	}
 
-	transportProtocol := mierupb.TransportProtocol_TCP.Enum()
 	server := &mierupb.ServerEndpoint{}
-	if options.ServerPort != 0 {
-		server.PortBindings = append(server.PortBindings, &mierupb.PortBinding{
-			Port:     proto.Int32(int32(options.ServerPort)),
-			Protocol: transportProtocol,
-		})
-	}
-	for _, pr := range options.ServerPortRanges {
+	for i, pr := range options.ServerPortRanges {
 		server.PortBindings = append(server.PortBindings, &mierupb.PortBinding{
 			PortRange: proto.String(pr),
-			Protocol:  transportProtocol,
+			Protocol:  getTransportProtocol(options.Transport[i]),
 		})
 	}
 	if M.IsDomainName(options.Server) {
@@ -189,7 +200,11 @@ func buildMieruClientConfig(options option.MieruOutboundOptions, dialer mieruDia
 			},
 			Servers: []*mierupb.ServerEndpoint{server},
 		},
-		Dialer: dialer,
+		Dialer:       dialer,
+		PacketDialer: dialer,
+		DNSConfig: &mierucommon.ClientDNSConfig{
+			BypassDialerDNS: true,
+		},
 	}
 	if multiplexing, ok := mierupb.MultiplexingLevel_value[options.Multiplexing]; ok {
 		config.Profile.Multiplexing = &mierupb.MultiplexingConfig{
@@ -206,6 +221,12 @@ func validateMieruOptions(options option.MieruOutboundOptions) error {
 	if options.ServerPort == 0 && len(options.ServerPortRanges) == 0 {
 		return fmt.Errorf("either server_port or server_ports must be set")
 	}
+	if options.ServerPort != 0 && len(options.ServerPortRanges) > 0 {
+		return fmt.Errorf("only one of server_port and server_ports can be set")
+	}
+	if options.ServerPort != 0 {
+		options.ServerPortRanges = append(options.ServerPortRanges, fmt.Sprintf("%d", options.ServerPort))
+	}
 	for _, pr := range options.ServerPortRanges {
 		begin, end, err := beginAndEndPortFromPortRange(pr)
 		if err != nil {
@@ -221,8 +242,14 @@ func validateMieruOptions(options option.MieruOutboundOptions) error {
 			return fmt.Errorf("begin port must be less than or equal to end port")
 		}
 	}
-	if options.Transport != "TCP" {
-		return fmt.Errorf("transport must be TCP")
+	for _, t := range options.Transport {
+		if t != "TCP" && t != "UDP" {
+			return fmt.Errorf("transport must be TCP or UDP")
+
+		}
+	}
+	if len(options.Transport) != len(options.ServerPortRanges) {
+		return fmt.Errorf("the number of transports must match the number of server_ports")
 	}
 	if options.UserName == "" {
 		return fmt.Errorf("username is empty")
