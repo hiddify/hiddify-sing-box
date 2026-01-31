@@ -22,7 +22,6 @@ import (
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/service"
-	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 func RegisterWARPEndpoint(registry *endpoint.Registry) {
@@ -67,33 +66,22 @@ func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.Cont
 				}
 			}
 		}
-		if config == nil {
-			var privateKey wgtypes.Key
-			if options.Profile.PrivateKey != "" {
-				privateKey, err = wgtypes.ParseKey(options.Profile.PrivateKey)
-				if err != nil {
-					logger.ErrorContext(ctx, err)
-					return
-				}
-			} else {
-				privateKey, err = wgtypes.GeneratePrivateKey()
-				if err != nil {
-					logger.ErrorContext(ctx, err)
-					return
-				}
-			}
-			opts := make([]cloudflare.CloudflareApiOption, 0, 1)
+		if config == nil && options.WARPConfig != nil {
+			config = options.WARPConfig
+		}
+		if config == nil || config.PrivateKey == "" {
+
+			var dialer N.Dialer
 			if options.Profile.Detour != "" {
-				detour, ok := service.FromContext[adapter.OutboundManager](ctx).Outbound(options.Profile.Detour)
+				var ok bool
+				dialer, ok = service.FromContext[adapter.OutboundManager](ctx).Outbound(options.Profile.Detour)
 				if !ok {
 					logger.ErrorContext(ctx, E.New("outbound detour not found: ", options.Profile.Detour))
 					return
 				}
-				opts = append(opts, cloudflare.WithDialContext(func(ctx context.Context, network, addr string) (net.Conn, error) {
-					return detour.DialContext(ctx, network, M.ParseSocksaddr(addr))
-				}))
+
 			}
-			api := cloudflare.NewCloudflareApi(opts...)
+			api := cloudflare.NewCloudflareApiDetour(dialer)
 			var profile *cloudflare.CloudflareProfile
 			if options.Profile.AuthToken != "" && options.Profile.ID != "" {
 				profile, err = api.GetProfile(ctx, options.Profile.AuthToken, options.Profile.ID)
@@ -102,17 +90,14 @@ func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.Cont
 					return
 				}
 			} else {
-				profile, err = api.CreateProfile(ctx, privateKey.PublicKey().String())
+				profile, err = api.CreateProfileLicense(ctx, options.Profile.PrivateKey, options.Profile.License)
 				if err != nil {
 					logger.ErrorContext(ctx, err)
 					return
 				}
 			}
-			config = &C.WARPConfig{
-				PrivateKey: privateKey.String(),
-				Interface:  profile.Config.Interface,
-				Peers:      profile.Config.Peers,
-			}
+			config = &profile.Config
+
 			if cacheFile != nil && cacheFile.StoreWARPConfig() {
 				content, err := json.Marshal(config)
 				if err != nil {

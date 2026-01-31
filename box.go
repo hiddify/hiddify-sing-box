@@ -700,6 +700,9 @@ func (s *Box) Inbound() adapter.InboundManager {
 func (s *Box) Outbound() adapter.OutboundManager {
 	return s.outbound
 }
+func (s *Box) Endpoint() adapter.EndpointManager {
+	return s.endpoint
+}
 
 func (s *Box) Endpoint() adapter.EndpointManager {
 	return s.endpoint
