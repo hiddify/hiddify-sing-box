@@ -154,6 +154,7 @@ func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.Cont
 							netip.MustParsePrefix("0.0.0.0/0"),
 							netip.MustParsePrefix("::/0"),
 						},
+						WireGuardHiddify: options.WireGuardHiddify,
 					},
 				},
 				MTU: 1280,
