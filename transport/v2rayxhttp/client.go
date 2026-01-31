@@ -255,7 +255,11 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 				}
 			}()
 			if _, ok := httpClient.(*DefaultDialerClient); ok {
-				<-wroteRequest.Wait()
+				select {
+				case <-ctx.Done():
+				case <-wroteRequest.Wait():
+				}
+
 			}
 		}
 	}()

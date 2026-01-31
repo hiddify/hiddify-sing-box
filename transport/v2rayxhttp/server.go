@@ -348,6 +348,7 @@ func (s *Server) upsertSession(sessionId string) *httpSession {
 			s.sessions.Delete(sessionId)
 			session.uploadQueue.Close()
 		case <-session.isFullyConnected.Wait():
+		case <-s.ctx.Done():
 		}
 	}()
 	return session
