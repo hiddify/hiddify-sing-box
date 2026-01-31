@@ -26,10 +26,10 @@ func urltestTimeout(ctx context.Context, logger log.Logger, realTag string, outb
 		t = TimeoutDelay
 	}
 
-	his := history.StoreURLTestHistory(realTag, &adapter.URLTestHistory{
+	his := &adapter.URLTestHistory{
 		Time:  time.Now(),
 		Delay: t,
-	})
+	}
 	logger.Debug("outbound new ping ", realTag, " = ", his.Delay)
 	return his
 }
@@ -41,18 +41,18 @@ func CheckOutbound(logger log.Logger, ctx context.Context, history adapter.URLTe
 	isTimeoutBefore := isTimeout(hisbefore)
 
 	if !isTimeoutBefore {
-		timeout = time.Duration(max(200, hisbefore.Delay)) * time.Millisecond * 4
+		timeout = time.Duration(max(400, hisbefore.Delay)) * time.Millisecond * 5
 		logger.Debug("outbound is already connected ", realTag, " = ", hisbefore.Delay, " set timeout for new urltest to ", timeout)
 	}
 	his := urltestTimeout(ctx, logger, realTag, outbound, url, history, timeout)
 
-	if outbound.Type() == C.TypeWireGuard && his.Delay > 1000 { // double check for wireguard
-		his = urltestTimeout(ctx, logger, realTag, outbound, url, history, timeout)
-	}
+	// if outbound.Type() == C.TypeWireGuard && his.Delay > 1000 { // double check for wireguard
+	// 	his = urltestTimeout(ctx, logger, realTag, outbound, url, history, timeout)
+	// }
 	if isTimeout(his) && !isTimeoutBefore {
 		his = urltestTimeout(ctx, logger, realTag, outbound, url, history, C.TCPTimeout)
 	}
-
+	his = history.StoreURLTestHistory(realTag, his)
 	if !isTimeout(his) && his.IpInfo == nil {
 		if ipbatch == nil {
 			go CheckIP(logger, ctx, history, router, outbound)
