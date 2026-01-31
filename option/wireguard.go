@@ -48,7 +48,10 @@ type WireGuardWARPEndpointOptions struct {
 	Amnezia                    *WireGuardAmnezia  `json:"amnezia,omitempty"`
 	Profile                    WARPProfile        `json:"profile,omitempty"`
 	DialerOptions
-	WireGuardHiddify
+
+	UniqueIdentifier string `json:"unique_identifier,omitempty"` //h
+	ServerOptions           //H
+	WireGuardHiddify        //H
 }
 
 type WARPProfile struct {

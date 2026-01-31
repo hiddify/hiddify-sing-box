@@ -48,6 +48,10 @@ func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.Cont
 	warpEndpoint := &WARPEndpoint{
 		Adapter: endpoint.NewAdapter(C.TypeWARP, tag, []string{N.NetworkTCP, N.NetworkUDP}, dependencies),
 	}
+	uniqueId := options.UniqueIdentifier
+	if uniqueId == "" {
+		uniqueId = tag
+	}
 	warpEndpoint.mtx.Lock()
 	warpEndpoint.startHandler = func() {
 		defer warpEndpoint.mtx.Unlock()
@@ -55,7 +59,7 @@ func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.Cont
 		var config *C.WARPConfig
 		var err error
 		if !options.Profile.Recreate && cacheFile != nil && cacheFile.StoreWARPConfig() {
-			savedProfile := cacheFile.LoadWARPConfig(tag)
+			savedProfile := cacheFile.LoadWARPConfig(uniqueId)
 			if savedProfile != nil {
 				if err = json.Unmarshal(savedProfile.Content, &config); err != nil {
 					logger.ErrorContext(ctx, err)
@@ -115,7 +119,7 @@ func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.Cont
 					logger.ErrorContext(ctx, err)
 					return
 				}
-				cacheFile.SaveWARPConfig(tag, &adapter.SavedBinary{
+				cacheFile.SaveWARPConfig(uniqueId, &adapter.SavedBinary{
 					LastUpdated: time.Now(),
 					Content:     content,
 					LastEtag:    "",
@@ -124,6 +128,14 @@ func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.Cont
 		}
 		peer := config.Peers[0]
 		hostParts := strings.Split(peer.Endpoint.Host, ":")
+		peerAddr := hostParts[0]
+		perrPort := uint16(peer.Endpoint.Ports[rand.Intn(len(peer.Endpoint.Ports))])
+		if options.ServerOptions.Server != "" {
+			peerAddr = options.ServerOptions.Server
+		}
+		if options.ServerOptions.ServerPort != 0 {
+			perrPort = options.ServerOptions.ServerPort
+		}
 		warpEndpoint.endpoint, err = NewEndpoint(
 			ctx,
 			router,
@@ -147,8 +159,8 @@ func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.Cont
 				PrivateKey: config.PrivateKey,
 				Peers: []option.WireGuardPeer{
 					{
-						Address:   hostParts[0],
-						Port:      uint16(peer.Endpoint.Ports[rand.Intn(len(peer.Endpoint.Ports))]),
+						Address:   peerAddr,
+						Port:      perrPort,
 						PublicKey: peer.PublicKey,
 						AllowedIPs: badoption.Listable[netip.Prefix]{
 							netip.MustParsePrefix("0.0.0.0/0"),
