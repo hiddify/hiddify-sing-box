@@ -70,31 +70,10 @@ func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.Cont
 			config = options.WARPConfig
 		}
 		if config == nil || config.PrivateKey == "" {
-
-			var dialer N.Dialer
-			if options.Profile.Detour != "" {
-				var ok bool
-				dialer, ok = service.FromContext[adapter.OutboundManager](ctx).Outbound(options.Profile.Detour)
-				if !ok {
-					logger.ErrorContext(ctx, E.New("outbound detour not found: ", options.Profile.Detour))
-					return
-				}
-
-			}
-			api := cloudflare.NewCloudflareApiDetour(dialer)
-			var profile *cloudflare.CloudflareProfile
-			if options.Profile.AuthToken != "" && options.Profile.ID != "" {
-				profile, err = api.GetProfile(ctx, options.Profile.AuthToken, options.Profile.ID)
-				if err != nil {
-					logger.ErrorContext(ctx, err)
-					return
-				}
-			} else {
-				profile, err = api.CreateProfileLicense(ctx, options.Profile.PrivateKey, options.Profile.License)
-				if err != nil {
-					logger.ErrorContext(ctx, err)
-					return
-				}
+			profile, err := GetWarpProfile(ctx, &options.Profile)
+			if err != nil {
+				logger.ErrorContext(ctx, err)
+				return
 			}
 			config = &profile.Config
 
@@ -171,6 +150,39 @@ func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.Cont
 		}
 	}
 	return warpEndpoint, nil
+}
+func GetWarpProfile(ctx context.Context, profile *option.WARPProfile) (*cloudflare.CloudflareProfile, error) {
+	var dialer N.Dialer
+	outmanager := service.FromContext[adapter.OutboundManager](ctx)
+	if profile.Detour != "" && outmanager != nil {
+		var ok bool
+		dialer, ok = outmanager.Outbound(profile.Detour)
+		if !ok {
+			return nil, E.New("outbound detour not found: ", profile.Detour)
+		}
+
+	}
+	cf, err := GetWarpProfileDialer(ctx, dialer, profile)
+	if err == nil || outmanager == nil {
+		return cf, nil
+	}
+
+	for _, dialer := range outmanager.Outbounds() {
+		if cf, err := GetWarpProfileDialer(ctx, dialer, profile); err == nil {
+			return cf, nil
+		}
+	}
+	return nil, err
+
+}
+func GetWarpProfileDialer(ctx context.Context, dialer N.Dialer, profile *option.WARPProfile) (*cloudflare.CloudflareProfile, error) {
+	api := cloudflare.NewCloudflareApiDetour(dialer)
+	if profile.AuthToken != "" && profile.ID != "" {
+		return api.GetProfile(ctx, profile.AuthToken, profile.ID)
+
+	} else {
+		return api.CreateProfileLicense(ctx, profile.PrivateKey, profile.License)
+	}
 }
 
 func (w *WARPEndpoint) Start(stage adapter.StartStage) error {
