@@ -10,6 +10,7 @@ import (
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
+	hiddify "github.com/sagernet/wireguard-go/hiddify"
 )
 
 type EndpointOptions struct {
@@ -39,6 +40,7 @@ type EndpointOptions struct {
 	PreallocatedBuffersPerPool uint32
 	DisablePauses              bool
 	Amnezia                    *AmneziaOptions
+	Noise                      hiddify.NoiseOptions
 }
 
 type PeerOptions struct {

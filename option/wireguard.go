@@ -5,6 +5,7 @@ import (
 
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing/common/json/badoption"
+	hiddify "github.com/sagernet/wireguard-go/hiddify"
 )
 
 type WireGuardEndpointOptions struct {
@@ -25,6 +26,8 @@ type WireGuardEndpointOptions struct {
 	DisablePauses              bool                             `json:"disable_pauses,omitempty"`
 	Amnezia                    *WireGuardAmnezia                `json:"amnezia,omitempty"`
 	DialerOptions
+
+	Noise hiddify.NoiseOptions `json:"noise,omitempty"`
 }
 
 type WireGuardPeer struct {
@@ -35,7 +38,6 @@ type WireGuardPeer struct {
 	AllowedIPs                  badoption.Listable[netip.Prefix] `json:"allowed_ips,omitempty"`
 	PersistentKeepaliveInterval uint16                           `json:"persistent_keepalive_interval,omitempty"`
 	Reserved                    []uint8                          `json:"reserved,omitempty"`
-	WireGuardHiddify
 }
 
 type WireGuardWARPEndpointOptions struct {
@@ -50,10 +52,10 @@ type WireGuardWARPEndpointOptions struct {
 	Profile                    WARPProfile        `json:"profile,omitempty"`
 	DialerOptions
 
-	UniqueIdentifier string `json:"unique_identifier,omitempty"` //h
-	ServerOptions           //H
-	WireGuardHiddify        //H
-	*C.WARPConfig           //H
+	UniqueIdentifier string               `json:"unique_identifier,omitempty"` //h
+	ServerOptions                         //H
+	Noise            hiddify.NoiseOptions `json:"noise,omitempty"` //H
+	*C.WARPConfig                         //H
 }
 
 type WARPProfile struct {
@@ -84,7 +86,7 @@ type LegacyWireGuardOutboundOptions struct {
 	Network                    NetworkList       `json:"network,omitempty"`
 	Amnezia                    *WireGuardAmnezia `json:"amnezia,omitempty"`
 
-	WireGuardHiddify
+	Noise hiddify.NoiseOptions `json:"noise,omitempty"`
 }
 
 type LegacyWireGuardPeer struct {

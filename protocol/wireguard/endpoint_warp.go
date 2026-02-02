@@ -113,7 +113,7 @@ func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.Cont
 				Workers:                    options.Workers,
 				PreallocatedBuffersPerPool: options.PreallocatedBuffersPerPool,
 				DisablePauses:              options.DisablePauses,
-				Amnezia:                    options.Amnezia,
+				Noise:                      options.Noise,
 				DialerOptions:              options.DialerOptions,
 
 				Address: badoption.Listable[netip.Prefix]{
@@ -130,7 +130,6 @@ func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.Cont
 							netip.MustParsePrefix("0.0.0.0/0"),
 							netip.MustParsePrefix("::/0"),
 						},
-						WireGuardHiddify: options.WireGuardHiddify,
 					},
 				},
 				MTU: 1280,
