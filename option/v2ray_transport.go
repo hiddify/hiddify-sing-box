@@ -127,21 +127,21 @@ type V2RayXHTTPBaseOptions struct {
 	Host                 string                 `json:"host,omitempty"`
 	Path                 string                 `json:"path,omitempty"`
 	Headers              map[string]string      `json:"headers,omitempty"`
-	DomainStrategy       DomainStrategy         `json:"domain_strategy,omitempty"`
-	XPaddingBytes        *Xbadoption.Range      `json:"x_padding_bytes,omitempty"`
-	NoGRPCHeader         bool                   `json:"no_grpc_header,omitempty"`
-	NoSSEHeader          bool                   `json:"no_sse_header,omitempty"`
-	ScMaxEachPostBytes   *Xbadoption.Range      `json:"sc_max_each_post_bytes,omitempty"`
-	ScMinPostsIntervalMs *Xbadoption.Range      `json:"sc_min_posts_interval_ms,omitempty"`
-	ScMaxBufferedPosts   int64                  `json:"sc_max_buffered_posts,omitempty"`
-	ScStreamUpServerSecs *Xbadoption.Range      `json:"sc_stream_up_server_secs,omitempty"`
+	DomainStrategy       DomainStrategy         `json:"domainStrategy,omitempty"`
+	XPaddingBytes        *Xbadoption.Range      `json:"xPaddingBytes,omitempty"`
+	NoGRPCHeader         bool                   `json:"noGRPCHeader,omitempty"`
+	NoSSEHeader          bool                   `json:"noSSEHeader,omitempty"`
+	ScMaxEachPostBytes   *Xbadoption.Range      `json:"scMaxEachPostBytes,omitempty"`
+	ScMinPostsIntervalMs *Xbadoption.Range      `json:"scMinPostsIntervalMs,omitempty"`
+	ScMaxBufferedPosts   int64                  `json:"scMaxBufferedPosts,omitempty"`
+	ScStreamUpServerSecs *Xbadoption.Range      `json:"scStreamUpServerSecs,omitempty"`
 	Xmux                 *V2RayXHTTPXmuxOptions `json:"xmux,omitempty"`
 }
 
 type V2RayXHTTPOptions struct {
 	Mode string `json:"mode,omitempty"`
 	V2RayXHTTPBaseOptions
-	Download *V2RayXHTTPDownloadOptions `json:"download,omitempty"`
+	Download *V2RayXHTTPDownloadOptions `json:"downloadSettings,omitempty"`
 }
 
 type V2RayXHTTPDownloadOptions struct {
@@ -241,12 +241,12 @@ func (c *V2RayXHTTPBaseOptions) GetNormalizedScStreamUpServerSecs() Xbadoption.R
 }
 
 type V2RayXHTTPXmuxOptions struct {
-	MaxConcurrency   Xbadoption.Range `json:"max_concurrency"`
-	MaxConnections   Xbadoption.Range `json:"max_connections"`
-	CMaxReuseTimes   Xbadoption.Range `json:"c_max_reuse_times"`
-	HMaxRequestTimes Xbadoption.Range `json:"h_max_request_times"`
-	HMaxReusableSecs Xbadoption.Range `json:"h_max_reusable_secs"`
-	HKeepAlivePeriod int64            `json:"h_keep_alive_period"`
+	MaxConcurrency   Xbadoption.Range `json:"maxConcurrency"`
+	MaxConnections   Xbadoption.Range `json:"maxConnections"`
+	CMaxReuseTimes   Xbadoption.Range `json:"cMaxReuseTimes"`
+	HMaxRequestTimes Xbadoption.Range `json:"hMaxRequestTimes"`
+	HMaxReusableSecs Xbadoption.Range `json:"hMaxReusableSecs"`
+	HKeepAlivePeriod int64            `json:"hKeepAlivePeriod"`
 }
 
 func (m *V2RayXHTTPXmuxOptions) GetNormalizedMaxConcurrency() Xbadoption.Range {

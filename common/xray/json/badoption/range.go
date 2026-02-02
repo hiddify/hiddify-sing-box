@@ -32,8 +32,8 @@ func (c *Range) UnmarshalJSON(content []byte) error {
 		To   int32 `json:"to"`
 	}
 	var stringValue string
-	err := json.Unmarshal(content, &stringValue)
-	if err == nil {
+
+	if err := json.Unmarshal(content, &stringValue); err == nil {
 		parts := strings.Split(stringValue, "-")
 		if len(parts) != 2 {
 			from, err := strconv.ParseInt(parts[0], 10, 32)
@@ -53,10 +53,13 @@ func (c *Range) UnmarshalJSON(content []byte) error {
 			rangeValue.From, rangeValue.To = int32(from), int32(to)
 		}
 	} else {
-		err := json.Unmarshal(content, &rangeValue)
-		if err != nil {
+		var intValue int
+		if err := json.Unmarshal(content, &intValue); err == nil {
+			rangeValue.From, rangeValue.To = int32(intValue), int32(intValue)
+		} else if err := json.Unmarshal(content, &rangeValue); err != nil {
 			return err
 		}
+
 	}
 	if rangeValue.From > rangeValue.To {
 		return E.New("invalid range")
