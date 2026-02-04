@@ -109,16 +109,16 @@ func (m *OutboundMonitoring) OutboundsHistory(groupTag string) map[string]*adapt
 		return histories
 	}
 	outbounds := m.outbounds
-	m.logger.Debug("collecting history for group ", groupTag, " with ", len(grp.outbounds), " outbounds")
+	//m.logger.Debug("collecting history for group ", groupTag, " with ", len(grp.outbounds), " outbounds")
 	for outboundTag := range grp.outbounds {
-		m.logger.Debug("checking history for outbound ", outboundTag)
+		//m.logger.Debug("checking history for outbound ", outboundTag)
 		if state, ok := outbounds[outboundTag]; ok {
-			m.logger.Debug("found state for outbound ", outboundTag)
+			//m.logger.Debug("found state for outbound ", outboundTag)
 			state.mu.Lock()
 			his := state.history
 			realtag := RealTag(state.outbound)
 			state.mu.Unlock()
-			m.logger.Trace(fmt.Sprint("tag=", outboundTag, " realtag ", realtag, " history=", his))
+			//m.logger.Trace(fmt.Sprint("tag=", outboundTag, " realtag ", realtag, " history=", his))
 			if realtag != outboundTag {
 
 				if state2, ok := outbounds[realtag]; ok {
@@ -130,14 +130,14 @@ func (m *OutboundMonitoring) OutboundsHistory(groupTag string) map[string]*adapt
 						}
 					}
 					state2.mu.Unlock()
-					m.logger.Trace(fmt.Sprint("new: tag=", outboundTag, " realtag ", realtag, " history=", his))
+					//m.logger.Trace(fmt.Sprint("new: tag=", outboundTag, " realtag ", realtag, " history=", his))
 				}
 			}
 			if his.Delay == 0 {
 				if grp2, ok := m.groups[outboundTag]; ok {
-					m.logger.Trace("the tag is group ", outboundTag)
+					//m.logger.Trace("the tag is group ", outboundTag)
 					if minHis := m.getMinOutboundHistory(grp2.tag); minHis.Delay < TimeoutDelay {
-						m.logger.Trace("got min history from group ", grp2.tag, ": ", minHis)
+						//m.logger.Trace("got min history from group ", grp2.tag, ": ", minHis)
 						his.Delay = minHis.Delay
 						if his.IpInfo == nil {
 							his.IpInfo = minHis.IpInfo
@@ -266,13 +266,13 @@ func (m *OutboundMonitoring) Start(stage adapter.StartStage) error {
 			// if _, ok := outbound.(adapter.OutboundGroup); !ok {
 			m.outbounds[outbound.Tag()] = &outboundState{groupTags: []string{}, invalid: true, outbound: outbound}
 			// }
-			m.logger.Info("registered outbound for monitoring: ", outbound.Tag())
+			//m.logger.Debug("registered outbound for monitoring: ", outbound.Tag())
 		}
 		for _, outbound := range m.endpointManager.Endpoints() {
 			// if _, ok := outbound.(adapter.OutboundGroup); !ok {
 			m.outbounds[outbound.Tag()] = &outboundState{groupTags: []string{}, invalid: true, outbound: outbound}
 			// }
-			m.logger.Info("registered outbound for monitoring: ", outbound.Tag())
+			//m.logger.Debug("registered outbound for monitoring: ", outbound.Tag())
 		}
 
 		m.logger.Info("registered ", len(m.outbounds), " outbounds for monitoring")
@@ -289,7 +289,7 @@ func (m *OutboundMonitoring) Start(stage adapter.StartStage) error {
 					m.outbounds[tag].groupTags = append(m.outbounds[tag].groupTags, groupTag)
 				}
 				m.groups[groupTag] = grp
-				m.logger.Info("registered outbound group for monitoring: ", groupTag, " with ", len(og.All()), " outbounds")
+				//m.logger.Debug("registered outbound group for monitoring: ", groupTag, " with ", len(og.All()), " outbounds")
 
 			}
 		}
