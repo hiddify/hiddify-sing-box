@@ -117,8 +117,16 @@ type InboundContext struct {
 	DestinationPortMatch         bool
 	DeferredIPCIDRMatchGroups    uint8
 	IgnoreDestinationIPCIDRMatch bool
+
+	RealOutbound string //H
 }
 
+func (c *InboundContext) SetRealOutbound(tag string) {
+	c.RealOutbound = tag
+}
+func (c *InboundContext) GetRealOutbound() string {
+	return c.RealOutbound
+}
 func (c *InboundContext) ResetRuleCache() {
 	c.IPCIDRMatchSource = false
 	c.IPCIDRAcceptEmpty = false

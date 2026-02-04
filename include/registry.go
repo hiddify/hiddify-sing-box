@@ -24,6 +24,7 @@ import (
 	"github.com/sagernet/sing-box/protocol/bridge"
 	"github.com/sagernet/sing-box/protocol/direct"
 	"github.com/sagernet/sing-box/protocol/group"
+	"github.com/sagernet/sing-box/protocol/group/balancer"
 	"github.com/sagernet/sing-box/protocol/hiddify/hinvalid"
 
 	"github.com/sagernet/sing-box/protocol/hiddify/xray"
@@ -109,6 +110,7 @@ func OutboundRegistry() *outbound.Registry {
 	hinvalid.RegisterOutbound(registry)
 	xray.RegisterOutbound(registry)
 	mieru.RegisterOutbound(registry)
+	balancer.RegisterLoadBalance(registry)
 
 	registerQUICOutbounds(registry)
 	registerStubForRemovedOutbounds(registry)

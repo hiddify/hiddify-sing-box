@@ -52,6 +52,7 @@ const (
 	TypeHInvalidConfig = "hinvalid" //H
 	TypeXray           = "xray"     //H
 	TypeCustom         = "custom"   //H
+	TypeBalancer       = "balancer" //H
 )
 
 const (
@@ -141,6 +142,8 @@ func ProxyDisplayName(proxyType string) string {
 		return "Tunnel Server"
 	case TypeAwg:
 		return "Awg"
+	case TypeBalancer:
+		return "Balancer"
 	default:
 		return "Unknown"
 	}

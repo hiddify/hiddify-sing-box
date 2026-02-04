@@ -58,7 +58,7 @@ func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.Cont
 		var config *C.WARPConfig
 		var err error
 		if !options.Profile.Recreate && cacheFile != nil && cacheFile.StoreWARPConfig() {
-			savedProfile := cacheFile.LoadWARPConfig(uniqueId)
+			savedProfile := cacheFile.LoadBinary(uniqueId)
 			if savedProfile != nil {
 				if err = json.Unmarshal(savedProfile.Content, &config); err != nil {
 					logger.ErrorContext(ctx, err)
@@ -83,7 +83,7 @@ func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.Cont
 					logger.ErrorContext(ctx, err)
 					return
 				}
-				cacheFile.SaveWARPConfig(uniqueId, &adapter.SavedBinary{
+				cacheFile.SaveBinary(uniqueId, &adapter.SavedBinary{
 					LastUpdated: time.Now(),
 					Content:     content,
 					LastEtag:    "",

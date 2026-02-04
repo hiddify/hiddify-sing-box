@@ -11,6 +11,8 @@ type ExperimentalOptions struct {
 	V2RayAPI     *V2RayAPIOptions     `json:"v2ray_api,omitempty"`
 	UnifiedDelay *UnifiedDelayOptions `json:"unified_delay,omitempty"`
 	Debug        *DebugOptions        `json:"debug,omitempty"`
+
+	Monitoring *MonitoringOptions `json:"monitoring,omitempty"`
 }
 
 type CacheFileOptions struct {
