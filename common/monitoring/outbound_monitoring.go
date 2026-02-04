@@ -123,8 +123,11 @@ func (m *OutboundMonitoring) OutboundsHistory(groupTag string) map[string]*adapt
 
 				if state2, ok := outbounds[realtag]; ok {
 					state2.mu.Lock()
-					if state2.history.Delay != 0 {
-						his = state2.history
+					if state2.history.Delay != 0 && state2.history.Delay < his.Delay {
+						his.Delay = state2.history.Delay
+						if his.IpInfo == nil {
+							his.IpInfo = state2.history.IpInfo
+						}
 					}
 					state2.mu.Unlock()
 					m.logger.Trace(fmt.Sprint("new: tag=", outboundTag, " realtag ", realtag, " history=", his))
@@ -133,11 +136,13 @@ func (m *OutboundMonitoring) OutboundsHistory(groupTag string) map[string]*adapt
 			if his.Delay == 0 {
 				if grp2, ok := m.groups[outboundTag]; ok {
 					m.logger.Trace("the tag is group ", outboundTag)
-					if minHis := m.getMinOutboundHistory(grp2.tag); minHis != nil {
+					if minHis := m.getMinOutboundHistory(grp2.tag); minHis.Delay < TimeoutDelay {
 						m.logger.Trace("got min history from group ", grp2.tag, ": ", minHis)
-						his = *minHis
+						his.Delay = minHis.Delay
+						if his.IpInfo == nil {
+							his.IpInfo = minHis.IpInfo
+						}
 					}
-
 				}
 			}
 			if his.Delay != 0 {
@@ -149,22 +154,29 @@ func (m *OutboundMonitoring) OutboundsHistory(groupTag string) map[string]*adapt
 	return histories
 }
 
-func (m *OutboundMonitoring) getMinOutboundHistory(groupTag string) *adapter.URLTestHistory {
+func (m *OutboundMonitoring) getMinOutboundHistory(groupTag string) adapter.URLTestHistory {
+	minHis := adapter.URLTestHistory{Delay: TimeoutDelay}
 	grp, ok := m.groups[groupTag]
 	if !ok {
-		return nil
+		return minHis
 	}
-	minHis := &adapter.URLTestHistory{Delay: TimeoutDelay}
 	for outboundTag := range grp.outbounds {
 		if state, ok := m.groups[outboundTag]; ok {
 			his := m.getMinOutboundHistory(state.tag)
-			if his != nil && his.Delay < minHis.Delay {
-				minHis = his
+			if his.Delay < minHis.Delay {
+				minHis.Delay = his.Delay
+				if his.IpInfo != nil {
+					minHis.IpInfo = his.IpInfo
+				}
 			}
 		} else if state, ok := m.outbounds[outboundTag]; ok {
 			state.mu.Lock()
 			if state.history.Delay < minHis.Delay {
-				minHis = &state.history
+				minHis.Delay = state.history.Delay
+				if state.history.IpInfo != nil {
+					minHis.IpInfo = state.history.IpInfo
+				}
+
 			}
 			state.mu.Unlock()
 		}
@@ -514,7 +526,7 @@ func (m *OutboundMonitoring) tester(ctx context.Context, tag string) (adapter.UR
 	if out.history.IpInfo == nil || out.from_cache {
 		newip, t, err := ipinfo.GetIpInfo(m.logger, ctx, out.outbound)
 		if err == nil {
-			his.IpInfo = newip
+			his.IpInfo = mergeIpInfo(out.history.IpInfo, newip)
 			if t < his.Delay {
 				his.Delay = t
 			}
@@ -672,6 +684,23 @@ func (m *OutboundMonitoring) applyResult(outcome testOutcome) *adapter.URLTestHi
 
 	m.emitGroupEvent(state.groupTags)
 	return &state.history
+}
+
+func mergeIpInfo(old, new *ipinfo.IpInfo) *ipinfo.IpInfo {
+	if old == nil {
+		return new
+	}
+	if new == nil {
+		return old
+	}
+	new2 := *new // copy
+	if new2.CountryCode == "" {
+		new2.CountryCode = old.CountryCode
+	}
+	if new2.Org == "" {
+		new2.Org = old.Org
+	}
+	return &new2
 }
 
 func (m *OutboundMonitoring) collectCycleTargets() []string {
