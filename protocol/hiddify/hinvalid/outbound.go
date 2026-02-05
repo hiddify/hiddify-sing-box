@@ -36,7 +36,8 @@ func New(ctx context.Context, router adapter.Router, logger log.ContextLogger, t
 }
 
 func (h *Outbound) Type() string {
-	return C.TypeHInvalidConfig
+	// return C.TypeHInvalidConfig
+	return h.InvalidOptions.Err.Error()
 }
 
 func (h *Outbound) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
