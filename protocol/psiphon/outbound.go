@@ -12,6 +12,7 @@ import (
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/outbound"
 	"github.com/sagernet/sing-box/common/dialer"
+	"github.com/sagernet/sing-box/common/monitoring"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
@@ -104,13 +105,10 @@ func (h *Outbound) Start() error {
 //		// return h.psiphon.Dial(dst, innerConn)
 //	}
 func (h *Outbound) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
-	h.logger.Debug("diallign outboud ", h.Tag(), " to ", destination)
+	// h.logger.Debug("diallign outboud ", h.Tag(), " to ", destination)
 	ctx, metadata := adapter.ExtendContext(ctx)
 	metadata.Outbound = h.Tag()
 	metadata.Destination = destination
-	if !h.psiphon.IsConnected() {
-		return nil, E.New("psiphon tunnel is not established")
-	}
 
 	switch N.NetworkName(network) {
 	case N.NetworkTCP:
@@ -294,11 +292,23 @@ func (h *Outbound) run() {
 	// }
 }
 
+func (p *Outbound) DisplayType() string {
+	str := "⚠️ Connecting..."
+	if p.psiphon.IsConnected() {
+		str = "✔️ Connected"
+	}
+	return C.ProxyDisplayName(p.Type()) + " " + str
+}
+
 func (h *Outbound) connectOnce() error {
 
-	return h.psiphon.Start()
-
+	err := h.psiphon.Start()
+	if err != nil {
+		return err
+	}
+	monitoring.Get(h.ctx).TestNow(h.Tag())
 	// return h.connectOnce()
+	return nil
 }
 
 // func (h *Outbound) connectOnce() error {
@@ -325,4 +335,7 @@ func (h *Outbound) requestReconnect() {
 	case h.reconnectCh <- struct{}{}:
 	default:
 	}
+}
+func (h *Outbound) IsReady() bool {
+	return h.psiphon.IsConnected()
 }

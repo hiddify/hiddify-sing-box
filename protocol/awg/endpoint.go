@@ -6,10 +6,12 @@ import (
 	"encoding/hex"
 	"net"
 	"net/netip"
+	"time"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/endpoint"
 	"github.com/sagernet/sing-box/common/dialer"
+	"github.com/sagernet/sing-box/common/monitoring"
 	"github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
@@ -33,6 +35,8 @@ type Endpoint struct {
 	router    adapter.Router
 	logger    log.ContextLogger
 	dnsRouter adapter.DNSRouter
+	started   bool
+	ctx       context.Context
 }
 
 func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.AwgEndpointOptions) (adapter.Endpoint, error) {
@@ -93,6 +97,7 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 		address: options.Address,
 		router:  router,
 		logger:  logger,
+		ctx:     ctx,
 	}, nil
 }
 
@@ -222,4 +227,30 @@ func (w *Endpoint) NewConnectionEx(ctx context.Context, conn net.Conn, source M.
 	w.logger.InfoContext(ctx, "inbound connection from ", source)
 	w.logger.InfoContext(ctx, "inbound connection to ", metadata.Destination)
 	w.router.RouteConnectionEx(ctx, conn, metadata, onClose)
+}
+
+func (o *Endpoint) Start(stage adapter.StartStage) error {
+	if stage != adapter.StartStateStart {
+		// return o.endpoint.Start(false)
+	}
+	if stage == adapter.StartStatePostStart {
+		go o.readyChecker()
+	}
+	return nil
+}
+
+func (w *Endpoint) readyChecker() {
+	defer func() {
+		w.started = true
+		monitoring.Get(w.ctx).TestNow(w.Tag())
+	}()
+	for i := 0; i < 10; i++ {
+		if w.IsReady() {
+			return
+		}
+		<-time.After(time.Millisecond * 500)
+	}
+}
+func (w *Endpoint) IsReady() bool {
+	return w.started
 }

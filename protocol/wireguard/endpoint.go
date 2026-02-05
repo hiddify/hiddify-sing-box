@@ -12,6 +12,7 @@ import (
 	"github.com/sagernet/sing-box/adapter/endpoint"
 	"github.com/sagernet/sing-box/common/dialer"
 	"github.com/sagernet/sing-box/common/iponly"
+	"github.com/sagernet/sing-box/common/monitoring"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
@@ -176,8 +177,25 @@ func (w *Endpoint) Start(stage adapter.StartStage) error {
 			return err
 		}
 		w.started.Store(true)
+		go w.readyChecker()
 	}
 	return nil
+}
+func (w *Endpoint) readyChecker() {
+	defer func() {
+		if monitor := monitoring.Get(w.ctx); monitor != nil {
+			monitor.TestNow(w.Tag())
+		}
+	}()
+	for i := 0; i < 10; i++ {
+		if w.IsReady() {
+			return
+		}
+		<-time.After(time.Millisecond * 500)
+	}
+}
+func (w *Endpoint) IsReady() bool {
+	return w.started.Load()
 }
 
 func (w *Endpoint) Close() error {

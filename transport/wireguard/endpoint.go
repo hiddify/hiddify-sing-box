@@ -465,3 +465,11 @@ func (c peerConfig) GenerateIpcLines() string {
 	}
 	return ipcLines.String()
 }
+
+func (e *Endpoint) IsReady() bool {
+	device := e.device.Load()
+	if device == nil {
+		return false
+	}
+	return device.IsUnderLoad()
+}

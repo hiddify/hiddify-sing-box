@@ -183,7 +183,12 @@ func GetWarpProfileDialer(ctx context.Context, dialer N.Dialer, profile *option.
 		return api.CreateProfileLicense(ctx, profile.PrivateKey, profile.License)
 	}
 }
-
+func (w *WARPEndpoint) IsReady() bool {
+	if ok := w.isEndpointInitialized(); !ok {
+		return false
+	}
+	return w.endpoint.IsReady()
+}
 func (w *WARPEndpoint) Start(stage adapter.StartStage) error {
 	if stage != adapter.StartStatePostStart {
 		return nil

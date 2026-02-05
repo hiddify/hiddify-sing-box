@@ -108,79 +108,81 @@ func (m *OutboundMonitoring) OutboundsHistory(groupTag string) map[string]*adapt
 	if !ok {
 		return histories
 	}
-	outbounds := m.outbounds
-	//m.logger.Debug("collecting history for group ", groupTag, " with ", len(grp.outbounds), " outbounds")
+	//m.logger.Info("collecting history for group ", groupTag, " with ", len(grp.outbounds), " outbounds")
 	for outboundTag := range grp.outbounds {
-		//m.logger.Debug("checking history for outbound ", outboundTag)
-		if state, ok := outbounds[outboundTag]; ok {
-			//m.logger.Debug("found state for outbound ", outboundTag)
-			state.mu.Lock()
-			his := state.history
-			realtag := RealTag(state.outbound)
-			state.mu.Unlock()
-			//m.logger.Trace(fmt.Sprint("tag=", outboundTag, " realtag ", realtag, " history=", his))
-			if realtag != outboundTag {
+		histories[outboundTag] = m.getUrlTest(outboundTag)
+		//m.logger.Info("checking history for outbound ", outboundTag)
 
-				if state2, ok := outbounds[realtag]; ok {
-					state2.mu.Lock()
-					if state2.history.Delay != 0 && state2.history.Delay < his.Delay {
-						his.Delay = state2.history.Delay
-						if his.IpInfo == nil {
-							his.IpInfo = state2.history.IpInfo
-						}
-					}
-					state2.mu.Unlock()
-					//m.logger.Trace(fmt.Sprint("new: tag=", outboundTag, " realtag ", realtag, " history=", his))
-				}
-			}
-			if his.Delay == 0 {
-				if grp2, ok := m.groups[outboundTag]; ok {
-					//m.logger.Trace("the tag is group ", outboundTag)
-					if minHis := m.getMinOutboundHistory(grp2.tag); minHis.Delay < TimeoutDelay {
-						//m.logger.Trace("got min history from group ", grp2.tag, ": ", minHis)
-						his.Delay = minHis.Delay
-						if his.IpInfo == nil {
-							his.IpInfo = minHis.IpInfo
-						}
-					}
-				}
-			}
-			if his.Delay != 0 {
-				histories[outboundTag] = &his
-			}
-
-		}
 	}
 	return histories
 }
 
-func (m *OutboundMonitoring) getMinOutboundHistory(groupTag string) adapter.URLTestHistory {
-	minHis := adapter.URLTestHistory{Delay: TimeoutDelay}
+func (m *OutboundMonitoring) getUrlTest(outboundTag string) *adapter.URLTestHistory {
+	state, ok := m.outbounds[outboundTag]
+	if !ok {
+		return nil
+	}
+
+	if grp, ok := m.groups[outboundTag]; ok {
+		realtag := RealTag(state.outbound)
+		//m.logger.Info("outbound ", outboundTag, " is a group, checking group ", grp.tag, " with real tag ", realtag)
+		if realtag != "" && realtag != outboundTag {
+
+			t := m.getUrlTest(realtag)
+			//m.logger.Info(fmt.Sprint("real tag ", realtag, " history: ", t))
+			return t
+		}
+
+		return m.getMinGroupOutboundHistory(grp.tag)
+
+	}
+	state.mu.Lock()
+	his := state.history
+	his.IsFromCache = state.from_cache
+	state.mu.Unlock()
+	return &his
+
+}
+
+func (m *OutboundMonitoring) getMinGroupOutboundHistory(groupTag string) *adapter.URLTestHistory {
+	//m.logger.Info("getting min history for group ", groupTag)
 	grp, ok := m.groups[groupTag]
 	if !ok {
-		return minHis
+		return nil
 	}
+	var minHis *adapter.URLTestHistory
+	var minHisFromCache *adapter.URLTestHistory
 	for outboundTag := range grp.outbounds {
-		if state, ok := m.groups[outboundTag]; ok {
-			his := m.getMinOutboundHistory(state.tag)
-			if his.Delay < minHis.Delay {
+		his := m.getUrlTest(outboundTag)
+		if his == nil || his.Delay == 0 {
+			continue
+		}
+		if !his.IsFromCache {
+			if minHis == nil {
+				minHis = his
+			} else if his.Delay < minHis.Delay {
 				minHis.Delay = his.Delay
-				if his.IpInfo != nil {
+				if minHis.IpInfo == nil {
 					minHis.IpInfo = his.IpInfo
 				}
 			}
-		} else if state, ok := m.outbounds[outboundTag]; ok {
-			state.mu.Lock()
-			if state.history.Delay < minHis.Delay {
-				minHis.Delay = state.history.Delay
-				if state.history.IpInfo != nil {
-					minHis.IpInfo = state.history.IpInfo
+		} else {
+			if minHisFromCache == nil {
+				minHisFromCache = his
+			} else if his.Delay < minHisFromCache.Delay {
+				minHisFromCache.Delay = his.Delay
+				if minHisFromCache.IpInfo == nil {
+					minHisFromCache.IpInfo = his.IpInfo
 				}
-
 			}
-			state.mu.Unlock()
 		}
-
+	}
+	//m.logger.Info(fmt.Sprint("min history for group ", groupTag, ": ", minHis, " from cache: ", minHisFromCache))
+	if minHis == nil || minHis.Delay >= TimeoutDelay {
+		return minHisFromCache
+	}
+	if minHisFromCache != nil && minHis.IpInfo == nil {
+		minHis.IpInfo = minHisFromCache.IpInfo
 	}
 	return minHis
 
@@ -258,7 +260,7 @@ func NewOutboundMonitoring(ctx context.Context, logger log.ContextLogger, option
 }
 
 func (m *OutboundMonitoring) Start(stage adapter.StartStage) error {
-	m.logger.Info("starting outbound monitoring ", stage)
+	//m.logger.Info("starting outbound monitoring ", stage)
 	if stage == adapter.StartStateInitialize {
 		m.cache = service.FromContext[adapter.CacheFile](m.ctx)
 
@@ -266,13 +268,13 @@ func (m *OutboundMonitoring) Start(stage adapter.StartStage) error {
 			// if _, ok := outbound.(adapter.OutboundGroup); !ok {
 			m.outbounds[outbound.Tag()] = &outboundState{groupTags: []string{}, invalid: true, outbound: outbound}
 			// }
-			//m.logger.Debug("registered outbound for monitoring: ", outbound.Tag())
+			//m.logger.Info("registered outbound for monitoring: ", outbound.Tag())
 		}
 		for _, outbound := range m.endpointManager.Endpoints() {
 			// if _, ok := outbound.(adapter.OutboundGroup); !ok {
 			m.outbounds[outbound.Tag()] = &outboundState{groupTags: []string{}, invalid: true, outbound: outbound}
 			// }
-			//m.logger.Debug("registered outbound for monitoring: ", outbound.Tag())
+			//m.logger.Info("registered outbound for monitoring: ", outbound.Tag())
 		}
 
 		m.logger.Info("registered ", len(m.outbounds), " outbounds for monitoring")
@@ -289,7 +291,7 @@ func (m *OutboundMonitoring) Start(stage adapter.StartStage) error {
 					m.outbounds[tag].groupTags = append(m.outbounds[tag].groupTags, groupTag)
 				}
 				m.groups[groupTag] = grp
-				//m.logger.Debug("registered outbound group for monitoring: ", groupTag, " with ", len(og.All()), " outbounds")
+				//m.logger.Info("registered outbound group for monitoring: ", groupTag, " with ", len(og.All()), " outbounds")
 
 			}
 		}
@@ -345,6 +347,10 @@ func (m *OutboundMonitoring) TestNow(outboundTag string) error {
 		}
 	}
 	for _, tag := range all_outbounds {
+		if _, ok := m.groups[tag]; ok {
+			m.TestNow(tag)
+			continue
+		}
 		state := m.getState(tag)
 		if state == nil {
 			return errors.New("outbound not registered")
@@ -392,8 +398,8 @@ func (m *OutboundMonitoring) GroupObserver(groupTag string) (observer *observabl
 func (m *OutboundMonitoring) Close() error {
 	m.closerOnce.Do(func() {
 		m.cancel()
-		close(m.priorityQueue)
-		close(m.normalQueue)
+		// close(m.priorityQueue)
+		// close(m.normalQueue)
 		m.stopTimerWorkers()
 		m.workerWG.Wait()
 		m.schedulerWG.Wait()
@@ -458,7 +464,29 @@ func (m *OutboundMonitoring) executeTask(task *testTask) {
 	if task == nil {
 		return
 	}
+	select {
+	case <-m.ctx.Done():
+		return
+	default:
+	}
 	state := m.outbounds[task.outboundTag]
+
+	if !state.outbound.IsReady() {
+		m.logger.Info("outbound ", task.outboundTag, " is not ready, skipping test")
+		state.mu.Lock()
+		cycle := task.cycleID
+		state.mu.Unlock()
+		if cycle < 10 {
+			go func() {
+				<-time.After(10 * time.Second)
+				state.mu.Lock()
+				task.cycleID++
+				state.mu.Unlock()
+				m.enqueueTask(task)
+			}()
+		}
+		return
+	}
 	state.mu.Lock()
 	state.testing = true
 	state.mu.Unlock()
@@ -502,13 +530,11 @@ func (m *OutboundMonitoring) executeTask(task *testTask) {
 	}
 
 }
-func isTimeout(history *adapter.URLTestHistory) bool {
-	return history == nil || history.Delay >= TimeoutDelay || history.Delay == 0
-}
+
 func (m *OutboundMonitoring) tester(ctx context.Context, tag string) (adapter.URLTestHistory, error) {
 	out, ok := m.outbounds[tag]
 	if !ok {
-		return adapter.URLTestHistory{Delay: TimeoutDelay}, errors.New("outbound not registered")
+		return adapter.URLTestHistory{Delay: 0}, errors.New("outbound not registered")
 	}
 
 	idx := m.currentLinkIndex.Load()
@@ -533,9 +559,9 @@ func (m *OutboundMonitoring) tester(ctx context.Context, tag string) (adapter.UR
 		}
 	}
 	if his.IpInfo != nil {
-		m.logger.Debug("outbound ", tag, " IP ", fmt.Sprint(his.IpInfo), " (", his.Delay, "ms): ", err)
+		m.logger.Info("outbound ", tag, " IP ", fmt.Sprint(his.IpInfo), " (", his.Delay, "ms): ", err)
 	} else {
-		m.logger.Debug("outbound ", tag, " , IP: -          (", his.Delay, "ms)")
+		m.logger.Info("outbound ", tag, " , IP: -          (", his.Delay, "ms)")
 	}
 	return his, nil
 }
@@ -589,6 +615,7 @@ func (m *OutboundMonitoring) runStage(cycleID uint64, tags []string) []testOutco
 		if state == nil {
 			continue
 		}
+
 		wg.Add(1)
 		task := &testTask{
 			outboundTag: tag,
@@ -613,9 +640,6 @@ func (m *OutboundMonitoring) runStage(cycleID uint64, tags []string) []testOutco
 }
 
 func (m *OutboundMonitoring) enqueueTask(task *testTask) bool {
-	if task == nil {
-		return false
-	}
 
 	state, ok := m.outbounds[task.outboundTag]
 	if !ok {
@@ -710,6 +734,9 @@ func (m *OutboundMonitoring) collectCycleTargets() []string {
 	delays := make(map[string]uint16, len(tags))
 
 	for tag, state := range m.outbounds {
+		if _, ok := m.groups[tag]; ok {
+			continue
+		}
 		state.mu.Lock()
 		if state.testing || state.queued || state.priorityQueued {
 			state.mu.Unlock()
@@ -948,6 +975,12 @@ func (m *OutboundMonitoring) loadHistory() *History {
 	}
 	for tag, his := range history.OutboundData {
 		if state, ok := m.outbounds[tag]; ok && his != nil {
+			if _, ok := m.groups[tag]; ok {
+				continue
+			}
+			if his.Delay >= TimeoutDelay {
+				his.Delay = 0
+			}
 			state.mu.Lock()
 			state.history = *his
 			state.from_cache = true

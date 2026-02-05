@@ -77,10 +77,16 @@ func sortOutboundsByDelay(outbounds []adapter.Outbound, history map[string]*adap
 		var delayi uint16 = monitoring.TimeoutDelay
 		if his, ok := history[sortedOutbounds[i].Tag()]; ok && his != nil {
 			delayi = his.Delay
+			if delayi == 0 {
+				delayi = monitoring.TimeoutDelay
+			}
 		}
 		var delayj uint16 = monitoring.TimeoutDelay
 		if his, ok := history[sortedOutbounds[j].Tag()]; ok && his != nil {
 			delayj = his.Delay
+			if delayj == 0 {
+				delayj = monitoring.TimeoutDelay
+			}
 		}
 		return delayi < delayj
 	})
@@ -110,7 +116,7 @@ func getMinDelay(history map[string]*adapter.URLTestHistory) uint16 {
 	minDelay := monitoring.TimeoutDelay
 
 	for _, his := range history {
-		if his != nil && his.Delay < minDelay {
+		if his != nil && his.Delay < minDelay && his.Delay > 0 {
 			minDelay = his.Delay
 		}
 	}

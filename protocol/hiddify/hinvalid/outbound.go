@@ -35,11 +35,6 @@ func New(ctx context.Context, router adapter.Router, logger log.ContextLogger, t
 	}, nil
 }
 
-func (h *Outbound) Type() string {
-	// return C.TypeHInvalidConfig
-	return h.InvalidOptions.Err.Error()
-}
-
 func (h *Outbound) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
 	h.logger.InfoContext(ctx, "blocked connection to ", destination)
 	return nil, syscall.EPERM
@@ -48,4 +43,8 @@ func (h *Outbound) DialContext(ctx context.Context, network string, destination 
 func (h *Outbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
 	h.logger.InfoContext(ctx, "blocked packet connection to ", destination)
 	return nil, syscall.EPERM
+}
+
+func (h *Outbound) DisplayType() string {
+	return C.ProxyDisplayName(h.Tag()) + " " + h.InvalidOptions.Err.Error()
 }

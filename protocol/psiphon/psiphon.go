@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"os"
 
@@ -63,10 +62,14 @@ type Psiphon struct {
 	ctx             context.Context
 	cancel          context.CancelFunc
 	dataStoreOpened bool
+	connected       bool
 }
 
 func (p *Psiphon) Dial(address string, conn net.Conn) (net.Conn, error) {
-	return p.controller.Dial(address, conn)
+	if ctl := p.controller; ctl != nil {
+		return ctl.Dial(address, conn)
+	}
+	return nil, errors.New("controller not initialized")
 }
 
 func (p *Psiphon) PreStart() error {
@@ -94,22 +97,24 @@ func (p *Psiphon) closeDataStore() {
 }
 
 func (p *Psiphon) State() string {
-	if p.controller == nil {
+	if p.controller == nil || !p.connected {
 		return "connecting..."
 	}
+
 	return "connected"
 }
 func (p *Psiphon) IsConnected() bool {
-	if p.controller == nil {
+	if p.controller == nil || !p.connected {
 		return false
 	}
 	return true
 }
 
 func (p *Psiphon) Close() error {
+	p.connected = false
+	psiphon.ResetNoticeWriter()
 	p.cancel()
 	p.closeDataStore()
-	psiphon.SetNoticeWriter(io.Discard)
 	return nil
 }
 func NewPsiphon(ctx context.Context, l logger.ContextLogger, config *psiphon.Config) (*Psiphon, error) {
@@ -130,12 +135,9 @@ func (p *Psiphon) Start() error {
 		return errors.New("config.Commit failed")
 	}
 
-	// Will receive a value when the tunnel has successfully connected.
-	connected := make(chan struct{})
-	// Will receive a value if an error occurs during the connection sequence.
-	errored := make(chan error)
+	connected := make(chan struct{}, 1)
+	errored := make(chan error, 1)
 
-	// Set up notice handling
 	psiphon.SetNoticeWriter(psiphon.NewNoticeReceiver(func(notice []byte) {
 		var event NoticeEvent
 		if err := json.Unmarshal(notice, &event); err != nil {
@@ -143,7 +145,7 @@ func (p *Psiphon) Start() error {
 		}
 
 		go func(event NoticeEvent) {
-			p.logger.Debug(fmt.Sprint("psiphon core notice", "type", event.Type, "data", event.Data))
+			p.logger.Debug(fmt.Sprint("Notic ", event.Type, " data ", event.Data))
 			switch event.Type {
 			case "EstablishTunnelTimeout":
 				select {
@@ -154,6 +156,7 @@ func (p *Psiphon) Start() error {
 				if event.Data["count"].(float64) > 0 {
 					select {
 					case connected <- struct{}{}:
+						p.connected = true
 					default:
 					}
 				}
@@ -169,35 +172,33 @@ func (p *Psiphon) Start() error {
 		return err
 	}
 
-	// Create the Psiphon controller
 	controller, err := psiphon.NewController(p.config)
+
 	if err != nil {
 		return errors.New("psiphon.NewController failed")
 	}
+	p.controller = controller
 
-	// Begin tunnel connection
 	go func() {
-		// Start the tunnel. Only returns on error (or internal timeout).
-		controller.Run(ctx)
+		controller.Run(ctx) // Run will block until the controller is stopped
 
 		select {
 		case errored <- errors.New("controller.Run exited unexpectedly"):
 		default:
 		}
 	}()
-	defer func() {
-		close(connected)
-		close(errored)
-	}()
-	// Wait for an active tunnel or error
+	p.logger.Debug("Waiting for success or failure of tunnel connection...")
 	select {
+	case <-ctx.Done():
+		p.logger.Debug("Context done while waiting for success or failure of tunnel connection")
+		p.Close()
+		return ctx.Err()
 	case <-connected:
-		p.controller = controller
+		p.logger.Debug("Tunnel connection established")
 		return nil
 	case err := <-errored:
-		cancel()
-		psiphon.CloseDataStore()
-		psiphon.SetNoticeWriter(io.Discard)
+		p.logger.Debug("Tunnel connection failed: ", err)
+		p.Close()
 		return err
 	}
 
@@ -238,3 +239,7 @@ func (p *Psiphon) Start() error {
 // 	l.Info("psiphon started successfully")
 // 	return nil
 // }
+
+func (p *Psiphon) IsReady() bool {
+	return p.IsConnected()
+}
