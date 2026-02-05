@@ -9,6 +9,7 @@ const (
 	TypeBlock              = "block"
 	TypeDNS                = "dns"
 	TypeSOCKS              = "socks"
+	TypePsiphon            = "psiphon"
 	TypeTunnelClient       = "tunnel_client"
 	TypeTunnelServer       = "tunnel_server"
 	TypeHTTP               = "http"
@@ -126,6 +127,8 @@ func ProxyDisplayName(proxyType string) string {
 		return "Cloudflared"
 	case TypeMieru:
 		return "Mieru"
+	case TypePsiphon:
+		return "Psiphon"
 	case TypeSelector:
 		return "Selector"
 	case TypeURLTest:
