@@ -3,7 +3,6 @@ package psiphon
 import (
 	"context"
 	"net"
-	"net/netip"
 	"path/filepath"
 	"sync"
 	"time"
@@ -12,7 +11,6 @@ import (
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/outbound"
 	"github.com/sagernet/sing-box/common/dialer"
-	"github.com/sagernet/sing-box/common/monitoring"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
@@ -74,7 +72,7 @@ func NewOutbound(ctx context.Context, _ adapter.Router, logger log.ContextLogger
 		timeout = defaultEstablishTunnelTimeout
 	}
 	config := buildConfig(options, timeout)
-	psiphon, err := NewPsiphon(ctx, logger, config)
+	psiphon, err := NewPsiphon(ctx, logger, config, tag)
 	if err != nil {
 
 		return nil, err
@@ -166,19 +164,6 @@ func (h *Outbound) DialContext(ctx context.Context, network string, destination 
 	// }
 	// return psiphon.DialTCP(ctx, destination.String(), &dialConf)
 
-}
-func netipAddrToIP(a netip.Addr) net.IP {
-	if !a.IsValid() {
-		return nil
-	}
-
-	if a.Is4() {
-		ip := a.As4()
-		return net.IP(ip[:])
-	}
-
-	ip := a.As16()
-	return net.IP(ip[:])
 }
 func (h *Outbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
 	return nil, E.New("UDP is not supported by psiphon outbound")
@@ -301,14 +286,7 @@ func (p *Outbound) DisplayType() string {
 }
 
 func (h *Outbound) connectOnce() error {
-
-	err := h.psiphon.Start()
-	if err != nil {
-		return err
-	}
-	monitoring.Get(h.ctx).TestNow(h.Tag())
-	// return h.connectOnce()
-	return nil
+	return h.psiphon.Start()
 }
 
 // func (h *Outbound) connectOnce() error {

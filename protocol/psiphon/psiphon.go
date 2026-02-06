@@ -9,6 +9,7 @@ import (
 	"os"
 
 	"github.com/Psiphon-Labs/psiphon-tunnel-core/psiphon"
+	"github.com/sagernet/sing-box/common/monitoring"
 	"github.com/sagernet/sing/common/logger"
 )
 
@@ -63,6 +64,7 @@ type Psiphon struct {
 	cancel          context.CancelFunc
 	dataStoreOpened bool
 	connected       bool
+	tag             string
 }
 
 func (p *Psiphon) Dial(address string, conn net.Conn) (net.Conn, error) {
@@ -117,11 +119,12 @@ func (p *Psiphon) Close() error {
 	p.closeDataStore()
 	return nil
 }
-func NewPsiphon(ctx context.Context, l logger.ContextLogger, config *psiphon.Config) (*Psiphon, error) {
+func NewPsiphon(ctx context.Context, l logger.ContextLogger, config *psiphon.Config, tag string) (*Psiphon, error) {
 	p := Psiphon{
 		logger: l,
 		config: config,
 		ctx:    ctx,
+		tag:    tag,
 	}
 	return &p, nil
 }
@@ -157,6 +160,7 @@ func (p *Psiphon) Start() error {
 					select {
 					case connected <- struct{}{}:
 						p.connected = true
+						monitoring.Get(p.ctx).TestNow(p.tag)
 					default:
 					}
 				}
@@ -239,7 +243,3 @@ func (p *Psiphon) Start() error {
 // 	l.Info("psiphon started successfully")
 // 	return nil
 // }
-
-func (p *Psiphon) IsReady() bool {
-	return p.IsConnected()
-}
