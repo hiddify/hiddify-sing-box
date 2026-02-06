@@ -108,10 +108,10 @@ func (m *OutboundMonitoring) OutboundsHistory(groupTag string) map[string]*adapt
 	if !ok {
 		return histories
 	}
-	//m.logger.Info("collecting history for group ", groupTag, " with ", len(grp.outbounds), " outbounds")
+	//m.logger.Debug("collecting history for group ", groupTag, " with ", len(grp.outbounds), " outbounds")
 	for outboundTag := range grp.outbounds {
 		histories[outboundTag] = m.getUrlTest(outboundTag)
-		//m.logger.Info("checking history for outbound ", outboundTag)
+		// m.logger.Error("checking history for outbound ", outboundTag)
 
 	}
 	return histories
@@ -125,12 +125,9 @@ func (m *OutboundMonitoring) getUrlTest(outboundTag string) *adapter.URLTestHist
 
 	if grp, ok := m.groups[outboundTag]; ok {
 		realtag := RealTag(state.outbound)
-		//m.logger.Info("outbound ", outboundTag, " is a group, checking group ", grp.tag, " with real tag ", realtag)
+		//m.logger.Debug("outbound ", outboundTag, " is a group, checking group ", grp.tag, " with real tag ", realtag)
 		if realtag != "" && realtag != outboundTag {
-
-			t := m.getUrlTest(realtag)
-			//m.logger.Info(fmt.Sprint("real tag ", realtag, " history: ", t))
-			return t
+			return m.getUrlTest(realtag)
 		}
 
 		return m.getMinGroupOutboundHistory(grp.tag)
@@ -145,7 +142,6 @@ func (m *OutboundMonitoring) getUrlTest(outboundTag string) *adapter.URLTestHist
 }
 
 func (m *OutboundMonitoring) getMinGroupOutboundHistory(groupTag string) *adapter.URLTestHistory {
-	//m.logger.Info("getting min history for group ", groupTag)
 	grp, ok := m.groups[groupTag]
 	if !ok {
 		return nil
@@ -162,29 +158,30 @@ func (m *OutboundMonitoring) getMinGroupOutboundHistory(groupTag string) *adapte
 				minHis = his
 			} else if his.Delay < minHis.Delay {
 				minHis.Delay = his.Delay
-				if minHis.IpInfo == nil {
-					minHis.IpInfo = his.IpInfo
-				}
+				minHis.IpInfo = his.IpInfo
+			} else if minHis.IpInfo == nil {
+				minHis.IpInfo = his.IpInfo
 			}
 		} else {
 			if minHisFromCache == nil {
 				minHisFromCache = his
 			} else if his.Delay < minHisFromCache.Delay {
 				minHisFromCache.Delay = his.Delay
-				if minHisFromCache.IpInfo == nil {
-					minHisFromCache.IpInfo = his.IpInfo
-				}
+				minHisFromCache.IpInfo = his.IpInfo
+			} else if minHisFromCache.IpInfo == nil {
+				minHisFromCache.IpInfo = his.IpInfo
 			}
 		}
 	}
-	//m.logger.Info(fmt.Sprint("min history for group ", groupTag, ": ", minHis, " from cache: ", minHisFromCache))
+
+	final := minHis
 	if minHis == nil || minHis.Delay >= TimeoutDelay {
-		return minHisFromCache
+		final = minHisFromCache
+	} else if minHisFromCache != nil && minHis.IpInfo == nil {
+		final.IpInfo = minHisFromCache.IpInfo
 	}
-	if minHisFromCache != nil && minHis.IpInfo == nil {
-		minHis.IpInfo = minHisFromCache.IpInfo
-	}
-	return minHis
+
+	return final
 
 }
 
@@ -546,7 +543,7 @@ func (m *OutboundMonitoring) tester(ctx context.Context, tag string) (adapter.UR
 	}
 	if err != nil || delay >= TimeoutDelay {
 		his.Delay = TimeoutDelay
-		m.logger.Error("outbound ", tag, " URL test failed: ", err)
+		m.logger.Warn("outbound ", tag, " URL test failed: ", err)
 		return his, err
 	}
 	if out.history.IpInfo == nil || out.from_cache {
@@ -875,13 +872,6 @@ func (m *OutboundMonitoring) groupNotifierLoop(grp *groupState) {
 
 func (m *OutboundMonitoring) getState(tag string) *outboundState {
 	return m.outbounds[tag]
-}
-
-func errorString(err error) string {
-	if err == nil {
-		return ""
-	}
-	return err.Error()
 }
 
 type testTask struct {

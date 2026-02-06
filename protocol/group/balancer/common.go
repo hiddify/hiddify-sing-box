@@ -71,39 +71,45 @@ func jumpHash(key uint64, buckets int32) int32 {
 	return int32(b)
 }
 
+func getModifiedDelay(his *adapter.URLTestHistory) uint16 {
+	if his == nil {
+		return monitoring.TimeoutDelay
+	}
+	delay := his.Delay
+	if delay == 0 {
+		delay = monitoring.TimeoutDelay
+	}
+	if his.IsFromCache && delay < 20000 {
+		// if the history is from cache, we can not trust the delay
+		delay += 20000
+	}
+	return delay
+}
+func getTagDelay(tag string, history map[string]*adapter.URLTestHistory) uint16 {
+	if his, ok := history[tag]; ok && his != nil {
+		return getModifiedDelay(his)
+	}
+	return monitoring.TimeoutDelay
+}
+
 func sortOutboundsByDelay(outbounds []adapter.Outbound, history map[string]*adapter.URLTestHistory) []adapter.Outbound {
 	sortedOutbounds := append([]adapter.Outbound{}, outbounds...)
 	sort.SliceStable(sortedOutbounds, func(i, j int) bool {
-		var delayi uint16 = monitoring.TimeoutDelay
-		if his, ok := history[sortedOutbounds[i].Tag()]; ok && his != nil {
-			delayi = his.Delay
-			if delayi == 0 {
-				delayi = monitoring.TimeoutDelay
-			}
-		}
-		var delayj uint16 = monitoring.TimeoutDelay
-		if his, ok := history[sortedOutbounds[j].Tag()]; ok && his != nil {
-			delayj = his.Delay
-			if delayj == 0 {
-				delayj = monitoring.TimeoutDelay
-			}
-		}
+		var delayi uint16 = getTagDelay(sortedOutbounds[i].Tag(), history)
+		var delayj uint16 = getTagDelay(sortedOutbounds[j].Tag(), history)
 		return delayi < delayj
 	})
 	return sortedOutbounds
 }
 func getAcceptableIndex(sortedOutbounds []adapter.Outbound, history map[string]*adapter.URLTestHistory, delayAcceptableRatio float64) int {
-	minDelay := monitoring.TimeoutDelay
-	if his, ok := history[sortedOutbounds[0].Tag()]; ok && his != nil {
-		minDelay = his.Delay
-	}
+	minDelay := getTagDelay(sortedOutbounds[0].Tag(), history)
 
 	maxAcceptableDelay := float64(math.Max(100, float64(minDelay))) * delayAcceptableRatio
 
 	maxAvailableIndex := 0
 	for i, outbound := range sortedOutbounds {
-
-		if his, ok := history[outbound.Tag()]; ok && his != nil && his.Delay <= uint16(maxAcceptableDelay) {
+		delay := getTagDelay(outbound.Tag(), history)
+		if delay <= uint16(maxAcceptableDelay) {
 			maxAvailableIndex = i
 		}
 	}
@@ -112,16 +118,18 @@ func getAcceptableIndex(sortedOutbounds []adapter.Outbound, history map[string]*
 
 }
 
-func getMinDelay(history map[string]*adapter.URLTestHistory) uint16 {
+func getMinDelay(outbounds []adapter.Outbound, history map[string]*adapter.URLTestHistory) (adapter.Outbound, uint16) {
 	minDelay := monitoring.TimeoutDelay
-
-	for _, his := range history {
-		if his != nil && his.Delay < minDelay && his.Delay > 0 {
-			minDelay = his.Delay
+	var minOut adapter.Outbound
+	for _, out := range outbounds {
+		d := getTagDelay(out.Tag(), history)
+		if d < minDelay {
+			minDelay = d
+			minOut = out
 		}
 	}
 
-	return minDelay
+	return minOut, minDelay
 
 }
 

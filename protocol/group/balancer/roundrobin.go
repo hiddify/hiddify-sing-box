@@ -29,7 +29,7 @@ func NewRoundRobin(outbounds []adapter.Outbound, options option.BalancerOutbound
 func (s *RoundRobin) Now() string {
 	s.idxMutex.Lock()
 	defer s.idxMutex.Unlock()
-	return s.sortedOutbounds[0].Tag()
+	return ""
 }
 
 func (s *RoundRobin) UpdateOutboundsInfo(history map[string]*adapter.URLTestHistory) {

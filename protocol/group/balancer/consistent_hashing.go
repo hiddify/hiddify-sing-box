@@ -35,7 +35,8 @@ func (s *ConsistentHashing) Now() string {
 	return s.outbounds[0].Tag()
 }
 func (s *ConsistentHashing) UpdateOutboundsInfo(history map[string]*adapter.URLTestHistory) {
-	acceptableDelay := uint16(float64(getMinDelay(history)) * s.delayAcceptableRatio)
+	_, minDelay := getMinDelay(s.outbounds, history)
+	acceptableDelay := uint16(float64(minDelay) * s.delayAcceptableRatio)
 	delayMap := getDelayMap(history)
 
 	s.idxMutex.Lock()
