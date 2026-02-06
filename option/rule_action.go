@@ -232,6 +232,7 @@ type AbstractDNSRouteActionOptions struct {
 	RewriteTTL             *uint32               `json:"rewrite_ttl,omitempty"`
 	ClientSubnet           *badoption.Prefixable `json:"client_subnet,omitempty"`
 	RemoveClientSubnet     bool                  `json:"remove_client_subnet,omitempty"`
+	BypassIfFailed         bool                  `json:"bypass_if_failed,omitempty"`
 }
 
 type DNSRouteOptionsActionOptions AbstractDNSRouteActionOptions

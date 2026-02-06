@@ -21,6 +21,12 @@ func IsBlockedIP(ip netip.Addr) bool {
 }
 
 func FilterBlocked(addrs []netip.Addr) []netip.Addr {
+	if addrs == nil {
+		return nil
+	}
+	if len(addrs) == 0 {
+		return addrs
+	}
 	out := addrs[:0] // in-place filter, no extra alloc
 	for _, ip := range addrs {
 		if !IsBlockedIP(ip) {

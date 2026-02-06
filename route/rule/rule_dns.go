@@ -570,3 +570,17 @@ func (r *LogicalDNSRule) MatchAddressLimit(metadata *adapter.InboundContext, res
 	matchMetadata.DestinationAddressMatchFromResponse = true
 	return r.abstractLogicalRule.Match(&matchMetadata)
 }
+func (r *LogicalDNSRule) BypassIfFailed() bool {
+
+	if act, ok := r.action.(*RuleActionDNSRoute); ok && act != nil {
+		return act.RuleActionDNSRouteOptions.BypassIfFailed
+	}
+	return false
+}
+
+func (r *DefaultDNSRule) BypassIfFailed() bool {
+	if act, ok := r.action.(*RuleActionDNSRoute); ok && act != nil {
+		return act.RuleActionDNSRouteOptions.BypassIfFailed
+	}
+	return false
+}

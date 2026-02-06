@@ -141,6 +141,7 @@ func NewDNSRuleAction(logger logger.ContextLogger, action option.DNSRuleAction) 
 				RewriteTTL:             action.RouteOptions.RewriteTTL,
 				ClientSubnet:           netip.Prefix(common.PtrValueOrDefault(action.RouteOptions.ClientSubnet)),
 				RemoveClientSubnet:     action.RouteOptions.RemoveClientSubnet,
+				BypassIfFailed:         action.RouteOptions.BypassIfFailed,
 			},
 		}
 	case C.RuleActionTypeEvaluate:
@@ -371,6 +372,7 @@ type RuleActionDNSRouteOptions struct {
 	RewriteTTL             *uint32
 	ClientSubnet           netip.Prefix
 	RemoveClientSubnet     bool
+	BypassIfFailed         bool
 }
 
 func (r *RuleActionDNSRouteOptions) Type() string {

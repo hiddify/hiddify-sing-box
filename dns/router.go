@@ -1314,6 +1314,9 @@ func (r *Router) Lookup(ctx context.Context, domain string, options adapter.DNSQ
 			if rule != nil {
 				switch action := rule.Action().(type) {
 				case *R.RuleActionReject:
+					if rule.BypassIfFailed() {
+						continue
+					}
 					return nil, &R.RejectedError{Cause: action.Error(ctx)}
 				case *R.RuleActionPredefined:
 					responseAddrs = nil
@@ -1329,6 +1332,8 @@ func (r *Router) Lookup(ctx context.Context, domain string, options adapter.DNSQ
 								responseAddrs = append(responseAddrs, M.AddrFromIP(record.AAAA))
 							}
 						}
+						responseAddrs = FilterBlocked(responseAddrs)
+
 					}
 					goto response
 				}
@@ -1338,6 +1343,10 @@ func (r *Router) Lookup(ctx context.Context, domain string, options adapter.DNSQ
 				dnsOptions.Strategy = r.defaultDomainStrategy
 			}
 			responseAddrs, err = r.client.Lookup(dnsCtx, transport, domain, dnsOptions, responseCheck)
+			responseAddrs = FilterBlocked(responseAddrs)
+			if rule != nil && len(responseAddrs) == 0 && rule.BypassIfFailed() {
+				continue
+			}
 			if responseCheck == nil || err == nil {
 				break
 			}
