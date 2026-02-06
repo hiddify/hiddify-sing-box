@@ -123,7 +123,7 @@ func getMinDelay(outbounds []adapter.Outbound, history map[string]*adapter.URLTe
 	var minOut adapter.Outbound
 	for _, out := range outbounds {
 		d := getTagDelay(out.Tag(), history)
-		if d < minDelay {
+		if d <= minDelay {
 			minDelay = d
 			minOut = out
 		}

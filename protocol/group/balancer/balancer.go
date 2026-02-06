@@ -151,7 +151,9 @@ func (s *Balancer) Close() error {
 }
 
 func (s *Balancer) Now() string {
-
+	if s.strategyFn == nil {
+		return ""
+	}
 	return s.strategyFn.Now()
 }
 
