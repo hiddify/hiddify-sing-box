@@ -32,9 +32,9 @@ on:
         type: string
   push:
     branches:
-      - stable
-      - testing
-      - unstable
+      - main-next
+      - dev-next
+      - extended
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}-${{ inputs.build }}
