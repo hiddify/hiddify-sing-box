@@ -88,16 +88,12 @@ jobs:
     needs:
       - calculate_version
     strategy:
-<<<<<<< HEAD
       max-parallel: 13
-=======
       fail-fast: false
->>>>>>> 6b14d4984 (fix: workflow)
       matrix:
         include:
           - { os: linux, arch: amd64, variant: purego, naive: true }
           - { os: linux, arch: amd64, variant: glibc, naive: true }
-<<<<<<< HEAD
           - { os: linux, arch: amd64, variant: musl, naive: true, debian: amd64, rpm: x86_64, pacman: x86_64, alpine: x86_64, openwrt: "x86_64" }
 
           - { os: linux, arch: arm64, variant: purego, naive: true }
@@ -133,43 +129,14 @@ jobs:
           - { os: linux, arch: ppc64le, debian: ppc64el, rpm: ppc64le }
           - { os: linux, arch: riscv64 }
           - { os: linux, arch: loong64 }
-=======
-          # - { os: linux, arch: amd64, variant: musl, naive: true, debian: amd64, rpm: x86_64, pacman: x86_64, openwrt: "x86_64" }
-
-          - { os: linux, arch: arm64, variant: purego, naive: true }
-          - { os: linux, arch: arm64, variant: glibc, naive: true }
-          # - { os: linux, arch: arm64, variant: musl, naive: true, debian: arm64, rpm: aarch64, pacman: aarch64, openwrt: "aarch64_cortex-a53 aarch64_cortex-a72 aarch64_cortex-a76 aarch64_generic" }
-
-          # - { os: linux, arch: "386", go386: sse2 }
-          # - { os: linux, arch: "386", variant: glibc, naive: true, go386: sse2 }
-          # - { os: linux, arch: "386", variant: musl, naive: true, go386: sse2, debian: i386, rpm: i386, openwrt: "i386_pentium4" }
-
-          # - { os: linux, arch: arm, goarm: "7" }
-          # - { os: linux, arch: arm, variant: glibc, naive: true, goarm: "7" }
-          # - { os: linux, arch: arm, variant: musl, naive: true, goarm: "7", debian: armhf, rpm: armv7hl, pacman: armv7hl, openwrt: "arm_cortex-a5_vfpv4 arm_cortex-a7_neon-vfpv4 arm_cortex-a7_vfpv4 arm_cortex-a8_vfpv3 arm_cortex-a9_neon arm_cortex-a9_vfpv3-d16 arm_cortex-a15_neon-vfpv4" }
-
-          # - { os: linux, arch: "386", go386: softfloat, openwrt: "i386_pentium-mmx" }
-          # - { os: linux, arch: arm, goarm: "5", openwrt: "arm_arm926ej-s arm_cortex-a7 arm_cortex-a9 arm_fa526 arm_xscale" }
-          # - { os: linux, arch: arm, goarm: "6", debian: armel, rpm: armv6hl, openwrt: "arm_arm1176jzf-s_vfp" }
-          # - { os: linux, arch: mips, gomips: softfloat, openwrt: "mips_24kc mips_4kec mips_mips32" }
-          # - { os: linux, arch: mipsle, gomips: hardfloat, debian: mipsel, rpm: mipsel, openwrt: "mipsel_24kc_24kf" }
-          # - { os: linux, arch: mipsle, gomips: softfloat, openwrt: "mipsel_24kc mipsel_74kc mipsel_mips32" }
-          # - { os: linux, arch: mips64, gomips: softfloat, openwrt: "mips64_mips64r2 mips64_octeonplus" }
-          # - { os: linux, arch: mips64le, gomips: hardfloat, debian: mips64el, rpm: mips64el }
-          # - { os: linux, arch: mips64le, gomips: softfloat, openwrt: "mips64el_mips64r2" }
-          # - { os: linux, arch: s390x, debian: s390x, rpm: s390x }
-          # - { os: linux, arch: ppc64le, debian: ppc64el, rpm: ppc64le }
-          # - { os: linux, arch: riscv64, debian: riscv64, rpm: riscv64, openwrt: "riscv64_generic" }
-          # - { os: linux, arch: loong64, debian: loongarch64, rpm: loongarch64, openwrt: "loongarch64_generic" }
->>>>>>> 6b14d4984 (fix: workflow)
 
           - { os: windows, arch: amd64, legacy_win7: true, legacy_name: "windows-7" }
           - { os: windows, arch: "386", legacy_win7: true, legacy_name: "windows-7" }
 
-          - { os: android, arch: arm64, ndk: "aarch64-linux-android23" }
-          - { os: android, arch: arm, ndk: "armv7a-linux-androideabi23" }
-          - { os: android, arch: amd64, ndk: "x86_64-linux-android23" }
-          - { os: android, arch: "386", ndk: "i686-linux-android23" }
+          # - { os: android, arch: arm64, ndk: "aarch64-linux-android23" }
+          # - { os: android, arch: arm, ndk: "armv7a-linux-androideabi23" }
+          # - { os: android, arch: amd64, ndk: "x86_64-linux-android23" }
+          # - { os: android, arch: "386", ndk: "i686-linux-android23" }
     steps:
       - name: Checkout
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
@@ -229,6 +196,15 @@ jobs:
           rm -f ~/cronet-go/naiveproxy/src/build/linux/sysroot_scripts/keyring.gpg
           cd ~/cronet-go
           GPG_TTY=/dev/null ./naiveproxy/src/build/linux/sysroot_scripts/generate_keyring.sh
+      - name: Cache Chromium toolchain
+        if: matrix.naive && matrix.variant != 'purego'
+        id: cache-chromium-toolchain
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/cronet-go/naiveproxy/src/third_party/llvm-build/Release+Asserts
+            ~/cronet-go/naiveproxy/src/out/sysroot-build
+          key: chromium-toolchain-${{ matrix.arch }}-${{ matrix.variant }}-${{ hashFiles('.github/CRONET_GO_VERSION') }}
       - name: Download Chromium toolchain
         if: matrix.naive && matrix.variant != 'purego'
         run: |

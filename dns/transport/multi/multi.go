@@ -82,13 +82,17 @@ func (m *Transport) Exchange(ctx context.Context, msg *mDNS.Msg) (*mDNS.Msg, err
 
 	return m.exchangeParallel(ctx, msg)
 }
-func (m *Transport) exchangeSerial(ctx context.Context, msg *mDNS.Msg) (*mDNS.Msg, error) {
+func (m *Transport) exchangeSerial(parent context.Context, msg *mDNS.Msg) (*mDNS.Msg, error) {
+	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
+	defer cancel()
 	var lastErr error
 	var lastResp *mDNS.Msg
 
 	for _, tr := range m.transports {
-		if ctx.Err() != nil {
-			break
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
 		}
 
 		resp, err := tr.Exchange(ctx, msg)
@@ -114,7 +118,7 @@ func (m *Transport) exchangeSerial(ctx context.Context, msg *mDNS.Msg) (*mDNS.Ms
 	return nil, E.New("no dns response")
 }
 func (m *Transport) exchangeParallel(parent context.Context, msg *mDNS.Msg) (*mDNS.Msg, error) {
-	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
 	defer cancel()
 
 	type result struct {
