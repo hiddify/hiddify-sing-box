@@ -32,6 +32,7 @@ const TimeoutDelay uint16 = 65535
 
 var _ adapter.ConnectionTracker = (*OutboundMonitoring)(nil)
 var _ adapter.LifecycleService = (*OutboundMonitoring)(nil)
+var _ adapter.InterfaceUpdateListener = (*OutboundMonitoring)(nil)
 
 const (
 	defaultWorkerCount    = 10
@@ -92,6 +93,11 @@ type OutboundMonitoring struct {
 	workerWG    sync.WaitGroup
 	schedulerWG sync.WaitGroup
 	closerOnce  sync.Once
+}
+
+// InterfaceUpdated implements [adapter.InterfaceUpdateListener].
+func (m *OutboundMonitoring) InterfaceUpdated() {
+	m.startCycleOnce()
 }
 
 // Name implements [adapter.LifecycleService].
