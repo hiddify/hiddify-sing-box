@@ -246,8 +246,8 @@ func NewOutboundMonitoring(ctx context.Context, logger log.ContextLogger, option
 		urlTestTimeout: options.URLTestTimeout.Build(),
 		debounceWindow: options.DebounceWindow.Build(),
 
-		priorityQueue: make(chan *testTask, 64),
-		normalQueue:   make(chan *testTask, 1024),
+		priorityQueue: make(chan *testTask, 1000),
+		normalQueue:   make(chan *testTask, 10000),
 		outbounds:     make(map[string]*outboundState),
 		groups:        make(map[string]*groupState),
 	}
@@ -334,29 +334,25 @@ func (m *OutboundMonitoring) stopTimerWorkers() {
 	m.pause.UnregisterCallback(m.pauseCallback)
 }
 
-// TestNow triggers an immediate priority URL test.
 func (m *OutboundMonitoring) TestNow(outboundTag string) error {
-	all_outbounds := []string{outboundTag}
+	return m.testNow(outboundTag, true)
+}
+func (m *OutboundMonitoring) testNow(outboundTag string, priority bool) error {
+	m.logger.Info("testing outbound ", outboundTag, " with priority: ", priority)
 	if grp, ok := m.groups[outboundTag]; ok {
-		all_outbounds = make([]string, 0, len(grp.outbounds))
 		for tag := range grp.outbounds {
-			all_outbounds = append(all_outbounds, tag)
+			m.testNow(tag, false)
 		}
-	}
-	for _, tag := range all_outbounds {
-		if _, ok := m.groups[tag]; ok {
-			m.TestNow(tag)
-			continue
-		}
-		state := m.getState(tag)
+	} else {
+		state := m.getState(outboundTag)
 		if state == nil {
 			return errors.New("outbound not registered")
 		}
 
 		task := &testTask{
-			outboundTag: tag,
+			outboundTag: outboundTag,
 			cycleID:     m.cycleSeq,
-			priority:    true,
+			priority:    priority,
 		}
 
 		if !m.enqueueTask(task) {
@@ -447,11 +443,17 @@ func (m *OutboundMonitoring) workerLoop() {
 		case <-m.ctx.Done():
 			return
 		case task := <-m.priorityQueue:
-			m.executeTask(task)
-		case task := <-m.normalQueue:
-			m.executeTask(task)
+			m.executeTask(task) //for prioritising tasks, we execute them immediately
+		default:
+			select {
+			case <-m.ctx.Done():
+				return
+			case task := <-m.priorityQueue:
+				m.executeTask(task)
+			case task := <-m.normalQueue:
+				m.executeTask(task)
+			}
 		}
-
 	}
 }
 
@@ -494,20 +496,33 @@ func (m *OutboundMonitoring) executeTask(task *testTask) {
 		}()
 		return
 	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		delay, err := m.tester(m.ctx, task.outboundTag)
 
-	delay, err := m.tester(m.ctx, task.outboundTag)
+		outcome := testOutcome{
+			outboundTag: task.outboundTag,
+			history:     delay,
+			err:         err,
+			cycleID:     task.cycleID,
+			priority:    task.priority,
+		}
 
-	outcome := testOutcome{
-		outboundTag: task.outboundTag,
-		history:     delay,
-		err:         err,
-		cycleID:     task.cycleID,
-		priority:    task.priority,
-	}
-	m.applyResult(outcome)
+		m.applyResult(outcome)
+		if task.resultCh != nil {
+			select {
+			case task.resultCh <- outcome:
+			case <-m.ctx.Done():
+			default:
+			}
 
-	if task.resultCh != nil {
-		task.resultCh <- outcome
+		}
+	}()
+	select {
+	case <-m.ctx.Done():
+		return
+	case <-done:
 	}
 
 }
@@ -521,10 +536,8 @@ func (m *OutboundMonitoring) tester(parent context.Context, tag string) (adapter
 	idx := m.currentLinkIndex.Load()
 
 	ctx, cancel := context.WithTimeout(parent, m.urlTestTimeout)
+	defer cancel()
 
-	if cancel != nil {
-		defer cancel()
-	}
 	delay, err := urltest.URLTest(ctx, m.urls[idx], out.outbound)
 
 	his := adapter.URLTestHistory{
@@ -536,11 +549,16 @@ func (m *OutboundMonitoring) tester(parent context.Context, tag string) (adapter
 		m.logger.Warn("outbound ", tag, " URL test failed: ", err)
 		return his, err
 	}
+	select {
+	case <-parent.Done():
+		return his, parent.Err()
+	default:
+	}
 	if out.history.IpInfo == nil || out.from_cache {
-		ctx, cancel := context.WithTimeout(parent, m.urlTestTimeout)
-		if cancel != nil {
-			defer cancel()
-		}
+
+		ctx, cancel2 := context.WithTimeout(parent, m.urlTestTimeout)
+		defer cancel2()
+
 		newip, t, err := ipinfo.GetIpInfo(m.logger, ctx, out.outbound)
 		if err == nil {
 			his.IpInfo = mergeIpInfo(out.history.IpInfo, newip)
@@ -680,7 +698,11 @@ func (m *OutboundMonitoring) enqueueTask(task *testTask) bool {
 }
 
 func (m *OutboundMonitoring) applyResult(outcome testOutcome) *adapter.URLTestHistory {
-
+	select {
+	case <-m.ctx.Done():
+		return nil
+	default:
+	}
 	state, ok := m.outbounds[outcome.outboundTag]
 	if !ok {
 		return nil

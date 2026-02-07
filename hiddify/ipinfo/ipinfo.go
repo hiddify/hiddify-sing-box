@@ -174,6 +174,11 @@ func GetIpInfo(logger log.Logger, ctx context.Context, detour N.Dialer) (*IpInfo
 	var lastErr error
 	startIndex := rand.Intn(len(providers))
 	for i := 0; i < len(providers); i++ {
+		select {
+		case <-ctx.Done():
+			return nil, 65535, ctx.Err()
+		default:
+		}
 		provider := providers[(i+startIndex)%len(providers)]
 		testCtx, cancel := context.WithTimeout(ctx, C.TCPTimeout)
 		ipInfo, t, err := provider.GetIPInfo(testCtx, detour)
@@ -187,6 +192,11 @@ func GetIpInfo(logger log.Logger, ctx context.Context, detour N.Dialer) (*IpInfo
 	}
 	startIndex = rand.Intn(len(fallbackProviders))
 	for i := 0; i < len(fallbackProviders); i++ {
+		select {
+		case <-ctx.Done():
+			return nil, 65535, ctx.Err()
+		default:
+		}
 		provider := fallbackProviders[(i+startIndex)%len(fallbackProviders)]
 		testCtx, cancel := context.WithTimeout(ctx, C.TCPTimeout)
 		ipInfo, t, err := provider.GetIPInfo(testCtx, detour)

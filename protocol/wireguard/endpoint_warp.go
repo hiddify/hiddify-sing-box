@@ -167,6 +167,11 @@ func GetWarpProfile(ctx context.Context, profile *option.WARPProfile) (*cloudfla
 	}
 
 	for _, dialer := range outmanager.Outbounds() {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
 		if cf, err := GetWarpProfileDialer(ctx, dialer, profile); err == nil {
 			return cf, nil
 		}

@@ -167,6 +167,11 @@ func urlTest(ctx context.Context, link string, detour N.Dialer) (t uint16, err e
 	if err != nil {
 		return
 	}
+	select {
+	case <-ctx.Done():
+		return
+	default:
+	}
 	client := http.Client{
 		Transport: &http.Transport{
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -183,6 +188,11 @@ func urlTest(ctx context.Context, link string, detour N.Dialer) (t uint16, err e
 		Timeout: C.TCPTimeout,
 	}
 	defer client.CloseIdleConnections()
+	select {
+	case <-ctx.Done():
+		return
+	default:
+	}
 	resp, err := client.Do(req.WithContext(ctx))
 	if err != nil {
 		return
@@ -192,6 +202,11 @@ func urlTest(ctx context.Context, link string, detour N.Dialer) (t uint16, err e
 	t = uint16(time.Since(start) / time.Millisecond)
 
 	if IsUnifiedDelayFromContext(ctx) {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
 		second := time.Now()
 		resp, err = client.Do(req)
 		if err != nil {
