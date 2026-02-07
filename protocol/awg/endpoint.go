@@ -248,7 +248,11 @@ func (w *Endpoint) readyChecker() {
 		if w.IsReady() {
 			return
 		}
-		<-time.After(time.Millisecond * 500)
+		select {
+		case <-w.ctx.Done():
+			return
+		case <-time.After(time.Second):
+		}
 	}
 }
 func (w *Endpoint) IsReady() bool {

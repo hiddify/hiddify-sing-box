@@ -114,13 +114,12 @@ func (s *Balancer) PostStart() error {
 }
 
 func (s *Balancer) worker() {
-	observer, err := s.monitor.GroupObserver(s.Tag())
+	observer, err := s.monitor.SubscribeGroup(s.Tag())
 	if err != nil {
 		s.logger.Error("failed to observe monitoring group: ", err)
 		return
 	}
-	sub, done, err := observer.Subscribe()
-	defer observer.UnSubscribe(sub)
+	defer s.monitor.UnsubscribeGroup(s.Tag(), observer)
 	if err != nil {
 		s.logger.Error("failed to observe monitoring group: ", err)
 		return
@@ -129,11 +128,10 @@ func (s *Balancer) worker() {
 		select {
 		case <-s.close:
 			return
-		case <-done:
-			return
+
 		case <-s.ctx.Done():
 			return
-		case _, ok := <-sub:
+		case _, ok := <-observer:
 			if !ok {
 				return
 			}

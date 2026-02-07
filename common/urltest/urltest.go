@@ -32,7 +32,6 @@ type HistoryStorage struct {
 func NewHistoryStorage() *HistoryStorage {
 	return &HistoryStorage{
 		delayHistory: make(map[string]*adapter.URLTestHistory),
-		updateHookv2: observable.NewObserver(observable.NewSubscriber[int](10), 1),
 	}
 }
 
@@ -53,10 +52,6 @@ func (s *HistoryStorage) NotifyUpdated() {
 	s.access.RLock()
 	defer s.access.RUnlock()
 	s.notifyUpdated()
-}
-
-func (s *HistoryStorage) Observer() *observable.Observer[int] {
-	return s.updateHookv2
 }
 
 func (s *HistoryStorage) LoadURLTestHistory(tag string) *adapter.URLTestHistory {
@@ -111,7 +106,6 @@ func (s *HistoryStorage) notifyUpdated() {
 	for _, updateHook := range s.updateHooks {
 		updateHook.Emit(struct{}{})
 	}
-	s.updateHookv2.Emit(1)
 }
 
 func (s *HistoryStorage) Close() error {

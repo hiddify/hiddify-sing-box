@@ -4,6 +4,8 @@ import (
 	"context"
 	"net"
 	"net/netip"
+	"sync"
+	"time"
 
 	mDNS "github.com/miekg/dns"
 	"github.com/sagernet/sing-box/adapter"
@@ -69,77 +71,119 @@ func (m *Transport) ExchangeAsync(ctx context.Context, message *mDNS.Msg, callba
 	callback(m.Exchange(ctx, message))
 }
 
-func (m *Transport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error) {
-	lastErr := E.New("No transports failed")
-	var lastResponse *mDNS.Msg
-	if m.parallel {
-		resch := make(chan *mDNS.Msg, len(m.transports))
-		errch := make(chan error, len(m.transports))
+func (m *Transport) Exchange(ctx context.Context, msg *mDNS.Msg) (*mDNS.Msg, error) {
+	if len(m.transports) == 0 {
+		return nil, E.New("no dns transports configured")
+	}
 
-		ctx, cancel := context.WithCancel(ctx)
-		defer cancel()
+	if !m.parallel {
+		return m.exchangeSerial(ctx, msg)
+	}
 
-		for _, tr := range m.transports {
-			go func(tr adapter.DNSTransport) {
-				//fmt.Println("sending to ", tr.Tag(), " with message ", message)
-				r, err := tr.Exchange(ctx, message)
-				//fmt.Println("received from ", tr.Tag(), " with response ", r, " and error ", err)
-				if err != nil {
-					errch <- err
-					return
-				}
+	return m.exchangeParallel(ctx, msg)
+}
+func (m *Transport) exchangeSerial(ctx context.Context, msg *mDNS.Msg) (*mDNS.Msg, error) {
+	var lastErr error
+	var lastResp *mDNS.Msg
 
-				select {
-				case resch <- r:
-				case <-ctx.Done():
-				}
-			}(tr)
+	for _, tr := range m.transports {
+		if ctx.Err() != nil {
+			break
 		}
-		for i := 0; i < len(m.transports); i++ {
+
+		resp, err := tr.Exchange(ctx, msg)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		resp = m.filterBlocked(resp)
+		if len(resp.Answer) > 0 {
+			return resp, nil
+		}
+
+		lastResp = resp
+	}
+
+	if lastResp != nil {
+		return lastResp, nil
+	}
+	if lastErr != nil {
+		return nil, lastErr
+	}
+	return nil, E.New("no dns response")
+}
+func (m *Transport) exchangeParallel(parent context.Context, msg *mDNS.Msg) (*mDNS.Msg, error) {
+	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
+	defer cancel()
+
+	type result struct {
+		resp *mDNS.Msg
+		err  error
+	}
+
+	results := make(chan result)
+
+	var wg sync.WaitGroup
+	wg.Add(len(m.transports))
+
+	for _, tr := range m.transports {
+		go func(tr adapter.DNSTransport) {
+			defer wg.Done()
+
+			resp, err := tr.Exchange(ctx, msg)
 			select {
-			case response := <-resch:
-				response = m.filterBlocked(ctx, response)
-				if len(response.Answer) > 0 {
-					cancel()
-					//fmt.Println("responding with ", response.Rcode, " and ", len(response.Answer), " answers ", response)
-					return response, nil
-				}
-				lastResponse = response
-			case err := <-errch:
-				lastErr = err
+			case results <- result{resp: resp, err: err}:
+			case <-ctx.Done():
 			}
-		}
+		}(tr)
+	}
 
-	} else {
-		for _, tr := range m.transports {
-			//fmt.Println("sending to ", tr.Tag(), " with message ", message)
-			response, err := tr.Exchange(ctx, message)
-			//fmt.Println("received from ", tr.Tag(), " with response ", response, " and error ", err)
-			if err != nil {
-				lastErr = err
+	// Close results exactly once
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	var lastErr error
+	var lastResp *mDNS.Msg
+
+	for {
+		select {
+		case r, ok := <-results:
+			if !ok {
+				// all transports finished
+				if lastResp != nil {
+					return lastResp, nil
+				}
+				if lastErr != nil {
+					return nil, lastErr
+				}
+				return nil, E.New("no dns response")
+			}
+			if r.err != nil {
+				lastErr = r.err
 				continue
 			}
-
-			response = m.filterBlocked(ctx, response)
-			if len(response.Answer) > 0 {
-				//fmt.Println("responding with ", response.Rcode, " and ", len(response.Answer), " answers ", response)
-				return response, nil
+			resp := m.filterBlocked(r.resp)
+			if len(resp.Answer) > 0 {
+				cancel() // stop others
+				return resp, nil
 			}
-			lastResponse = response
-
+			lastResp = resp
+		case <-ctx.Done():
+			if lastResp != nil {
+				return lastResp, nil
+			}
+			if lastErr != nil {
+				return nil, lastErr
+			}
+			return nil, ctx.Err()
 		}
 	}
-
-	if lastResponse != nil {
-		//fmt.Println("No SUCCESS! responding with ", lastResponse.Rcode, " and ", len(lastResponse.Answer), " answers ", lastResponse)
-		return lastResponse, nil
-	}
-	//fmt.Println("all transports Error, ", lastErr)
-	return nil, lastErr
-
 }
 
-func (m *Transport) filterBlocked(ctx context.Context, msg *mDNS.Msg) *mDNS.Msg {
+func (m *Transport) filterBlocked(msg *mDNS.Msg) *mDNS.Msg {
 	if msg == nil {
 		return nil
 	}
