@@ -38,6 +38,7 @@ func RegisterOutbound(registry *outbound.Registry) {
 }
 
 var _ adapter.Outbound = (*Outbound)(nil)
+var _ adapter.InterfaceUpdateListener = (*Outbound)(nil)
 
 type Outbound struct {
 	outbound.Adapter
@@ -316,4 +317,9 @@ func (h *Outbound) requestReconnect() {
 }
 func (h *Outbound) IsReady() bool {
 	return h.psiphon.IsConnected()
+}
+
+func (h *Outbound) InterfaceUpdated() {
+	h.logger.Info("Network Changed... Restarting Psiphon Tunnel")
+	h.psiphon.controller.NetworkChanged()
 }
