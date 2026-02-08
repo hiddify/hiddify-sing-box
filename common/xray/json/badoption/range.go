@@ -34,8 +34,11 @@ func (c *Range) UnmarshalJSON(content []byte) error {
 	var stringValue string
 
 	if err := json.Unmarshal(content, &stringValue); err == nil {
+
 		parts := strings.Split(stringValue, "-")
-		if len(parts) != 2 {
+		if stringValue == "" {
+			rangeValue.From, rangeValue.To = 0, 0
+		} else if len(parts) != 2 {
 			from, err := strconv.ParseInt(parts[0], 10, 32)
 			if err != nil {
 				return err

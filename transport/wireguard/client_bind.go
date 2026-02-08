@@ -101,6 +101,8 @@ func (c *ClientBind) connect() (*wireConn, error) {
 
 func (c *ClientBind) Open(port uint16) (fns []conn.ReceiveFunc, actualPort uint16, err error) {
 	select {
+	case <-c.ctx.Done():
+		return nil, 0, c.ctx.Err()
 	case <-c.done:
 		c.done = make(chan struct{})
 	default:

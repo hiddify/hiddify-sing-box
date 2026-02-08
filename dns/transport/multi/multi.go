@@ -30,6 +30,7 @@ type Transport struct {
 	transports    []adapter.DNSTransport
 	manager       adapter.DNSTransportManager
 	ignoredRanges []netip.Prefix
+	done          chan struct{}
 }
 
 func NewTransport(ctx context.Context, logger log.ContextLogger, tag string, options option.MultiDNSServerOptions) (adapter.DNSTransport, error) {
@@ -44,6 +45,7 @@ func NewTransport(ctx context.Context, logger log.ContextLogger, tag string, opt
 		serverTags:       options.Servers,
 		parallel:         options.Parallel,
 		ignoredRanges:    ignoreRanges,
+		done:             make(chan struct{}),
 	}, nil
 }
 
@@ -61,6 +63,7 @@ func (m *Transport) Start(stage adapter.StartStage) error {
 }
 
 func (t *Transport) Close() error {
+	close(t.done)
 	return nil
 }
 
@@ -90,6 +93,8 @@ func (m *Transport) exchangeSerial(parent context.Context, msg *mDNS.Msg) (*mDNS
 
 	for _, tr := range m.transports {
 		select {
+		case <-m.done:
+			return nil, E.New("transport closed")
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		default:
@@ -139,6 +144,7 @@ func (m *Transport) exchangeParallel(parent context.Context, msg *mDNS.Msg) (*mD
 			select {
 			case results <- result{resp: resp, err: err}:
 			case <-ctx.Done():
+			case <-m.done:
 			}
 		}(tr)
 	}
@@ -175,6 +181,8 @@ func (m *Transport) exchangeParallel(parent context.Context, msg *mDNS.Msg) (*mD
 				return resp, nil
 			}
 			lastResp = resp
+		case <-m.done:
+			return nil, E.New("transport closed")
 		case <-ctx.Done():
 			if lastResp != nil {
 				return lastResp, nil

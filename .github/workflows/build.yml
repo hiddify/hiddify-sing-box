@@ -11,7 +11,7 @@ on:
         description: "Build type"
         required: true
         type: choice
-        default: "All"
+        default: "Binary"
         options:
           - All
           - Binary
