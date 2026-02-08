@@ -1,4 +1,5 @@
 /htest/
+/data/*
 *.log
 *.db
 /.idea/

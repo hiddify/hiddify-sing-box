@@ -96,7 +96,7 @@ type OutboundMonitoring struct {
 }
 
 // InterfaceUpdated implements [adapter.InterfaceUpdateListener].
-func (m *OutboundMonitoring) InterfaceUpdated() {
+func (m *OutboundMonitoring) InterfaceUpdated(ctx context.Context) {
 	m.startCycleOnce()
 }
 

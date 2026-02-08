@@ -185,11 +185,11 @@ func (t *UDPTransport) exchangeTCP(ctx context.Context, message *mDNS.Msg) (*mDN
 	defer setConnDeadline(ctx, conn, deadline.NeedAdditionalReadDeadline(conn))()
 	err = WriteMessage(conn, message.Id, message)
 	if err != nil {
-		return nil, E.Cause(err, "write request")
+		return nil, E.Cause(err, "tcp write request")
 	}
 	response, err := ReadMessage(conn)
 	if err != nil {
-		return nil, E.Cause(err, "read response")
+		return nil, E.Cause(err, "tcp read response")
 	}
 	return response, nil
 }

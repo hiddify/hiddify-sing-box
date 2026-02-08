@@ -31,6 +31,7 @@ type Transport struct {
 	manager       adapter.DNSTransportManager
 	ignoredRanges []netip.Prefix
 	done          chan struct{}
+	logger        log.ContextLogger
 }
 
 func NewTransport(ctx context.Context, logger log.ContextLogger, tag string, options option.MultiDNSServerOptions) (adapter.DNSTransport, error) {
@@ -46,6 +47,7 @@ func NewTransport(ctx context.Context, logger log.ContextLogger, tag string, opt
 		parallel:         options.Parallel,
 		ignoredRanges:    ignoreRanges,
 		done:             make(chan struct{}),
+		logger:           logger,
 	}, nil
 }
 
@@ -63,6 +65,7 @@ func (m *Transport) Start(stage adapter.StartStage) error {
 }
 
 func (t *Transport) Close() error {
+	t.logger.Debug("closing multi dns transport ", t.Tag())
 	close(t.done)
 	return nil
 }
@@ -75,6 +78,15 @@ func (m *Transport) ExchangeAsync(ctx context.Context, message *mDNS.Msg, callba
 }
 
 func (m *Transport) Exchange(ctx context.Context, msg *mDNS.Msg) (*mDNS.Msg, error) {
+	defer func() {
+		select {
+		case <-m.done:
+			m.logger.Debug("m done closing multi dns transport successfully ", m.Tag())
+		case <-ctx.Done():
+			m.logger.Debug("ctx done, closing multi dns transport successfully ", m.Tag(), " ctx error: ", ctx.Err())
+		default:
+		}
+	}()
 	if len(m.transports) == 0 {
 		return nil, E.New("no dns transports configured")
 	}
@@ -90,7 +102,6 @@ func (m *Transport) exchangeSerial(parent context.Context, msg *mDNS.Msg) (*mDNS
 	defer cancel()
 	var lastErr error
 	var lastResp *mDNS.Msg
-
 	for _, tr := range m.transports {
 		select {
 		case <-m.done:
@@ -105,13 +116,14 @@ func (m *Transport) exchangeSerial(parent context.Context, msg *mDNS.Msg) (*mDNS
 			lastErr = err
 			continue
 		}
-
-		resp = m.filterBlocked(resp)
+		var change bool
+		resp, change = m.filterBlocked(resp)
 		if len(resp.Answer) > 0 {
 			return resp, nil
 		}
-
-		lastResp = resp
+		if !change {
+			lastResp = resp
+		}
 	}
 
 	if lastResp != nil {
@@ -131,7 +143,7 @@ func (m *Transport) exchangeParallel(parent context.Context, msg *mDNS.Msg) (*mD
 		err  error
 	}
 
-	results := make(chan result)
+	results := make(chan result, len(m.transports))
 
 	var wg sync.WaitGroup
 	wg.Add(len(m.transports))
@@ -153,6 +165,7 @@ func (m *Transport) exchangeParallel(parent context.Context, msg *mDNS.Msg) (*mD
 	go func() {
 		wg.Wait()
 		close(results)
+
 	}()
 
 	var lastErr error
@@ -162,7 +175,7 @@ func (m *Transport) exchangeParallel(parent context.Context, msg *mDNS.Msg) (*mD
 		select {
 		case r, ok := <-results:
 			if !ok {
-				// all transports finished
+				m.logger.Trace("all transports completed, no response received")
 				if lastResp != nil {
 					return lastResp, nil
 				}
@@ -175,12 +188,14 @@ func (m *Transport) exchangeParallel(parent context.Context, msg *mDNS.Msg) (*mD
 				lastErr = r.err
 				continue
 			}
-			resp := m.filterBlocked(r.resp)
+			resp, change := m.filterBlocked(r.resp)
 			if len(resp.Answer) > 0 {
 				cancel() // stop others
 				return resp, nil
 			}
-			lastResp = resp
+			if !change {
+				lastResp = resp
+			}
 		case <-m.done:
 			return nil, E.New("transport closed")
 		case <-ctx.Done():
@@ -195,12 +210,12 @@ func (m *Transport) exchangeParallel(parent context.Context, msg *mDNS.Msg) (*mD
 	}
 }
 
-func (m *Transport) filterBlocked(msg *mDNS.Msg) *mDNS.Msg {
+func (m *Transport) filterBlocked(msg *mDNS.Msg) (*mDNS.Msg, bool) {
 	if msg == nil {
-		return nil
+		return nil, false
 	}
 	if len(msg.Answer) == 0 {
-		return msg
+		return msg, false
 	}
 	answers := make([]mDNS.RR, 0)
 	for _, r := range msg.Answer {
@@ -217,8 +232,9 @@ func (m *Transport) filterBlocked(msg *mDNS.Msg) *mDNS.Msg {
 		}
 		answers = append(answers, r)
 	}
+	hasChanged := len(answers) != len(msg.Answer)
 	msg.Answer = answers
-	return msg
+	return msg, hasChanged
 }
 
 func (m *Transport) isBlocked(ip net.IP) bool {

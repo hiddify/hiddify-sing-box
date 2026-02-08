@@ -1175,14 +1175,14 @@ func (r *Router) exchangeLegacy(ctx context.Context, exchangeCtx *dnsExchangeCon
 		if err != nil {
 			if errors.Is(err, ErrResponseRejectedCached) {
 				rejected = true
-				r.logger.DebugContext(ctx, E.Cause(err, "response rejected for ", FormatQuestion(message.Question[0].String())), " (cached)")
+				r.logger.DebugContext(ctx, E.Cause(err, "response ", transport.Tag(), " rejected for ", FormatQuestion(message.Question[0].String())), " (cached)")
 			} else if errors.Is(err, ErrResponseRejected) {
 				rejected = true
-				r.logger.DebugContext(ctx, E.Cause(err, "response rejected for ", FormatQuestion(message.Question[0].String())))
+				r.logger.DebugContext(ctx, E.Cause(err, "response ", transport.Tag(), " rejected for ", FormatQuestion(message.Question[0].String())))
 			} else if len(message.Question) > 0 {
-				r.logger.ErrorContext(ctx, E.Cause(err, "exchange failed for ", FormatQuestion(message.Question[0].String())))
+				r.logger.ErrorContext(ctx, E.Cause(err, "exchange ", transport.Tag(), " failed for ", FormatQuestion(message.Question[0].String())))
 			} else {
-				r.logger.ErrorContext(ctx, E.Cause(err, "exchange failed for <empty query>"))
+				r.logger.ErrorContext(ctx, E.Cause(err, "exchange ", transport.Tag(), " failed for <empty query>"))
 			}
 		}
 		if responseCheck != nil && rejected {
@@ -1314,9 +1314,6 @@ func (r *Router) Lookup(ctx context.Context, domain string, options adapter.DNSQ
 			if rule != nil {
 				switch action := rule.Action().(type) {
 				case *R.RuleActionReject:
-					if rule.BypassIfFailed() {
-						continue
-					}
 					return nil, &R.RejectedError{Cause: action.Error(ctx)}
 				case *R.RuleActionPredefined:
 					responseAddrs = nil
@@ -1343,8 +1340,7 @@ func (r *Router) Lookup(ctx context.Context, domain string, options adapter.DNSQ
 				dnsOptions.Strategy = r.defaultDomainStrategy
 			}
 			responseAddrs, err = r.client.Lookup(dnsCtx, transport, domain, dnsOptions, responseCheck)
-			responseAddrs = FilterBlocked(responseAddrs)
-			if rule != nil && len(responseAddrs) == 0 && rule.BypassIfFailed() {
+			if rule != nil && len(responseAddrs) == 0 && rule.BypassIfFailed() && ruleIndex != -1 {
 				continue
 			}
 			if responseCheck == nil || err == nil {
