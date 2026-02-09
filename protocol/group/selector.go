@@ -165,13 +165,16 @@ func (s *Selector) pingSelected() {
 	realTag := RealTag(s.outbound, selected)
 	s.logger.Debug("pinging selected outbound: ", selected.Tag(), " (real tag: ", realTag, ")")
 	if r, ok := s.outbound.Outbound(realTag); ok {
-		s.logger.Debug("found real tag: ", selected.Tag(), " (real tag: ", r.Tag(), ")")
+		// s.logger.Debug("found real tag: ", selected.Tag(), " (real tag: ", r.Tag(), ")")
 		if _, ok := r.(adapter.OutboundGroup); !ok {
 			if monitor := monitoring.Get(s.ctx); monitor != nil {
 				monitor.TestNow(realTag)
 			}
 		} else {
-			s.logger.Debug(" real tag: is a group so skipping ping", selected.Tag(), " (real tag: ", r.Tag(), ")")
+			// s.logger.Debug(" real tag: is a group so skipping ping", selected.Tag(), " (real tag: ", r.Tag(), ")")
+			if monitor := monitoring.Get(s.ctx); monitor != nil {
+				monitor.SignalChange(s.Tag())
+			}
 		}
 	}
 }

@@ -343,6 +343,23 @@ func (m *OutboundMonitoring) stopTimerWorkers() {
 func (m *OutboundMonitoring) TestNow(outboundTag string) error {
 	return m.testNow(outboundTag, true)
 }
+func (m *OutboundMonitoring) SignalChange(outboundTag string) error {
+	if grp, ok := m.groups[outboundTag]; ok {
+		grp.notifyCh <- struct{}{}
+		return nil
+	}
+	state := m.getState(outboundTag)
+	if state == nil {
+		return errors.New("outbound not registered")
+	}
+	for _, groupTag := range state.groupTags {
+		if grp, ok := m.groups[groupTag]; ok {
+			grp.notifyCh <- struct{}{}
+		}
+	}
+	return nil
+
+}
 func (m *OutboundMonitoring) testNow(outboundTag string, priority bool) error {
 	m.logger.Info("testing outbound ", outboundTag, " with priority: ", priority)
 	if grp, ok := m.groups[outboundTag]; ok {
