@@ -7,4 +7,5 @@ const (
 	V2RayTransportTypeGRPC        = "grpc"
 	V2RayTransportTypeHTTPUpgrade = "httpupgrade"
 	V2RayTransportTypeXHTTP       = "xhttp"
+	V2RayTransportTypeDNSTT       = "dnstt"
 )
