@@ -27,8 +27,8 @@ func NewRoundRobin(outbounds []adapter.Outbound, options option.BalancerOutbound
 }
 
 func (s *RoundRobin) Now() string {
-	s.idxMutex.Lock()
-	defer s.idxMutex.Unlock()
+	// s.idxMutex.Lock()
+	// defer s.idxMutex.Unlock()
 	return ""
 }
 
