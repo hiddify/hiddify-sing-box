@@ -27,8 +27,7 @@ icon: material/new-box
 
     :material-plus: [auto_redirect_reset_mark](#auto_redirect_reset_mark)  
     :material-plus: [auto_redirect_nfqueue](#auto_redirect_nfqueue)  
-    :material-plus: [exclude_mptcp](#exclude_mptcp)  
-    :material-plus: [auto_redirect_iproute2_fallback_rule_index](#auto_redirect_iproute2_fallback_rule_index)
+    :material-plus: [exclude_mptcp](#exclude_mptcp)
 
 !!! quote "sing-box 1.12.0 中的更改"
 
@@ -99,7 +98,6 @@ icon: material/new-box
   "auto_redirect_reset_mark": "0x2025",
   "auto_redirect_tproxy_mark": "0x2026",
   "auto_redirect_nfqueue": 100,
-  "auto_redirect_iproute2_fallback_rule_index": 32768,
   "exclude_mptcp": false,
   "loopback_address": [
     "10.7.0.1"
@@ -403,24 +401,13 @@ sing-box DNS 模块，等价于一条
 
 默认使用 `100`。
 
-#### auto_redirect_iproute2_fallback_rule_index
-
-!!! question "自 sing-box 1.12.18 起"
-
-`auto_redirect` 生成的 iproute2 回退规则索引。
-
-此规则在系统默认规则（32766: main，32767: default）之后检查，
-仅当系统路由表中未找到路由时才将流量路由到 sing-box 路由表。
-
-默认使用 `32768`。
-
 #### exclude_mptcp
 
 !!! question "自 sing-box 1.13.0 起"
 
 !!! quote ""
 
-    仅支持 Linux，且需要 nftables，`auto_route` 和 `auto_redirect` 已启用。
+    仅支持 Linux，且需要 nftables，`auto_route` 和 `auto_redirect` 已启用。 
 
 由于协议限制，MPTCP 无法被透明代理。
 
