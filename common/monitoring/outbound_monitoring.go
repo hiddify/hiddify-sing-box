@@ -987,6 +987,9 @@ type History struct {
 }
 
 func (m *OutboundMonitoring) saveHistory() error {
+	if m.cache == nil {
+		return nil
+	}
 	history := &History{
 		OutboundData: make(map[string]*adapter.URLTestHistory),
 	}
@@ -1009,6 +1012,9 @@ func (m *OutboundMonitoring) saveHistory() error {
 }
 func (m *OutboundMonitoring) loadHistory() *History {
 	history := &History{}
+	if m.cache == nil {
+		return history
+	}
 	saved := m.cache.LoadBinary("outbound_monitoring_history")
 	if saved == nil {
 		return history
