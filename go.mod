@@ -269,14 +269,16 @@ require (
 	zombiezen.com/go/capnproto2 v2.18.2+incompatible // indirect
 )
 
-replace github.com/sagernet/wireguard-go => ./replace/wireguard-go
-
 replace github.com/sagernet/sing-dns => ./replace/sing-dns
 
 replace github.com/sagernet/sing => ./replace/sing
 
 replace github.com/ameshkov/dnscrypt/v2 => github.com/shtorm-7/dnscrypt/v2 v2.4.0-extended-1.0.0
 
-replace github.com/Psiphon-Labs/quic-go => github.com/hiddify/psiphon-quic-go v0.0.0-20260205155832-2164d1653824
+replace github.com/sagernet/wireguard-go => ./replace/wireguard-go
 
-replace github.com/Psiphon-Labs/psiphon-tls => github.com/hiddify/psiphon-tls v0.0.0-20260205181946-4af85c2fb9f2
+replace github.com/sagernet/tailscale => ./replace/tailscale
+
+replace github.com/Psiphon-Labs/quic-go => ./replace/psiphon-quic-go
+
+replace github.com/Psiphon-Labs/psiphon-tls => ./replace/psiphon-tls
