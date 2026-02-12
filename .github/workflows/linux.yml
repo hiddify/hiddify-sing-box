@@ -216,6 +216,7 @@ jobs:
         with:
           name: binary-${{ matrix.os }}_${{ matrix.arch }}${{ matrix.goarm && format('v{0}', matrix.goarm) }}${{ matrix.legacy_go && '-legacy' || '' }}
           path: "dist"
+          retention-days: 1
   upload:
     name: Upload builds
     runs-on: ubuntu-latest
