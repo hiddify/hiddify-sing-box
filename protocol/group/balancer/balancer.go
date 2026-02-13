@@ -120,10 +120,7 @@ func (s *Balancer) worker() {
 		return
 	}
 	defer s.monitor.UnsubscribeGroup(s.Tag(), observer)
-	if err != nil {
-		s.logger.Error("failed to observe monitoring group: ", err)
-		return
-	}
+
 	for {
 		select {
 		case <-s.close:

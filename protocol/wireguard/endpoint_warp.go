@@ -225,3 +225,11 @@ func (w *WARPEndpoint) isEndpointInitialized() bool {
 	defer w.mtx.Unlock()
 	return w.endpoint != nil
 }
+
+func (w *WARPEndpoint) DisplayType() string {
+	str := "⚠️ Connecting..."
+	if w.IsReady() {
+		str = ""
+	}
+	return C.ProxyDisplayName(w.Type()) + " " + str
+}

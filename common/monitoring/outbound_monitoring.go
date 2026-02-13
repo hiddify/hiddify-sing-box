@@ -269,19 +269,28 @@ func (m *OutboundMonitoring) Start(stage adapter.StartStage) error {
 
 		for _, outbound := range m.outboundManager.Outbounds() {
 			// if _, ok := outbound.(adapter.OutboundGroup); !ok {
-			m.outbounds[outbound.Tag()] = &outboundState{groupTags: []string{}, invalid: true, outbound: outbound}
+			m.outbounds[outbound.Tag()] = &outboundState{groupTags: []string{}, invalid: true, outbound: outbound, dependencies: outbound.Dependencies()}
 			// }
 			//m.logger.Info("registered outbound for monitoring: ", outbound.Tag())
 		}
 		for _, outbound := range m.endpointManager.Endpoints() {
 			// if _, ok := outbound.(adapter.OutboundGroup); !ok {
-			m.outbounds[outbound.Tag()] = &outboundState{groupTags: []string{}, invalid: true, outbound: outbound}
+			m.outbounds[outbound.Tag()] = &outboundState{groupTags: []string{}, invalid: true, outbound: outbound, dependencies: outbound.Dependencies()}
 			// }
 			//m.logger.Info("registered outbound for monitoring: ", outbound.Tag())
 		}
+		for tag, outbound := range m.outbounds {
+			for _, dep := range outbound.dependencies {
+				m.outbounds[dep].dependenciesInverse = append(m.outbounds[dep].dependenciesInverse, tag)
+			}
+		}
 
 		m.logger.Info("registered ", len(m.outbounds), " outbounds for monitoring")
-
+		grp := m.makeGroup("")
+		for tag := range m.outbounds {
+			grp.outbounds[tag] = struct{}{}
+			m.outbounds[tag].groupTags = append(m.outbounds[tag].groupTags, "")
+		}
 		for _, outbound := range m.outboundManager.Outbounds() {
 			if og, ok := outbound.(adapter.OutboundGroup); ok {
 				groupTag := og.Tag()
@@ -340,9 +349,6 @@ func (m *OutboundMonitoring) stopTimerWorkers() {
 	m.pause.UnregisterCallback(m.pauseCallback)
 }
 
-func (m *OutboundMonitoring) TestNow(outboundTag string) error {
-	return m.testNow(outboundTag, true)
-}
 func (m *OutboundMonitoring) SignalChange(outboundTag string) error {
 	if grp, ok := m.groups[outboundTag]; ok {
 		grp.notifyCh <- struct{}{}
@@ -359,6 +365,10 @@ func (m *OutboundMonitoring) SignalChange(outboundTag string) error {
 	}
 	return nil
 
+}
+func (m *OutboundMonitoring) TestNow(outboundTag string) error {
+	m.testParents(outboundTag, true)
+	return m.testNow(outboundTag, true)
 }
 func (m *OutboundMonitoring) testNow(outboundTag string, priority bool) error {
 	m.logger.Info("testing outbound ", outboundTag, " with priority: ", priority)
@@ -385,6 +395,21 @@ func (m *OutboundMonitoring) testNow(outboundTag string, priority bool) error {
 	return nil
 }
 
+func (m *OutboundMonitoring) testParents(outboundTag string, first bool) {
+	state := m.getState(outboundTag)
+	if state == nil {
+		return
+	}
+	if _, ok := m.groups[outboundTag]; !ok && !first {
+		m.logger.Info("testing outbound ", outboundTag)
+		m.testNow(outboundTag, true)
+	}
+	for _, dep := range state.dependenciesInverse {
+		m.logger.Info("testing parent outbound ", dep, " of ", outboundTag)
+		m.testParents(dep, false)
+	}
+}
+
 // InvalidateTest marks the cached test result as invalid so it will be retested.
 func (m *OutboundMonitoring) InvalidateTest(outboundTag string) error {
 	state := m.getState(outboundTag)
@@ -405,6 +430,7 @@ func (m *OutboundMonitoring) InvalidateTest(outboundTag string) error {
 }
 
 func (m *OutboundMonitoring) SubscribeGroup(groupTag string) (observer <-chan GroupEvent, err error) {
+
 	if g, ok := m.groups[groupTag]; ok {
 		return g.observer.Subscribe(1), nil
 	}
@@ -952,9 +978,11 @@ type testOutcome struct {
 type outboundState struct {
 	mu sync.Mutex
 
-	outbound  adapter.Outbound
-	groupTags []string
-	lastURL   string
+	outbound            adapter.Outbound
+	groupTags           []string
+	dependenciesInverse []string
+	dependencies        []string
+	lastURL             string
 
 	invalid        bool
 	queued         bool
