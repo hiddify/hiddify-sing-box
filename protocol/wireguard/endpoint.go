@@ -198,11 +198,6 @@ func (w *Endpoint) readyChecker() {
 		res, err := urltest.URLTest(ctx, "https://1.1.1.1", w)
 		cancel()
 		if res > 0 && res < 20000 && err == nil {
-			// select {
-			// case <-w.ctx.Done():
-			// 	return
-			// case <-time.After(time.Second):
-			// }
 			w.started.Store(true)
 			return
 		}
