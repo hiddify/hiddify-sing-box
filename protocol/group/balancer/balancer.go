@@ -159,6 +159,9 @@ func (s *Balancer) All() []string {
 
 func (s *Balancer) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
 	metadata := adapter.ContextFrom(ctx)
+	if metadata == nil {
+		metadata = &adapter.InboundContext{}
+	}
 	outbound := s.strategyFn.Select(*metadata, network, true)
 	if outbound == nil {
 		return nil, E.New("missing supported outbound")
@@ -179,6 +182,9 @@ func (s *Balancer) DialContext(ctx context.Context, network string, destination 
 
 func (s *Balancer) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
 	metadata := adapter.ContextFrom(ctx)
+	if metadata == nil {
+		metadata = &adapter.InboundContext{}
+	}
 	outbound := s.strategyFn.Select(*metadata, N.NetworkUDP, true)
 	if outbound == nil {
 		return nil, E.New("missing supported outbound")
