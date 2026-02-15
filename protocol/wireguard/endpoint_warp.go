@@ -227,9 +227,9 @@ func (w *WARPEndpoint) isEndpointInitialized() bool {
 }
 
 func (w *WARPEndpoint) DisplayType() string {
-	str := "⚠️ Connecting..."
-	if w.IsReady() {
-		str = ""
+	str := C.ProxyDisplayName(w.Type())
+	if !w.IsReady() {
+		str += " ⚠️ Connecting..."
 	}
-	return C.ProxyDisplayName(w.Type()) + " " + str
+	return str
 }

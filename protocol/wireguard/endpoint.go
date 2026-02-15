@@ -189,9 +189,6 @@ func (w *Endpoint) readyChecker() {
 		}
 	}()
 	for i := 0; i < 30; i++ {
-		if w.IsReady() {
-			return
-		}
 		select {
 		case <-w.ctx.Done():
 			return
@@ -200,7 +197,13 @@ func (w *Endpoint) readyChecker() {
 		ctx, cancel := context.WithTimeout(w.ctx, time.Second*5)
 		res, err := urltest.URLTest(ctx, "https://1.1.1.1", w)
 		cancel()
-		if res > 0 && res < 10000 && err == nil {
+		if res > 0 && res < 20000 && err == nil {
+			// select {
+			// case <-w.ctx.Done():
+			// 	return
+			// case <-time.After(time.Second):
+			// }
+			w.started.Store(true)
 			return
 		}
 	}
@@ -408,9 +411,9 @@ func (w *Endpoint) PreferredAddress(metadata *adapter.InboundContext, address ne
 }
 
 func (w *Endpoint) DisplayType() string {
-	str := "⚠️ Connecting..."
-	if w.IsReady() {
-		str = ""
+	str := C.ProxyDisplayName(w.Type())
+	if !w.IsReady() {
+		str += " ⚠️ Connecting..."
 	}
-	return C.ProxyDisplayName(w.Type()) + " " + str
+	return str
 }
