@@ -8,10 +8,10 @@ import (
 	"github.com/sagernet/sing-box/option"
 )
 
-func validateMieruTransport(transport []option.MieruTransportPort) error {
+func validateMieruTransport(transport []option.MieruPortBinding) error {
 
 	for _, pr := range transport {
-		if getTransportProtocol(pr.Transport) == nil {
+		if getTransportProtocol(pr.Protocol) == nil {
 			return fmt.Errorf("transport must be TCP or UDP")
 		}
 		if pr.Port != 0 && pr.PortRange != "" {
@@ -56,6 +56,38 @@ func getTransportProtocol(transport string) *mierupb.TransportProtocol {
 		return mierupb.TransportProtocol_TCP.Enum()
 	case "UDP":
 		return mierupb.TransportProtocol_UDP.Enum()
+	default:
+		return nil
+	}
+}
+
+func getHandshakeMode(handshakeMode string) *mierupb.HandshakeMode {
+	switch strings.ToUpper(handshakeMode) {
+	case "", "DEFAULT", "HANDSHAKE_DEFAULT":
+		return mierupb.HandshakeMode_HANDSHAKE_DEFAULT.Enum()
+	case "NO_WAIT", "NOWAIT", "HANDSHAKE_NO_WAIT":
+		return mierupb.HandshakeMode_HANDSHAKE_NO_WAIT.Enum()
+	case "STANDARD", "HANDSHAKE_STANDARD":
+		return mierupb.HandshakeMode_HANDSHAKE_STANDARD.Enum()
+	default:
+		return nil
+	}
+}
+
+func getMultiplexingLevel(multiplexingLevel string) *mierupb.MultiplexingLevel {
+	switch strings.ToUpper(multiplexingLevel) {
+	case "", "DEFAULT", "MULTIPLEXING_DEFAULT":
+		return mierupb.MultiplexingLevel_MULTIPLEXING_DEFAULT.Enum()
+
+	case "LOW", "MULTIPLEXING_LOW":
+		return mierupb.MultiplexingLevel_MULTIPLEXING_LOW.Enum()
+
+	case "MEDIUM", "MULTIPLEXING_MEDIUM", "MIDDLE", "MULTIPLEXING_MIDDLE":
+		return mierupb.MultiplexingLevel_MULTIPLEXING_MIDDLE.Enum()
+
+	case "HIGH", "MULTIPLEXING_HIGH":
+		return mierupb.MultiplexingLevel_MULTIPLEXING_HIGH.Enum()
+
 	default:
 		return nil
 	}

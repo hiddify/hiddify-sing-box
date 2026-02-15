@@ -267,12 +267,12 @@ func buildMieruServerConfig(_ context.Context, options option.MieruInboundOption
 
 	portBindings := []*mierupb.PortBinding{}
 
-	for _, pr := range options.TransportInfo {
+	for _, pr := range options.PortBindings {
 		intport := int32(pr.Port)
 		portBindings = append(portBindings, &mierupb.PortBinding{
 			PortRange: &pr.PortRange,
 			Port:      &intport,
-			Protocol:  getTransportProtocol(pr.Transport),
+			Protocol:  getTransportProtocol(pr.Protocol),
 		})
 	}
 
@@ -295,10 +295,10 @@ func buildMieruServerConfig(_ context.Context, options option.MieruInboundOption
 }
 
 func validateMieruInboundOptions(options option.MieruInboundOptions) error {
-	if options.ListenPort == 0 && len(options.TransportInfo) == 0 {
+	if options.ListenPort == 0 && len(options.PortBindings) == 0 {
 		return fmt.Errorf("either server_port or transport must be set")
 	}
-	if options.ListenPort != 0 && (len(options.TransportInfo) != 1 || options.TransportInfo[0].Port != options.ListenPort) {
+	if options.ListenPort != 0 && (len(options.PortBindings) != 1 || options.PortBindings[0].Port != options.ListenPort) {
 		return fmt.Errorf("Transport of Server Port is not defined!")
 	}
 	if len(options.Users) == 0 {
@@ -313,5 +313,5 @@ func validateMieruInboundOptions(options option.MieruInboundOptions) error {
 		}
 	}
 
-	return validateMieruTransport(options.TransportInfo)
+	return validateMieruTransport(options.PortBindings)
 }

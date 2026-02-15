@@ -176,7 +176,7 @@ func buildMieruClientConfig(options option.MieruOutboundOptions, dialer mieruDia
 		server.PortBindings = append(server.PortBindings, &mierupb.PortBinding{
 			PortRange: proto.String(pr.PortRange),
 			Port:      &intport,
-			Protocol:  getTransportProtocol(pr.Transport),
+			Protocol:  getTransportProtocol(pr.Protocol),
 		})
 	}
 	if M.IsDomainName(options.Server) {
@@ -191,7 +191,11 @@ func buildMieruClientConfig(options option.MieruOutboundOptions, dialer mieruDia
 				Name:     proto.String(options.UserName),
 				Password: proto.String(options.Password),
 			},
-			Servers: []*mierupb.ServerEndpoint{server},
+			Servers:       []*mierupb.ServerEndpoint{server},
+			HandshakeMode: getHandshakeMode(options.HandshakeMode),
+			Multiplexing: &mierupb.MultiplexingConfig{
+				Level: getMultiplexingLevel(options.Multiplexing),
+			},
 		},
 		Dialer:       dialer,
 		PacketDialer: dialer,
@@ -222,10 +226,11 @@ func validateMieruOptions(options option.MieruOutboundOptions) error {
 	if options.Password == "" {
 		return fmt.Errorf("password is empty")
 	}
-	if options.Multiplexing != "" {
-		if _, ok := mierupb.MultiplexingLevel_value[options.Multiplexing]; !ok {
-			return fmt.Errorf("invalid multiplexing level: %s", options.Multiplexing)
-		}
+	if getMultiplexingLevel(options.Multiplexing) == nil {
+		return fmt.Errorf("invalid multiplexing level: %s", options.Multiplexing)
+	}
+	if getHandshakeMode(options.HandshakeMode) == nil {
+		return fmt.Errorf("invalid handshake mode: %s", options.HandshakeMode)
 	}
 	return validateMieruTransport(options.TransportInfo)
 }
