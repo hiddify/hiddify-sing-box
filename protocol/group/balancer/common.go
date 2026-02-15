@@ -9,6 +9,8 @@ import (
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/monitoring"
+	"github.com/sagernet/sing/common"
+	N "github.com/sagernet/sing/common/network"
 	"golang.org/x/net/publicsuffix"
 )
 
@@ -92,44 +94,77 @@ func getTagDelay(tag string, history map[string]*adapter.URLTestHistory) uint16 
 	return monitoring.TimeoutDelay
 }
 
-func sortOutboundsByDelay(outbounds []adapter.Outbound, history map[string]*adapter.URLTestHistory) []adapter.Outbound {
-	sortedOutbounds := append([]adapter.Outbound{}, outbounds...)
-	sort.SliceStable(sortedOutbounds, func(i, j int) bool {
-		var delayi uint16 = getTagDelay(sortedOutbounds[i].Tag(), history)
-		var delayj uint16 = getTagDelay(sortedOutbounds[j].Tag(), history)
-		return delayi < delayj
-	})
-	return sortedOutbounds
-}
-func getAcceptableIndex(sortedOutbounds []adapter.Outbound, history map[string]*adapter.URLTestHistory, delayAcceptableRatio float64) int {
-	minDelay := getTagDelay(sortedOutbounds[0].Tag(), history)
-
-	maxAcceptableDelay := float64(math.Max(100, float64(minDelay))) * delayAcceptableRatio
-
-	maxAvailableIndex := 0
-	for i, outbound := range sortedOutbounds {
-		delay := getTagDelay(outbound.Tag(), history)
-		if delay <= uint16(maxAcceptableDelay) {
-			maxAvailableIndex = i
-		}
-	}
-
-	return maxAvailableIndex
-
-}
-
-func getMinDelay(outbounds []adapter.Outbound, history map[string]*adapter.URLTestHistory) (adapter.Outbound, uint16) {
-	minDelay := monitoring.TimeoutDelay
-	var minOut adapter.Outbound
+func filterOutbounds(outbounds []adapter.Outbound, network string) []adapter.Outbound {
+	res := []adapter.Outbound{}
 	for _, out := range outbounds {
-		d := getTagDelay(out.Tag(), history)
-		if d <= minDelay {
-			minDelay = d
-			minOut = out
+		if !common.Contains(out.Network(), network) {
+			continue
 		}
+		res = append(res, out)
+	}
+	if len(res) == 0 {
+		return outbounds
+	}
+	return res
+}
+func convertOutbounds(outbounds []adapter.Outbound) map[string][]adapter.Outbound {
+	return map[string][]adapter.Outbound{
+		N.NetworkTCP: filterOutbounds(outbounds, N.NetworkTCP),
+		N.NetworkUDP: filterOutbounds(outbounds, N.NetworkUDP),
+	}
+}
+
+func sortOutboundsByDelay(outbounds map[string][]adapter.Outbound, history map[string]*adapter.URLTestHistory) map[string][]adapter.Outbound {
+	res := map[string][]adapter.Outbound{}
+	for net, outs := range outbounds {
+		res[net] = append([]adapter.Outbound{}, outs...)
+		sort.SliceStable(res[net], func(i, j int) bool {
+			var delayi uint16 = getTagDelay(res[net][i].Tag(), history)
+			var delayj uint16 = getTagDelay(res[net][j].Tag(), history)
+			return delayi < delayj
+		})
 	}
 
-	return minOut, minDelay
+	return res
+}
+func getAcceptableIndex(sortedOutbounds map[string][]adapter.Outbound, history map[string]*adapter.URLTestHistory, delayAcceptableRatio float64) map[string]int {
+	res := map[string]int{}
+	for net, outs := range sortedOutbounds {
+		minDelay := getTagDelay(outs[0].Tag(), history)
+
+		maxAcceptableDelay := float64(math.Max(100, float64(minDelay))) * delayAcceptableRatio
+
+		maxAvailableIndex := 0
+		for i, outbound := range outs {
+			delay := getTagDelay(outbound.Tag(), history)
+			if delay <= uint16(maxAcceptableDelay) {
+				maxAvailableIndex = i
+			}
+		}
+		res[net] = maxAvailableIndex
+	}
+	return res
+
+}
+
+func getMinDelay(outbounds map[string][]adapter.Outbound, history map[string]*adapter.URLTestHistory) (map[string]adapter.Outbound, map[string]uint16) {
+	delays := map[string]uint16{}
+	bestOuts := map[string]adapter.Outbound{}
+	for net, outs := range outbounds {
+		minDelay := monitoring.TimeoutDelay
+		var minOut adapter.Outbound
+		for _, out := range outs {
+
+			d := getTagDelay(out.Tag(), history)
+			if d <= minDelay {
+				minDelay = d
+				minOut = out
+			}
+		}
+		delays[net] = minDelay
+		bestOuts[net] = minOut
+	}
+	return bestOuts, delays
 
 }
 

@@ -12,7 +12,6 @@ import (
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
-	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
@@ -133,7 +132,9 @@ func (s *Balancer) worker() {
 				return
 			}
 			outbounds := s.monitor.OutboundsHistory(s.Tag())
-			s.strategyFn.UpdateOutboundsInfo(outbounds)
+			if s.strategyFn.UpdateOutboundsInfo(outbounds) {
+				s.interruptGroup.Interrupt(s.interruptExternalConnections)
+			}
 
 		}
 	}
@@ -158,8 +159,8 @@ func (s *Balancer) All() []string {
 
 func (s *Balancer) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
 	metadata := adapter.ContextFrom(ctx)
-	outbound := s.strategyFn.Select(metadata, true)
-	if outbound == nil || !common.Contains(outbound.Network(), network) {
+	outbound := s.strategyFn.Select(*metadata, network, true)
+	if outbound == nil {
 		return nil, E.New("missing supported outbound")
 	}
 	if metadata != nil {
@@ -178,8 +179,8 @@ func (s *Balancer) DialContext(ctx context.Context, network string, destination 
 
 func (s *Balancer) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
 	metadata := adapter.ContextFrom(ctx)
-	outbound := s.strategyFn.Select(metadata, true)
-	if outbound == nil || !common.Contains(outbound.Network(), N.NetworkUDP) {
+	outbound := s.strategyFn.Select(*metadata, N.NetworkUDP, true)
+	if outbound == nil {
 		return nil, E.New("missing supported outbound")
 	}
 	if metadata != nil {
@@ -197,7 +198,7 @@ func (s *Balancer) ListenPacket(ctx context.Context, destination M.Socksaddr) (n
 
 func (s *Balancer) NewConnection(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
 	ctx = interrupt.ContextWithIsExternalConnection(ctx)
-	selected := s.strategyFn.Select(&metadata, true)
+	selected := s.strategyFn.Select(metadata, metadata.Network, true)
 	conn = s.interruptGroup.NewConn(conn, interrupt.IsExternalConnectionFromContext(ctx))
 	if outboundHandler, isHandler := selected.(adapter.ConnectionHandler); isHandler {
 		outboundHandler.NewConnection(ctx, conn, metadata, onClose)
@@ -208,7 +209,10 @@ func (s *Balancer) NewConnection(ctx context.Context, conn net.Conn, metadata ad
 
 func (s *Balancer) NewPacketConnection(ctx context.Context, conn N.PacketConn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
 	ctx = interrupt.ContextWithIsExternalConnection(ctx)
-	selected := s.strategyFn.Select(&metadata, true)
+	selected := s.strategyFn.Select(metadata, metadata.Network, true)
+	if selected == nil {
+		return
+	}
 	metadata.SetRealOutbound(selected.Tag())
 	conn = s.interruptGroup.NewSingPacketConn(conn, interrupt.IsExternalConnectionFromContext(ctx))
 	if outboundHandler, isHandler := selected.(adapter.PacketConnectionHandler); isHandler {
