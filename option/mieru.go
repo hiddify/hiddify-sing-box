@@ -1,24 +1,29 @@
 package option
 
-import "github.com/sagernet/sing/common/json/badoption"
-
 type MieruOutboundOptions struct {
 	DialerOptions
 	ServerOptions
-	ServerPortRanges badoption.Listable[string] `json:"server_ports,omitempty"`
-	Transport        badoption.Listable[string] `json:"transport,omitempty"`
-	UserName         string                     `json:"username,omitempty"`
-	Password         string                     `json:"password,omitempty"`
-	Multiplexing     string                     `json:"multiplexing,omitempty"`
+	TransportInfo []MieruTransportPort `json:"transport_info,omitempty"`
+	UserName      string               `json:"username,omitempty"`
+	Password      string               `json:"password,omitempty"`
+	Multiplexing  string               `json:"multiplexing,omitempty"`
+	Network       NetworkList          `json:"network,omitempty"`
 }
 
 type MieruInboundOptions struct {
 	ListenOptions
-	Users     []MieruUser `json:"users,omitempty"`
-	Transport string      `json:"transport,omitempty"`
+	Users         []MieruUser          `json:"users,omitempty"`
+	TransportInfo []MieruTransportPort `json:"transport_info,omitempty"`
+	Network       NetworkList          `json:"network,omitempty"`
+}
+
+type MieruTransportPort struct {
+	Transport string `json:"transport,omitempty"`
+	PortRange string `json:"port_range,omitempty"`
+	Port      uint16 `json:"port,omitempty"`
 }
 
 type MieruUser struct {
-	Name     string `json:"name,omitempty"`
+	Name     string `json:"username,omitempty"`
 	Password string `json:"password,omitempty"`
 }

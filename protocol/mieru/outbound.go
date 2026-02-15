@@ -55,7 +55,7 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 	logger.InfoContext(ctx, "mieru client is started")
 
 	return &Outbound{
-		Adapter: outbound.NewAdapterWithDialerOptions(C.TypeMieru, tag, []string{N.NetworkTCP, N.NetworkUDP}, options.DialerOptions),
+		Adapter: outbound.NewAdapterWithDialerOptions(C.TypeMieru, tag, options.Network.Build(), options.DialerOptions),
 		dialer:  outboundDialer,
 		logger:  logger,
 		client:  c,
@@ -164,26 +164,19 @@ func socksAddrToNetAddrSpec(sa M.Socksaddr, network string) (mierumodel.NetAddrS
 	return nas, nil
 }
 
-func getTransportProtocol(transport string) *mierupb.TransportProtocol {
-	switch transport {
-	case "TCP":
-		return mierupb.TransportProtocol_TCP.Enum()
-	case "UDP":
-		return mierupb.TransportProtocol_UDP.Enum()
-	default:
-		return mierupb.TransportProtocol_TCP.Enum()
-	}
-}
 func buildMieruClientConfig(options option.MieruOutboundOptions, dialer mieruDialer) (*mieruclient.ClientConfig, error) {
 	if err := validateMieruOptions(options); err != nil {
 		return nil, fmt.Errorf("failed to validate mieru options: %w", err)
 	}
 
 	server := &mierupb.ServerEndpoint{}
-	for i, pr := range options.ServerPortRanges {
+	for _, pr := range options.TransportInfo {
+		intport := int32(pr.Port)
+
 		server.PortBindings = append(server.PortBindings, &mierupb.PortBinding{
-			PortRange: proto.String(pr),
-			Protocol:  getTransportProtocol(options.Transport[i]),
+			PortRange: proto.String(pr.PortRange),
+			Port:      &intport,
+			Protocol:  getTransportProtocol(pr.Transport),
 		})
 	}
 	if M.IsDomainName(options.Server) {
@@ -213,43 +206,15 @@ func buildMieruClientConfig(options option.MieruOutboundOptions, dialer mieruDia
 	}
 	return config, nil
 }
-
 func validateMieruOptions(options option.MieruOutboundOptions) error {
 	if options.Server == "" {
 		return fmt.Errorf("server is empty")
 	}
-	if options.ServerPort == 0 && len(options.ServerPortRanges) == 0 {
-		return fmt.Errorf("either server_port or server_ports must be set")
+	if options.ServerPort == 0 && len(options.TransportInfo) == 0 {
+		return fmt.Errorf("either server_port or transport must be set")
 	}
-	if options.ServerPort != 0 && len(options.ServerPortRanges) > 0 {
-		return fmt.Errorf("only one of server_port and server_ports can be set")
-	}
-	if options.ServerPort != 0 {
-		options.ServerPortRanges = append(options.ServerPortRanges, fmt.Sprintf("%d", options.ServerPort))
-	}
-	for _, pr := range options.ServerPortRanges {
-		begin, end, err := beginAndEndPortFromPortRange(pr)
-		if err != nil {
-			return fmt.Errorf("invalid server_ports format")
-		}
-		if begin < 1 || begin > 65535 {
-			return fmt.Errorf("begin port must be between 1 and 65535")
-		}
-		if end < 1 || end > 65535 {
-			return fmt.Errorf("end port must be between 1 and 65535")
-		}
-		if begin > end {
-			return fmt.Errorf("begin port must be less than or equal to end port")
-		}
-	}
-	for _, t := range options.Transport {
-		if t != "TCP" && t != "UDP" {
-			return fmt.Errorf("transport must be TCP or UDP")
-
-		}
-	}
-	if len(options.Transport) != len(options.ServerPortRanges) {
-		return fmt.Errorf("the number of transports must match the number of server_ports")
+	if options.ServerPort != 0 && (len(options.TransportInfo) != 1 || options.TransportInfo[0].Port != options.ServerPort) {
+		return fmt.Errorf("Transport of Server Port is not defined!")
 	}
 	if options.UserName == "" {
 		return fmt.Errorf("username is empty")
@@ -262,11 +227,5 @@ func validateMieruOptions(options option.MieruOutboundOptions) error {
 			return fmt.Errorf("invalid multiplexing level: %s", options.Multiplexing)
 		}
 	}
-	return nil
-}
-
-func beginAndEndPortFromPortRange(portRange string) (int, int, error) {
-	var begin, end int
-	_, err := fmt.Sscanf(portRange, "%d-%d", &begin, &end)
-	return begin, end, err
+	return validateMieruTransport(options.TransportInfo)
 }
