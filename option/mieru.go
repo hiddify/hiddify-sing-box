@@ -4,7 +4,7 @@ type MieruOutboundOptions struct {
 	DialerOptions
 	ServerOptions
 	Network       NetworkList        `json:"network,omitempty"`
-	TransportInfo []MieruPortBinding `json:"transport_info,omitempty"`
+	PortBindings  []MieruPortBinding `json:"portBindings,omitempty"`
 	UserName      string             `json:"username,omitempty"`
 	Password      string             `json:"password,omitempty"`
 	Multiplexing  string             `json:"multiplexing,omitempty"`

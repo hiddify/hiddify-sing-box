@@ -170,7 +170,7 @@ func buildMieruClientConfig(options option.MieruOutboundOptions, dialer mieruDia
 	}
 
 	server := &mierupb.ServerEndpoint{}
-	for _, pr := range options.TransportInfo {
+	for _, pr := range options.PortBindings {
 		intport := int32(pr.Port)
 
 		server.PortBindings = append(server.PortBindings, &mierupb.PortBinding{
@@ -214,10 +214,10 @@ func validateMieruOptions(options option.MieruOutboundOptions) error {
 	if options.Server == "" {
 		return fmt.Errorf("server is empty")
 	}
-	if options.ServerPort == 0 && len(options.TransportInfo) == 0 {
+	if options.ServerPort == 0 && len(options.PortBindings) == 0 {
 		return fmt.Errorf("either server_port or transport must be set")
 	}
-	if options.ServerPort != 0 && (len(options.TransportInfo) != 1 || options.TransportInfo[0].Port != options.ServerPort) {
+	if options.ServerPort != 0 && (len(options.PortBindings) != 1 || options.PortBindings[0].Port != options.ServerPort) {
 		return fmt.Errorf("Transport of Server Port is not defined!")
 	}
 	if options.UserName == "" {
@@ -232,5 +232,5 @@ func validateMieruOptions(options option.MieruOutboundOptions) error {
 	if getHandshakeMode(options.HandshakeMode) == nil {
 		return fmt.Errorf("invalid handshake mode: %s", options.HandshakeMode)
 	}
-	return validateMieruTransport(options.TransportInfo)
+	return validateMieruTransport(options.PortBindings)
 }
