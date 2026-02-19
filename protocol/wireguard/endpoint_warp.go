@@ -132,7 +132,7 @@ func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.Cont
 						},
 					},
 				},
-				MTU: 1280,
+				MTU: options.MTU,
 			},
 		)
 		if err != nil {

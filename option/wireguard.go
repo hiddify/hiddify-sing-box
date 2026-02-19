@@ -56,6 +56,7 @@ type WireGuardWARPEndpointOptions struct {
 	ServerOptions                         //H
 	Noise            hiddify.NoiseOptions `json:"noise,omitempty"` //H
 	*C.WARPConfig                         //H
+	MTU              uint32               `json:"mtu,omitempty"`
 }
 
 type WARPProfile struct {
