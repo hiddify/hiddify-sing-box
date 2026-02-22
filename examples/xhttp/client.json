@@ -28,7 +28,7 @@
       "server": "example.com",
       "server_port": 443,
       "uuid": "3179dce2-2ff9-413c-85b4-c1d53ed41668",
-      "tls": {
+      "tls": { // https://sing-box.sagernet.org/configuration/shared/tls/#outbound
         "enabled": true,
         "server_name": "example.com",
         "alpn": "h2" // h3 for QUIC
@@ -39,33 +39,65 @@
         "host": "example.com",
         "path": "/xhttp",
         "domain_strategy": "prefer_ipv4",
-        "xmux": {
-          "max_concurrency": "0-1",
-          "max_connections": "0-1",
-          "c_max_reuse_times": "0-1",
-          "h_max_request_times": "0-1",
-          "h_max_reusable_secs": "0-1",
-          "h_keep_alive_period": 60
+        "x_padding_bytes": "100-1000",
+        "no_grpc_header": false, // stream-up/one, client only
+        "sc_max_each_post_bytes": 1000000, // packet-up only
+        "sc_min_posts_interval_ms": 30, // packet-up, client only
+        "xmux": { // h2/h3 mainly, client only
+          "max_concurrency": "16-32",
+          "max_connections": 0,
+          "c_max_reuse_times": 0,
+          "h_max_request_times": "600-900",
+          "h_max_reusable_secs": "1800-3000",
+          "h_keep_alive_period": 0
         },
+        "x_padding_obfs_mode": false,
+        "x_padding_key": "",
+        "x_padding_header": "",
+        "x_padding_placement": "",
+        "x_padding_method": "",
+        "uplink_http_method": "",
+        "session_placement": "",
+        "session_key": "",
+        "seq_placement": "",
+        "seq_key": "",
+        "uplink_data_placement": "",
+        "uplink_data_key": "",
+        "uplink_chunk_size": 0,
+        "server": "example.com",
+        "server_port": 443,
         "download": {
           "host": "example.com",
           "path": "/xhttp",
           "domain_strategy": "prefer_ipv4",
-          "x_padding_bytes": "0-0",
-          "sc_max_each_post_bytes": "0-0",
-          "sc_min_posts_interval_ms": "0-0",
-          "sc_stream_up_server_secs": "0-0",
-          "xmux": {
-            "max_concurrency": "0-1",
-            "max_connections": "0-1",
-            "c_max_reuse_times": "0-1",
-            "h_max_request_times": "0-1",
-            "h_max_reusable_secs": "0-1",
-            "h_keep_alive_period": 60
+          "x_padding_bytes": "100-1000",
+          "no_grpc_header": false, // stream-up/one, client only
+          "sc_max_each_post_bytes": 1000000, // packet-up only
+          "sc_min_posts_interval_ms": 30, // packet-up, client only
+          "xmux": { // h2/h3 mainly, client only
+            "max_concurrency": "16-32",
+            "max_connections": 0,
+            "c_max_reuse_times": 0,
+            "h_max_request_times": "600-900",
+            "h_max_reusable_secs": "1800-3000",
+            "h_keep_alive_period": 0
           },
+          "x_padding_obfs_mode": false,
+          "x_padding_key": "",
+          "x_padding_header": "",
+          "x_padding_placement": "",
+          "x_padding_method": "",
+          "uplink_http_method": "",
+          "session_placement": "",
+          "session_key": "",
+          "seq_placement": "",
+          "seq_key": "",
+          "uplink_data_placement": "",
+          "uplink_data_key": "",
+          "uplink_chunk_size": 0,
           "server": "example.com",
           "server_port": 443,
-          "tls": {
+          "tls": { // https://sing-box.sagernet.org/configuration/shared/tls/#outbound
             "enabled": true,
             "server_name": "example.com",
             "alpn": "h2" // h3 for QUIC
