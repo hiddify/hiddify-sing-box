@@ -81,7 +81,6 @@ require (
 	github.com/ameshkov/dnscrypt/v2 v2.4.0
 	github.com/ameshkov/dnsstamps v1.0.3 // indirect
 	github.com/biter777/countries v1.7.5
-	github.com/pires/go-proxyproto v0.8.1
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	golang.org/x/sync v0.19.0
@@ -255,7 +254,7 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251202230838-ff82c1b0f217 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gvisor.dev/gvisor v0.0.0-20231202080848-1f7806d17489 // indirect
-	lukechampine.com/blake3 v1.4.1 // indirect
+	lukechampine.com/blake3 v1.4.1
 	tailscale.com v1.58.2 // indirect
 	zombiezen.com/go/capnproto2 v2.18.2+incompatible // indirect
 )
