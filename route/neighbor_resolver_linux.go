@@ -3,10 +3,14 @@
 package route
 
 import (
+	"bufio"
+	"encoding/hex"
 	"net"
 	"net/netip"
 	"os"
 	"slices"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -65,14 +69,14 @@ func (r *neighborResolver) Start() error {
 	if err != nil {
 		r.logger.Warn(E.Cause(err, "load neighbor table"))
 	}
-	r.doReloadLeaseFiles()
+	r.reloadLeaseFiles()
 	go r.subscribeNeighborUpdates()
 	if len(r.leaseFiles) > 0 {
 		watcher, err := fswatch.NewWatcher(fswatch.Options{
 			Path:   r.leaseFiles,
 			Logger: r.logger,
 			Callback: func(_ string) {
-				r.doReloadLeaseFiles()
+				r.reloadLeaseFiles()
 			},
 		})
 		if err != nil {
@@ -205,26 +209,353 @@ func (r *neighborResolver) subscribeNeighborUpdates() {
 			continue
 		}
 		for _, message := range messages {
-			address, mac, isDelete, ok := ParseNeighborMessage(message)
-			if !ok {
-				continue
-			}
-			r.access.Lock()
-			if isDelete {
+			switch message.Header.Type {
+			case unix.RTM_NEWNEIGH:
+				var neighMessage rtnetlink.NeighMessage
+				unmarshalErr := neighMessage.UnmarshalBinary(message.Data)
+				if unmarshalErr != nil {
+					continue
+				}
+				if neighMessage.Attributes == nil {
+					continue
+				}
+				if neighMessage.Attributes.LLAddress == nil || len(neighMessage.Attributes.Address) == 0 {
+					continue
+				}
+				address, ok := netip.AddrFromSlice(neighMessage.Attributes.Address)
+				if !ok {
+					continue
+				}
+				r.access.Lock()
+				r.neighborIPToMAC[address] = slices.Clone(neighMessage.Attributes.LLAddress)
+				r.access.Unlock()
+			case unix.RTM_DELNEIGH:
+				var neighMessage rtnetlink.NeighMessage
+				unmarshalErr := neighMessage.UnmarshalBinary(message.Data)
+				if unmarshalErr != nil {
+					continue
+				}
+				if neighMessage.Attributes == nil || len(neighMessage.Attributes.Address) == 0 {
+					continue
+				}
+				address, ok := netip.AddrFromSlice(neighMessage.Attributes.Address)
+				if !ok {
+					continue
+				}
+				r.access.Lock()
 				delete(r.neighborIPToMAC, address)
-			} else {
-				r.neighborIPToMAC[address] = mac
+				r.access.Unlock()
 			}
-			r.access.Unlock()
 		}
 	}
 }
 
-func (r *neighborResolver) doReloadLeaseFiles() {
-	leaseIPToMAC, ipToHostname, macToHostname := ReloadLeaseFiles(r.leaseFiles)
+func (r *neighborResolver) reloadLeaseFiles() {
+	leaseIPToMAC := make(map[netip.Addr]net.HardwareAddr)
+	ipToHostname := make(map[netip.Addr]string)
+	macToHostname := make(map[string]string)
+	for _, path := range r.leaseFiles {
+		r.parseLeaseFile(path, leaseIPToMAC, ipToHostname, macToHostname)
+	}
 	r.access.Lock()
 	r.leaseIPToMAC = leaseIPToMAC
 	r.ipToHostname = ipToHostname
 	r.macToHostname = macToHostname
 	r.access.Unlock()
+}
+
+func (r *neighborResolver) parseLeaseFile(path string, ipToMAC map[netip.Addr]net.HardwareAddr, ipToHostname map[netip.Addr]string, macToHostname map[string]string) {
+	file, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+	if strings.HasSuffix(path, "kea-leases4.csv") {
+		r.parseKeaCSV4(file, ipToMAC, ipToHostname, macToHostname)
+		return
+	}
+	if strings.HasSuffix(path, "kea-leases6.csv") {
+		r.parseKeaCSV6(file, ipToMAC, ipToHostname, macToHostname)
+		return
+	}
+	if strings.HasSuffix(path, "dhcpd.leases") {
+		r.parseISCDhcpd(file, ipToMAC, ipToHostname, macToHostname)
+		return
+	}
+	r.parseDnsmasqOdhcpd(file, ipToMAC, ipToHostname, macToHostname)
+}
+
+func (r *neighborResolver) parseDnsmasqOdhcpd(file *os.File, ipToMAC map[netip.Addr]net.HardwareAddr, ipToHostname map[netip.Addr]string, macToHostname map[string]string) {
+	now := time.Now().Unix()
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "duid ") {
+			continue
+		}
+		if strings.HasPrefix(line, "# ") {
+			r.parseOdhcpdLine(line[2:], ipToMAC, ipToHostname, macToHostname)
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 4 {
+			continue
+		}
+		expiry, err := strconv.ParseInt(fields[0], 10, 64)
+		if err != nil {
+			continue
+		}
+		if expiry != 0 && expiry < now {
+			continue
+		}
+		if strings.Contains(fields[1], ":") {
+			mac, macErr := net.ParseMAC(fields[1])
+			if macErr != nil {
+				continue
+			}
+			address, addrOK := netip.AddrFromSlice(net.ParseIP(fields[2]))
+			if !addrOK {
+				continue
+			}
+			address = address.Unmap()
+			ipToMAC[address] = mac
+			hostname := fields[3]
+			if hostname != "*" {
+				ipToHostname[address] = hostname
+				macToHostname[mac.String()] = hostname
+			}
+		} else {
+			var mac net.HardwareAddr
+			if len(fields) >= 5 {
+				duid, duidErr := parseDUID(fields[4])
+				if duidErr == nil {
+					mac, _ = extractMACFromDUID(duid)
+				}
+			}
+			address, addrOK := netip.AddrFromSlice(net.ParseIP(fields[2]))
+			if !addrOK {
+				continue
+			}
+			address = address.Unmap()
+			if mac != nil {
+				ipToMAC[address] = mac
+			}
+			hostname := fields[3]
+			if hostname != "*" {
+				ipToHostname[address] = hostname
+				if mac != nil {
+					macToHostname[mac.String()] = hostname
+				}
+			}
+		}
+	}
+}
+
+func (r *neighborResolver) parseOdhcpdLine(line string, ipToMAC map[netip.Addr]net.HardwareAddr, ipToHostname map[netip.Addr]string, macToHostname map[string]string) {
+	fields := strings.Fields(line)
+	if len(fields) < 5 {
+		return
+	}
+	validTime, err := strconv.ParseInt(fields[4], 10, 64)
+	if err != nil {
+		return
+	}
+	if validTime == 0 {
+		return
+	}
+	if validTime > 0 && validTime < time.Now().Unix() {
+		return
+	}
+	hostname := fields[3]
+	if hostname == "-" || strings.HasPrefix(hostname, `broken\x20`) {
+		hostname = ""
+	}
+	if len(fields) >= 8 && fields[2] == "ipv4" {
+		mac, macErr := net.ParseMAC(fields[1])
+		if macErr != nil {
+			return
+		}
+		addressField := fields[7]
+		slashIndex := strings.IndexByte(addressField, '/')
+		if slashIndex >= 0 {
+			addressField = addressField[:slashIndex]
+		}
+		address, addrOK := netip.AddrFromSlice(net.ParseIP(addressField))
+		if !addrOK {
+			return
+		}
+		address = address.Unmap()
+		ipToMAC[address] = mac
+		if hostname != "" {
+			ipToHostname[address] = hostname
+			macToHostname[mac.String()] = hostname
+		}
+		return
+	}
+	var mac net.HardwareAddr
+	duidHex := fields[1]
+	duidBytes, hexErr := hex.DecodeString(duidHex)
+	if hexErr == nil {
+		mac, _ = extractMACFromDUID(duidBytes)
+	}
+	for i := 7; i < len(fields); i++ {
+		addressField := fields[i]
+		slashIndex := strings.IndexByte(addressField, '/')
+		if slashIndex >= 0 {
+			addressField = addressField[:slashIndex]
+		}
+		address, addrOK := netip.AddrFromSlice(net.ParseIP(addressField))
+		if !addrOK {
+			continue
+		}
+		address = address.Unmap()
+		if mac != nil {
+			ipToMAC[address] = mac
+		}
+		if hostname != "" {
+			ipToHostname[address] = hostname
+			if mac != nil {
+				macToHostname[mac.String()] = hostname
+			}
+		}
+	}
+}
+
+func (r *neighborResolver) parseISCDhcpd(file *os.File, ipToMAC map[netip.Addr]net.HardwareAddr, ipToHostname map[netip.Addr]string, macToHostname map[string]string) {
+	scanner := bufio.NewScanner(file)
+	var currentIP netip.Addr
+	var currentMAC net.HardwareAddr
+	var currentHostname string
+	var currentActive bool
+	var inLease bool
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if strings.HasPrefix(line, "lease ") && strings.HasSuffix(line, "{") {
+			ipString := strings.TrimSuffix(strings.TrimPrefix(line, "lease "), " {")
+			parsed, addrOK := netip.AddrFromSlice(net.ParseIP(ipString))
+			if addrOK {
+				currentIP = parsed.Unmap()
+				inLease = true
+				currentMAC = nil
+				currentHostname = ""
+				currentActive = false
+			}
+			continue
+		}
+		if line == "}" && inLease {
+			if currentActive && currentMAC != nil {
+				ipToMAC[currentIP] = currentMAC
+				if currentHostname != "" {
+					ipToHostname[currentIP] = currentHostname
+					macToHostname[currentMAC.String()] = currentHostname
+				}
+			} else {
+				delete(ipToMAC, currentIP)
+				delete(ipToHostname, currentIP)
+			}
+			inLease = false
+			continue
+		}
+		if !inLease {
+			continue
+		}
+		if strings.HasPrefix(line, "hardware ethernet ") {
+			macString := strings.TrimSuffix(strings.TrimPrefix(line, "hardware ethernet "), ";")
+			parsed, macErr := net.ParseMAC(macString)
+			if macErr == nil {
+				currentMAC = parsed
+			}
+		} else if strings.HasPrefix(line, "client-hostname ") {
+			hostname := strings.TrimSuffix(strings.TrimPrefix(line, "client-hostname "), ";")
+			hostname = strings.Trim(hostname, "\"")
+			if hostname != "" {
+				currentHostname = hostname
+			}
+		} else if strings.HasPrefix(line, "binding state ") {
+			state := strings.TrimSuffix(strings.TrimPrefix(line, "binding state "), ";")
+			currentActive = state == "active"
+		}
+	}
+}
+
+func (r *neighborResolver) parseKeaCSV4(file *os.File, ipToMAC map[netip.Addr]net.HardwareAddr, ipToHostname map[netip.Addr]string, macToHostname map[string]string) {
+	scanner := bufio.NewScanner(file)
+	firstLine := true
+	for scanner.Scan() {
+		if firstLine {
+			firstLine = false
+			continue
+		}
+		fields := strings.Split(scanner.Text(), ",")
+		if len(fields) < 10 {
+			continue
+		}
+		if fields[9] != "0" {
+			continue
+		}
+		address, addrOK := netip.AddrFromSlice(net.ParseIP(fields[0]))
+		if !addrOK {
+			continue
+		}
+		address = address.Unmap()
+		mac, macErr := net.ParseMAC(fields[1])
+		if macErr != nil {
+			continue
+		}
+		ipToMAC[address] = mac
+		hostname := ""
+		if len(fields) > 8 {
+			hostname = fields[8]
+		}
+		if hostname != "" {
+			ipToHostname[address] = hostname
+			macToHostname[mac.String()] = hostname
+		}
+	}
+}
+
+func (r *neighborResolver) parseKeaCSV6(file *os.File, ipToMAC map[netip.Addr]net.HardwareAddr, ipToHostname map[netip.Addr]string, macToHostname map[string]string) {
+	scanner := bufio.NewScanner(file)
+	firstLine := true
+	for scanner.Scan() {
+		if firstLine {
+			firstLine = false
+			continue
+		}
+		fields := strings.Split(scanner.Text(), ",")
+		if len(fields) < 14 {
+			continue
+		}
+		if fields[13] != "0" {
+			continue
+		}
+		address, addrOK := netip.AddrFromSlice(net.ParseIP(fields[0]))
+		if !addrOK {
+			continue
+		}
+		address = address.Unmap()
+		var mac net.HardwareAddr
+		if fields[12] != "" {
+			mac, _ = net.ParseMAC(fields[12])
+		}
+		if mac == nil {
+			duid, duidErr := hex.DecodeString(strings.ReplaceAll(fields[1], ":", ""))
+			if duidErr == nil {
+				mac, _ = extractMACFromDUID(duid)
+			}
+		}
+		hostname := ""
+		if len(fields) > 11 {
+			hostname = fields[11]
+		}
+		if mac != nil {
+			ipToMAC[address] = mac
+		}
+		if hostname != "" {
+			ipToHostname[address] = hostname
+			if mac != nil {
+				macToHostname[mac.String()] = hostname
+			}
+		}
+	}
 }
