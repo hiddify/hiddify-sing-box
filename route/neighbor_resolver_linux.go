@@ -209,43 +209,17 @@ func (r *neighborResolver) subscribeNeighborUpdates() {
 			continue
 		}
 		for _, message := range messages {
-			switch message.Header.Type {
-			case unix.RTM_NEWNEIGH:
-				var neighMessage rtnetlink.NeighMessage
-				unmarshalErr := neighMessage.UnmarshalBinary(message.Data)
-				if unmarshalErr != nil {
-					continue
-				}
-				if neighMessage.Attributes == nil {
-					continue
-				}
-				if neighMessage.Attributes.LLAddress == nil || len(neighMessage.Attributes.Address) == 0 {
-					continue
-				}
-				address, ok := netip.AddrFromSlice(neighMessage.Attributes.Address)
-				if !ok {
-					continue
-				}
-				r.access.Lock()
-				r.neighborIPToMAC[address] = slices.Clone(neighMessage.Attributes.LLAddress)
-				r.access.Unlock()
-			case unix.RTM_DELNEIGH:
-				var neighMessage rtnetlink.NeighMessage
-				unmarshalErr := neighMessage.UnmarshalBinary(message.Data)
-				if unmarshalErr != nil {
-					continue
-				}
-				if neighMessage.Attributes == nil || len(neighMessage.Attributes.Address) == 0 {
-					continue
-				}
-				address, ok := netip.AddrFromSlice(neighMessage.Attributes.Address)
-				if !ok {
-					continue
-				}
-				r.access.Lock()
-				delete(r.neighborIPToMAC, address)
-				r.access.Unlock()
+			address, mac, isDelete, ok := ParseNeighborMessage(message)
+			if !ok {
+				continue
 			}
+			r.access.Lock()
+			if isDelete {
+				delete(r.neighborIPToMAC, address)
+			} else {
+				r.neighborIPToMAC[address] = mac
+			}
+			r.access.Unlock()
 		}
 	}
 }
