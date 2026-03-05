@@ -54,6 +54,7 @@ const (
 	TypeXray           = "xray"     //H
 	TypeCustom         = "custom"   //H
 	TypeBalancer       = "balancer" //H
+	TypeDNSTT          = "dnstt"    //H
 )
 
 const (

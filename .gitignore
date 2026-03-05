@@ -1,4 +1,4 @@
-/htest/
+_htest/
 /data/*
 *.log
 *.db

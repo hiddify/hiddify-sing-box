@@ -43,8 +43,7 @@ func (o V2RayTransportOptions) MarshalJSON() ([]byte, error) {
 		v = o.HTTPUpgradeOptions
 	case C.V2RayTransportTypeXHTTP:
 		v = o.XHTTPOptions
-	case C.V2RayTransportTypeDNSTT:
-		v = o.DNSTTOptions
+
 	case "":
 		return nil, E.New("missing transport type")
 	default:
