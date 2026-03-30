@@ -7,6 +7,7 @@ require (
 	github.com/Psiphon-Labs/psiphon-tunnel-core v1.0.11-0.20260202154140-a3384a551c62
 	github.com/amnezia-vpn/amneziawg-go v0.2.15
 	github.com/anthropics/anthropic-sdk-go v1.26.0
+	github.com/anytls/sing-anytls v0.0.11
 	github.com/biter777/countries v1.7.5
 	github.com/caddyserver/certmagic v0.25.3-0.20260421143802-60d9d8b415d6
 	github.com/caddyserver/zerossl v0.1.5
