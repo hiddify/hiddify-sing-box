@@ -17,6 +17,7 @@ type DnsttOptions struct {
 
 	Resolvers         []string `json:"resolvers,omitempty"`
 	TunnelPerResolver int      `json:"tunnel-per-resolver,omitempty"`
+	MultiResolver     bool     `json:"multi-resolver,omitempty"`
 
 	DnsttCompat  bool     `json:"dnstt-compat,omitempty"`
 	ClientIDSize *int     `json:"clientid-size,omitempty"`

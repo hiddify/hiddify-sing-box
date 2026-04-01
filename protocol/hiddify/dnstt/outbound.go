@@ -2,6 +2,7 @@ package dnstt
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"sync"
 	"time"
@@ -116,7 +117,10 @@ func (h *Outbound) DialContext(ctx context.Context, network string, destination 
 	if !h.IsReady() {
 		return nil, E.New("outbound is not started")
 	}
-	return h.OpenStream(ctx)
+	if h.options.MultiResolver {
+		return h.OpenStream(ctx)
+	}
+	return h.OpenStreamSingleResolver(ctx)
 }
 func (h *Outbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
 	if !h.IsReady() {
@@ -142,7 +146,7 @@ func (w *Outbound) DisplayType() string {
 	} else if w.started < 0 {
 		str += " ❌ Failed!"
 	} else {
-		str += " ✔️ Established"
+		str += fmt.Sprint(" ✔️ ", len(w.resolvers), " resolvers")
 	}
 	return str
 }

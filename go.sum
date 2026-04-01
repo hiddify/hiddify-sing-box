@@ -233,6 +233,8 @@ github.com/hiddify/psiphon-quic-go v0.0.0-20260205155832-2164d1653824 h1:a5HGC6a
 github.com/hiddify/psiphon-quic-go v0.0.0-20260205155832-2164d1653824/go.mod h1:rONdWgPMbFjyyBai7gB1IBF4pT9r4l0GyiDst5XR1SY=
 github.com/hiddify/psiphon-tls v0.0.0-20260205181946-4af85c2fb9f2 h1:42YhXZ/qMbWOlH+AE6KZKpv96G60FXMaeQ+TYFUFwNU=
 github.com/hiddify/psiphon-tls v0.0.0-20260205181946-4af85c2fb9f2/go.mod h1:7ZUnPnWT5z8J8hxfsVjKHYK77Zme/Y0If1b/zeziiJs=
+github.com/hiddify/vaydns v0.0.0-20260401180616-890dc987a6a9 h1:KXnaABX8hHmkcL0jbL769hEIGI5+z/DajCrlO+Bkzcc=
+github.com/hiddify/vaydns v0.0.0-20260401180616-890dc987a6a9/go.mod h1:+8kEfQsZJn7/4aIppVekrSuqhrKjGBIgnacTJkdAlS8=
 github.com/huin/goupnp v1.3.0 h1:UvLUlWDNpoUdYzb2TCn+MuTWtcjXKSza2n6CBdQ0xXc=
 github.com/huin/goupnp v1.3.0/go.mod h1:gnGPsThkYa7bFi/KWmEysQRf48l2dvR5bxr2OFckNX8=
 github.com/ianlancetaylor/demangle v0.0.0-20200824232613-28f6c0f3b639/go.mod h1:aSSvb/t6k1mPoxDqO4vJh6VOCGPwU4O0C2/Eqndh1Sc=

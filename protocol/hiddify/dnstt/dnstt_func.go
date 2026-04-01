@@ -27,6 +27,15 @@ func (c *Outbound) addResolver(resolver dnstt.Resolver) {
 }
 
 func (c *Outbound) OpenStream(ctx context.Context) (net.Conn, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if newtunnel, err := c.createDnsttTunnel(ctx, c.resolvers); err != nil {
+		return nil, err
+	} else {
+		return newtunnel.OpenStream()
+	}
+}
+func (c *Outbound) OpenStreamSingleResolver(ctx context.Context) (net.Conn, error) {
 	// dnsttConfig := streamSettings.ProtocolSettings.(*Config)
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -36,7 +45,7 @@ func (c *Outbound) OpenStream(ctx context.Context) (net.Conn, error) {
 		tunnel_index := rand.Intn(len(c.resolvers)) // 0 <= x < n
 		tunnel := c.tunnels[tunnel_index]
 		if tunnel == nil {
-			if newtunnel, err := c.createDnsttTunnel(ctx, c.resolvers[tunnel_index]); err != nil {
+			if newtunnel, err := c.createDnsttTunnel(ctx, []dnstt.Resolver{c.resolvers[tunnel_index]}); err != nil {
 				lasterr = err
 				c.logger.DebugContext(ctx, "tunnel [", tunnel_index, "]  failed resolver ", c.resolvers[tunnel_index].ResolverAddr)
 			} else {
@@ -60,7 +69,7 @@ func (c *Outbound) OpenStream(ctx context.Context) (net.Conn, error) {
 	}
 	return nil, lasterr
 }
-func (c *Outbound) createDnsttTunnel(ctx context.Context, resolver dnstt.Resolver) (*dnstt.Tunnel, error) {
+func (c *Outbound) createDnsttTunnel(ctx context.Context, resolver []dnstt.Resolver) (*dnstt.Tunnel, error) {
 	tServer, err := dnstt.NewTunnelServer(c.options.Domain, c.options.PublicKey)
 	if err != nil {
 		return nil, fmt.Errorf("invalid tunnel server: %w", err)

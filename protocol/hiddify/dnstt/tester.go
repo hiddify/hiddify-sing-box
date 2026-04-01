@@ -14,6 +14,7 @@ import (
 	"time"
 
 	dnstt "github.com/net2share/vaydns/client"
+	"github.com/net2share/vaydns/turbotunnel"
 	"github.com/sagernet/sing-box/adapter"
 
 	"github.com/sagernet/sing-box/dns/transport"
@@ -193,7 +194,7 @@ func (h *Outbound) testTunnelResolver(resolver dnstt.Resolver) (rate int, err er
 
 	ctx, cancel := context.WithTimeout(h.ctx, 5*time.Second)
 	defer cancel()
-	tunnel, err := h.createDnsttTunnel(ctx, resolver)
+	tunnel, err := h.createDnsttTunnel(ctx, []dnstt.Resolver{resolver})
 	if err != nil {
 		h.logger.WarnContext(h.ctx, "failed to establish tunnel to resolver ", resolver.ResolverAddr, ": ", err)
 		return -2, err
@@ -315,7 +316,7 @@ func (h *Outbound) getTCPBasedResolverConnection(r dnstt.Resolver, timeout time.
 			if timeout <= 0 {
 				timeout = dnstt.DefaultUDPResponseTimeout
 			}
-			conn, _, err := dnstt.NewUDPPacketConn(addr, r.DialerControl, workers, timeout, !r.UDPAcceptErrors)
+			conn, _, err := dnstt.NewUDPPacketConn(addr, r.DialerControl, workers, timeout, !r.UDPAcceptErrors, turbotunnel.QueueSize, turbotunnel.DefaultQueueOverflowMode)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -334,7 +335,7 @@ func (h *Outbound) getTCPBasedResolverConnection(r dnstt.Resolver, timeout time.
 		} else {
 			rt = http.DefaultTransport
 		}
-		conn, err := dnstt.NewHTTPPacketConn(rt, r.ResolverAddr, 8)
+		conn, err := dnstt.NewHTTPPacketConn(rt, r.ResolverAddr, 8, turbotunnel.QueueSize, turbotunnel.DefaultQueueOverflowMode)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -353,7 +354,7 @@ func (h *Outbound) getTCPBasedResolverConnection(r dnstt.Resolver, timeout time.
 				return tls.DialWithDialer(&net.Dialer{}, network, addr, nil)
 			}
 		}
-		conn, err := dnstt.NewTLSPacketConn(r.ResolverAddr, dialTLSContext)
+		conn, err := dnstt.NewTLSPacketConn(r.ResolverAddr, dialTLSContext, turbotunnel.QueueSize, turbotunnel.DefaultQueueOverflowMode)
 		if err != nil {
 			return nil, nil, err
 		}

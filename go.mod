@@ -34,7 +34,7 @@ require (
 	github.com/metacubex/utls v1.8.7
 	github.com/mholt/acmez/v3 v3.1.6
 	github.com/miekg/dns v1.1.72
-	github.com/net2share/vaydns v0.2.5
+	github.com/net2share/vaydns v0.2.6
 	github.com/openai/openai-go/v3 v3.26.0
 	github.com/oschwald/geoip2-golang v1.13.0
 	github.com/oschwald/maxminddb-golang v1.13.1
@@ -285,3 +285,5 @@ replace github.com/sagernet/tailscale => ./replace/tailscale
 replace github.com/Psiphon-Labs/quic-go => ./replace/psiphon-quic-go
 
 replace github.com/Psiphon-Labs/psiphon-tls => ./replace/psiphon-tls
+
+replace github.com/net2share/vaydns => github.com/hiddify/vaydns v0.0.0-20260401180616-890dc987a6a9
