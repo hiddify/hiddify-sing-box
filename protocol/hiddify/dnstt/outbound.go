@@ -35,7 +35,7 @@ type Outbound struct {
 	logger    logger.ContextLogger
 	ctx       context.Context
 
-	condidateResolvers []dnstt.Resolver
+	candidateResolvers []ResolverS
 	resolvers          []dnstt.Resolver
 	tunnels            []*dnstt.Tunnel
 	mutlitunnel        *dnstt.Tunnel
@@ -99,11 +99,11 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 	}
 
 	out := &Outbound{
-		Adapter: outbound.NewAdapterWithDialerOptions(C.TypeSOCKS, tag, []string{N.NetworkTCP}, options.DialerOptions),
+		Adapter: outbound.NewAdapterWithDialerOptions(C.TypeDNSTT, tag, []string{N.NetworkTCP}, options.DialerOptions),
 		ctx:     ctx,
 		logger:  logger,
 
-		condidateResolvers: resolvers,
+		candidateResolvers: resolvers,
 		resolvers:          make([]dnstt.Resolver, 0),
 		tunnels:            make([]*dnstt.Tunnel, 0),
 

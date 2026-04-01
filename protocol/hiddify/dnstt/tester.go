@@ -35,7 +35,7 @@ func (h *Outbound) loadHistory() *History {
 		return history
 	}
 
-	savedBinary := h.cache.LoadBinary("dnstt_resolvers")
+	savedBinary := h.cache.LoadBinary("dnstt_resolvers" + h.options.RecordType)
 	if savedBinary == nil {
 		return history
 	}
@@ -56,7 +56,7 @@ func (h *Outbound) saveHistory(his *History) {
 		h.logger.Error("failed to marshal outbound monitoring history: ", err)
 		return
 	}
-	h.cache.SaveBinary("dnstt_resolvers", &adapter.SavedBinary{
+	h.cache.SaveBinary("dnstt_resolvers"+h.options.RecordType, &adapter.SavedBinary{
 		LastUpdated: time.Now(),
 		Content:     content,
 	})
@@ -66,22 +66,32 @@ func (h *Outbound) startTestResolver() error {
 	history := h.loadHistory()
 	defer h.saveHistory(history)
 
-	b, _ := batch.New(h.ctx, batch.WithConcurrencyNum[any](10))
+	b, _ := batch.New(h.ctx, batch.WithConcurrencyNum[any](100))
 
-	candidates := h.condidateResolvers
+	candidates := h.candidateResolvers
 	rand.Shuffle(len(candidates), func(i, j int) {
 		candidates[i], candidates[j] = candidates[j], candidates[i]
 	})
 
 	sort.Slice(candidates, func(i, j int) bool {
-		rateI := history.ResolverRate[candidates[i].ResolverAddr]
-		rateJ := history.ResolverRate[candidates[j].ResolverAddr]
-		return rateI > rateJ
+		a := candidates[i]
+		b := candidates[j]
+
+		// Auto first
+		if a.Auto != b.Auto {
+			return a.Auto
+		}
+
+		// Then by rate descending
+		rateA := history.ResolverRate[a.Resolver.ResolverAddr]
+		rateB := history.ResolverRate[b.Resolver.ResolverAddr]
+
+		return rateA > rateB
 	})
 	historyMutex := sync.Mutex{}
 
 	for _, r := range candidates {
-		resolver := r
+		resolver := r.Resolver
 
 		select {
 		case <-h.ctx.Done():
@@ -169,9 +179,9 @@ func getDnsRecordType(record string) uint16 {
 func (h *Outbound) testTunnelResolver(resolver dnstt.Resolver) (rate int, err error) {
 	domain := h.options.PreTestDomain
 	record := h.options.PreTestRecordType
-	h.logger.InfoContext(h.ctx, "testing resolver ", resolver.ResolverAddr, " with domain ", domain, " and record type ", record)
+	h.logger.DebugContext(h.ctx, "testing resolver ", resolver.ResolverAddr, " with domain ", domain, " and record type ", record)
 	resp, err := h.Resolve(resolver, domain, getDnsRecordType(record))
-	h.logger.InfoContext(h.ctx, "resolver ", resolver.ResolverAddr, " response ", fmt.Sprint(resp), " error ", err)
+	h.logger.DebugContext(h.ctx, "resolver ", resolver.ResolverAddr, " response ", fmt.Sprint(resp), " error ", err)
 	if err != nil {
 		return -4, err
 	}

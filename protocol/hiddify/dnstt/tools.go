@@ -28,8 +28,13 @@ func loadResolvers() {
 	}
 }
 
-func getConfigResolvers(options option.DnsttOptions) ([]dnstt.Resolver, error) {
-	resolvers := []dnstt.Resolver{}
+type ResolverS struct {
+	Resolver dnstt.Resolver
+	Auto     bool
+}
+
+func getConfigResolvers(options option.DnsttOptions) ([]ResolverS, error) {
+	resolvers := []ResolverS{}
 	for _, resolverAddr := range options.Resolvers {
 		if resolverAddr == "" || resolverAddr == "auto" {
 			for ip, _ := range resolverCountry {
@@ -38,7 +43,10 @@ func getConfigResolvers(options option.DnsttOptions) ([]dnstt.Resolver, error) {
 				if err != nil {
 					return nil, fmt.Errorf("invalid resolver address %s: %w", ip, err)
 				}
-				resolvers = append(resolvers, resolver)
+				resolvers = append(resolvers, ResolverS{
+					Resolver: resolver,
+					Auto:     true,
+				})
 			}
 			continue
 		}
@@ -46,7 +54,10 @@ func getConfigResolvers(options option.DnsttOptions) ([]dnstt.Resolver, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid resolver address %s: %w", resolverAddr, err)
 		}
-		resolvers = append(resolvers, resolver)
+		resolvers = append(resolvers, ResolverS{
+			Resolver: resolver,
+			Auto:     false,
+		})
 
 	}
 	return resolvers, nil

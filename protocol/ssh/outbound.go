@@ -15,6 +15,7 @@ import (
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/outbound"
 	"github.com/sagernet/sing-box/common/dialer"
+	"github.com/sagernet/sing-box/common/monitoring"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
@@ -59,6 +60,7 @@ type Outbound struct {
 	closeIdle         bool
 	ctx               context.Context
 	uotClient         *uot.Client
+	connectionErr     string
 }
 
 func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.SSHOutboundOptions) (adapter.Outbound, error) {
@@ -189,6 +191,7 @@ func (s *Outbound) connect(ctx context.Context) (client *ssh.Client, err error) 
 					return nil
 				}
 			}
+
 			return E.New("host key mismatch, server send ", key.Type(), " ", base64.StdEncoding.EncodeToString(serverKey))
 		},
 	}
@@ -223,6 +226,14 @@ func (s *Outbound) connect(ctx context.Context) (client *ssh.Client, err error) 
 	}()
 
 	return client, nil
+}
+
+func (s *Outbound) PostStart() error {
+	s.connect(s.ctx)
+	if s.IsReady() {
+		monitoring.Get(s.ctx).TestNow(s.Tag())
+	}
+	return nil
 }
 
 func (s *Outbound) InterfaceUpdated(ctx context.Context) {
@@ -279,6 +290,7 @@ func (s *Outbound) DialContext(ctx context.Context, network string, destination 
 	metadata.Destination = destination
 	client, err := s.connect(ctx)
 	if err != nil {
+		s.connectionErr = err.Error()
 		return nil, err
 	}
 	s.clientAccess.Lock()
@@ -286,6 +298,7 @@ func (s *Outbound) DialContext(ctx context.Context, network string, destination 
 		s.streams++
 	}
 	s.clientAccess.Unlock()
+	s.connectionErr = ""
 
 	switch N.NetworkName(network) {
 	case N.NetworkTCP:
@@ -343,4 +356,20 @@ func (c *chanConnWrapper) SetReadDeadline(t time.Time) error {
 
 func (c *chanConnWrapper) SetWriteDeadline(t time.Time) error {
 	return os.ErrInvalid
+}
+
+func (s *Outbound) IsReady() bool {
+	return s.client != nil
+}
+func (s *Outbound) ProxyDisplayName() string {
+	str := C.ProxyDisplayName(s.Type())
+	if !s.IsReady() {
+		if s.connectionErr != "" {
+			str += " ❌ "
+			str += s.connectionErr
+		} else {
+			str += " ⚠️ Connecting..."
+		}
+	}
+	return s.connectionErr
 }
