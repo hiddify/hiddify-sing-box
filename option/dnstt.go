@@ -15,9 +15,9 @@ type DnsttOptions struct {
 	RecordType        string `json:"record-type,omitempty"`
 	UTLSClientHelloID string `json:"utls,omitempty"`
 
-	Resolvers         []string `json:"resolvers,omitempty"`
-	TunnelPerResolver int      `json:"tunnel-per-resolver,omitempty"`
-	MultiResolver     bool     `json:"multi-resolver,omitempty"`
+	Resolvers                   []string `json:"resolvers,omitempty"`
+	DeprecatedTunnelPerResolver int      `json:"tunnel-per-resolver,omitempty"`
+	SingleResolver              bool     `json:"single-resolver,omitempty"`
 
 	DnsttCompat  bool     `json:"dnstt-compat,omitempty"`
 	ClientIDSize *int     `json:"clientid-size,omitempty"`

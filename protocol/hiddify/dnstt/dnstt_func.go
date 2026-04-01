@@ -13,10 +13,11 @@ import (
 
 func (c *Outbound) addResolver(resolver dnstt.Resolver) {
 	c.mu.Lock()
-	for i := 0; i < c.options.TunnelPerResolver; i++ {
-		c.resolvers = append(c.resolvers, resolver)
-		c.tunnels = append(c.tunnels, nil)
-	}
+	// for i := 0; i < c.options.TunnelPerResolver; i++ {
+	c.resolvers = append(c.resolvers, resolver)
+	c.tunnels = append(c.tunnels, nil)
+	c.mutlitunnel = nil
+	// }
 	c.mu.Unlock()
 	if !c.IsReady() {
 		c.started = 1
@@ -26,14 +27,30 @@ func (c *Outbound) addResolver(resolver dnstt.Resolver) {
 
 }
 
-func (c *Outbound) OpenStream(ctx context.Context) (net.Conn, error) {
+func (c *Outbound) openStreamImp(ctx context.Context) (net.Conn, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if t := c.mutlitunnel; t != nil {
+		return t.OpenStream()
+	}
+
 	if newtunnel, err := c.createDnsttTunnel(ctx, c.resolvers); err != nil {
 		return nil, err
 	} else {
+		c.mutlitunnel = newtunnel
 		return newtunnel.OpenStream()
 	}
+}
+func (c *Outbound) OpenStream(ctx context.Context) (net.Conn, error) {
+	var err error
+	var conn net.Conn
+	for range 3 {
+		conn, err = c.openStreamImp(ctx)
+		if err == nil {
+			return conn, nil
+		}
+	}
+	return nil, err
 }
 func (c *Outbound) OpenStreamSingleResolver(ctx context.Context) (net.Conn, error) {
 	// dnsttConfig := streamSettings.ProtocolSettings.(*Config)

@@ -91,7 +91,7 @@ func (h *Outbound) startTestResolver() error {
 
 		b.Go(resolver.ResolverAddr, func() (any, error) {
 			h.mu.Lock()
-			resCount := len(h.resolvers) / h.options.TunnelPerResolver
+			resCount := len(h.resolvers)
 			h.mu.Unlock()
 			if resCount > 10 {
 				return nil, nil
@@ -316,7 +316,7 @@ func (h *Outbound) getTCPBasedResolverConnection(r dnstt.Resolver, timeout time.
 			if timeout <= 0 {
 				timeout = dnstt.DefaultUDPResponseTimeout
 			}
-			conn, _, err := dnstt.NewUDPPacketConn(addr, r.DialerControl, workers, timeout, !r.UDPAcceptErrors, turbotunnel.QueueSize, turbotunnel.DefaultQueueOverflowMode)
+			conn, _, err := dnstt.NewUDPPacketConn(addr, r.DialerControl, workers, timeout, !r.UDPAcceptErrors, turbotunnel.QueueSize, turbotunnel.QueueOverflowBlock)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -335,7 +335,7 @@ func (h *Outbound) getTCPBasedResolverConnection(r dnstt.Resolver, timeout time.
 		} else {
 			rt = http.DefaultTransport
 		}
-		conn, err := dnstt.NewHTTPPacketConn(rt, r.ResolverAddr, 8, turbotunnel.QueueSize, turbotunnel.DefaultQueueOverflowMode)
+		conn, err := dnstt.NewHTTPPacketConn(rt, r.ResolverAddr, 8, turbotunnel.QueueSize, turbotunnel.QueueOverflowBlock)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -354,7 +354,7 @@ func (h *Outbound) getTCPBasedResolverConnection(r dnstt.Resolver, timeout time.
 				return tls.DialWithDialer(&net.Dialer{}, network, addr, nil)
 			}
 		}
-		conn, err := dnstt.NewTLSPacketConn(r.ResolverAddr, dialTLSContext, turbotunnel.QueueSize, turbotunnel.DefaultQueueOverflowMode)
+		conn, err := dnstt.NewTLSPacketConn(r.ResolverAddr, dialTLSContext, turbotunnel.QueueSize, turbotunnel.QueueOverflowBlock)
 		if err != nil {
 			return nil, nil, err
 		}

@@ -38,6 +38,7 @@ type Outbound struct {
 	condidateResolvers []dnstt.Resolver
 	resolvers          []dnstt.Resolver
 	tunnels            []*dnstt.Tunnel
+	mutlitunnel        *dnstt.Tunnel
 	mu                 sync.Mutex
 	cache              adapter.CacheFile
 	uotClient          *uot.Client
@@ -68,9 +69,9 @@ func initDuration(d *badoption.Duration, defultDuration time.Duration) time.Dura
 
 func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.DnsttOptions) (adapter.Outbound, error) {
 
-	if options.TunnelPerResolver <= 0 {
-		options.TunnelPerResolver = 4
-	}
+	// if options.TunnelPerResolver <= 0 {
+	// 	options.TunnelPerResolver = 4
+	// }
 
 	resolvers, err := getConfigResolvers(options)
 	if err != nil {
@@ -117,10 +118,10 @@ func (h *Outbound) DialContext(ctx context.Context, network string, destination 
 	if !h.IsReady() {
 		return nil, E.New("outbound is not started")
 	}
-	if h.options.MultiResolver {
-		return h.OpenStream(ctx)
+	if h.options.SingleResolver {
+		return h.OpenStreamSingleResolver(ctx)
 	}
-	return h.OpenStreamSingleResolver(ctx)
+	return h.OpenStream(ctx)
 }
 func (h *Outbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
 	if !h.IsReady() {
