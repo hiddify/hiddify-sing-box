@@ -373,7 +373,6 @@ func (b *profileBuilder) emitLocation() uint64 {
 	b.flush()
 	return id
 }
-
 func (b *profileBuilder) addMappingEntry(lo uint64, hi uint64, offset uint64, file string, buildID string, fake bool) {
 	b.mem = append(b.mem, memMap{
 		start:   uintptr(lo),

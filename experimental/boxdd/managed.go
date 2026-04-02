@@ -91,3 +91,7 @@ func (h *managedHandler) SetSystemProxyEnabled(enabled bool) error {
 func (h *managedHandler) TriggerNativeCrash() error {
 	return E.New("native crash is not supported")
 }
+
+func (h *managedHandler) WriteDebugMessage(message string) {
+	h.daemon.logger.Debug(message)
+}

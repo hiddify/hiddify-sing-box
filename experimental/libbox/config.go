@@ -16,6 +16,7 @@ import (
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-box/schema"
+	"github.com/sagernet/sing-box/service/oomkiller"
 	tun "github.com/sagernet/sing-tun"
 	"github.com/sagernet/sing/common/control"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -25,6 +26,8 @@ import (
 	"github.com/sagernet/sing/service"
 	"github.com/sagernet/sing/service/filemanager"
 )
+
+var sOOMReporter oomkiller.OOMReporter
 
 func baseContext(platformInterface PlatformInterface) context.Context {
 	dnsRegistry := include.DNSTransportRegistry()
@@ -37,6 +40,9 @@ func baseContext(platformInterface PlatformInterface) context.Context {
 	}
 	ctx := context.Background()
 	ctx = filemanager.WithDefault(ctx, sWorkingPath, sTempPath, sUserID, sGroupID)
+	if sOOMReporter != nil {
+		ctx = service.ContextWith[oomkiller.OOMReporter](ctx, sOOMReporter)
+	}
 	return box.Context(ctx, include.InboundRegistry(), include.OutboundRegistry(), include.EndpointRegistry(), dnsRegistry, include.ServiceRegistry(), include.CertificateProviderRegistry())
 }
 

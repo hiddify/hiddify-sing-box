@@ -20,6 +20,7 @@ import (
 
 const (
 	defaultMinInterval               = 100 * time.Millisecond
+	defaultArmedInterval             = time.Second
 	defaultMaxInterval               = 10 * time.Second
 	defaultReleaseInterval           = time.Second
 	defaultReleaseShrinkFloor        = 16
@@ -55,6 +56,7 @@ type timerConfig struct {
 	safetyMargin    uint64
 	hasSafetyMargin bool
 	minInterval     time.Duration
+	armedInterval   time.Duration
 	maxInterval     time.Duration
 	policyMode      policyMode
 	killerDisabled  bool
@@ -97,6 +99,7 @@ func buildTimerConfig(options option.OOMKillerServiceOptions, memoryLimit uint64
 		safetyMargin:    safetyMargin,
 		hasSafetyMargin: hasSafetyMargin,
 		minInterval:     minInterval,
+		armedInterval:   max(min(defaultArmedInterval, maxInterval), minInterval),
 		maxInterval:     maxInterval,
 		policyMode:      policyMode,
 		killerDisabled:  killerDisabled,
@@ -159,6 +162,15 @@ func (t *adaptiveTimer) start(carriedState *timerState) {
 		return
 	}
 	t.startLocked()
+}
+
+func (t *adaptiveTimer) notifyPressure() {
+	t.access.Lock()
+	t.startLocked()
+	t.forceMinInterval = true
+	t.pendingPressureBaseline = true
+	t.access.Unlock()
+	t.poll()
 }
 
 func (t *adaptiveTimer) startLocked() {
