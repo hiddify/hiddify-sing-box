@@ -14,6 +14,10 @@ import (
 	"github.com/sagernet/sing/service"
 )
 
+type OOMReporter interface {
+	WriteReport(memoryUsage uint64) error
+}
+
 func RegisterService(registry *boxService.Registry) {
 	boxService.Register[option.OOMKillerServiceOptions](registry, boxConstant.TypeOOMKiller, NewService)
 }

@@ -2,7 +2,6 @@ package v2rayapi
 
 import (
 	context "context"
-
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -86,11 +85,9 @@ type UnimplementedStatsServiceServer struct{}
 func (UnimplementedStatsServiceServer) GetStats(context.Context, *GetStatsRequest) (*GetStatsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetStats not implemented")
 }
-
 func (UnimplementedStatsServiceServer) QueryStats(context.Context, *QueryStatsRequest) (*QueryStatsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method QueryStats not implemented")
 }
-
 func (UnimplementedStatsServiceServer) GetSysStats(context.Context, *SysStatsRequest) (*SysStatsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetSysStats not implemented")
 }

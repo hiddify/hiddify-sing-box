@@ -1,13 +1,12 @@
 package daemon
 
 import (
-	reflect "reflect"
-	sync "sync"
-	unsafe "unsafe"
-
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
+	reflect "reflect"
+	sync "sync"
+	unsafe "unsafe"
 )
 
 const (
@@ -8097,123 +8096,120 @@ func file_daemon_started_service_proto_rawDescGZIP() []byte {
 	return file_daemon_started_service_proto_rawDescData
 }
 
-var (
-	file_daemon_started_service_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
-	file_daemon_started_service_proto_msgTypes  = make([]protoimpl.MessageInfo, 104)
-	file_daemon_started_service_proto_goTypes   = []any{
-		LogLevel(0),                               // 0: daemon.LogLevel
-		ConnectionEventType(0),                    // 1: daemon.ConnectionEventType
-		USBDeviceState(0),                         // 2: daemon.USBDeviceState
-		USBBackend(0),                             // 3: daemon.USBBackend
-		ServiceStatus_Type(0),                     // 4: daemon.ServiceStatus.Type
-		(*Version)(nil),                           // 5: daemon.Version
-		(*ServiceStatus)(nil),                     // 6: daemon.ServiceStatus
-		(*SubscribeStatusRequest)(nil),            // 7: daemon.SubscribeStatusRequest
-		(*Log)(nil),                               // 8: daemon.Log
-		(*DefaultLogLevel)(nil),                   // 9: daemon.DefaultLogLevel
-		(*Status)(nil),                            // 10: daemon.Status
-		(*Groups)(nil),                            // 11: daemon.Groups
-		(*Group)(nil),                             // 12: daemon.Group
-		(*GroupItem)(nil),                         // 13: daemon.GroupItem
-		(*URLTestRequest)(nil),                    // 14: daemon.URLTestRequest
-		(*SelectOutboundRequest)(nil),             // 15: daemon.SelectOutboundRequest
-		(*SetGroupExpandRequest)(nil),             // 16: daemon.SetGroupExpandRequest
-		(*ClashMode)(nil),                         // 17: daemon.ClashMode
-		(*ClashModeStatus)(nil),                   // 18: daemon.ClashModeStatus
-		(*SubscribeConnectionsRequest)(nil),       // 19: daemon.SubscribeConnectionsRequest
-		(*ConnectionEvent)(nil),                   // 20: daemon.ConnectionEvent
-		(*ConnectionEvents)(nil),                  // 21: daemon.ConnectionEvents
-		(*Connection)(nil),                        // 22: daemon.Connection
-		(*ProcessInfo)(nil),                       // 23: daemon.ProcessInfo
-		(*CloseConnectionRequest)(nil),            // 24: daemon.CloseConnectionRequest
-		(*DeprecatedWarnings)(nil),                // 25: daemon.DeprecatedWarnings
-		(*DeprecatedWarning)(nil),                 // 26: daemon.DeprecatedWarning
-		(*StartedAt)(nil),                         // 27: daemon.StartedAt
-		(*OutboundList)(nil),                      // 28: daemon.OutboundList
-		(*NetworkQualityTestRequest)(nil),         // 29: daemon.NetworkQualityTestRequest
-		(*NetworkQualityTestProgress)(nil),        // 30: daemon.NetworkQualityTestProgress
-		(*STUNTestRequest)(nil),                   // 31: daemon.STUNTestRequest
-		(*STUNTestProgress)(nil),                  // 32: daemon.STUNTestProgress
-		(*TailscaleStatusUpdate)(nil),             // 33: daemon.TailscaleStatusUpdate
-		(*TailscaleEndpointStatus)(nil),           // 34: daemon.TailscaleEndpointStatus
-		(*TailscaleUserGroup)(nil),                // 35: daemon.TailscaleUserGroup
-		(*TailscalePeer)(nil),                     // 36: daemon.TailscalePeer
-		(*TailscalePingRequest)(nil),              // 37: daemon.TailscalePingRequest
-		(*TailscalePingResponse)(nil),             // 38: daemon.TailscalePingResponse
-		(*SetTailscaleExitNodeRequest)(nil),       // 39: daemon.SetTailscaleExitNodeRequest
-		(*TailscaleLogoutRequest)(nil),            // 40: daemon.TailscaleLogoutRequest
-		(*TailscaleCertificateRequest)(nil),       // 41: daemon.TailscaleCertificateRequest
-		(*TailscaleCertificate)(nil),              // 42: daemon.TailscaleCertificate
-		(*TailscaleSSHClientMessage)(nil),         // 43: daemon.TailscaleSSHClientMessage
-		(*TailscaleSSHStart)(nil),                 // 44: daemon.TailscaleSSHStart
-		(*TailscaleSSHInput)(nil),                 // 45: daemon.TailscaleSSHInput
-		(*TailscaleSSHResize)(nil),                // 46: daemon.TailscaleSSHResize
-		(*TailscaleSSHServerMessage)(nil),         // 47: daemon.TailscaleSSHServerMessage
-		(*TailscaleSSHAuthBanner)(nil),            // 48: daemon.TailscaleSSHAuthBanner
-		(*TailscaleSSHReady)(nil),                 // 49: daemon.TailscaleSSHReady
-		(*TailscaleSSHOutput)(nil),                // 50: daemon.TailscaleSSHOutput
-		(*TailscaleSSHExit)(nil),                  // 51: daemon.TailscaleSSHExit
-		(*TailscaleSSHError)(nil),                 // 52: daemon.TailscaleSSHError
-		(*SubscribeTaildropInboxRequest)(nil),     // 53: daemon.SubscribeTaildropInboxRequest
-		(*MarkTaildropInboxReadRequest)(nil),      // 54: daemon.MarkTaildropInboxReadRequest
-		(*TaildropInbox)(nil),                     // 55: daemon.TaildropInbox
-		(*TaildropFile)(nil),                      // 56: daemon.TaildropFile
-		(*TaildropReceivingFile)(nil),             // 57: daemon.TaildropReceivingFile
-		(*TaildropSendClientMessage)(nil),         // 58: daemon.TaildropSendClientMessage
-		(*TaildropSendStart)(nil),                 // 59: daemon.TaildropSendStart
-		(*TaildropOutgoingFile)(nil),              // 60: daemon.TaildropOutgoingFile
-		(*TaildropFileChunk)(nil),                 // 61: daemon.TaildropFileChunk
-		(*TaildropFileDone)(nil),                  // 62: daemon.TaildropFileDone
-		(*TaildropSendServerMessage)(nil),         // 63: daemon.TaildropSendServerMessage
-		(*TaildropSendProgress)(nil),              // 64: daemon.TaildropSendProgress
-		(*DownloadTaildropFileRequest)(nil),       // 65: daemon.DownloadTaildropFileRequest
-		(*DownloadTaildropFileChunk)(nil),         // 66: daemon.DownloadTaildropFileChunk
-		(*DeleteTaildropFileRequest)(nil),         // 67: daemon.DeleteTaildropFileRequest
-		(*CancelTaildropReceivingRequest)(nil),    // 68: daemon.CancelTaildropReceivingRequest
-		(*USBProviderMessage)(nil),                // 69: daemon.USBProviderMessage
-		(*USBServerMessage)(nil),                  // 70: daemon.USBServerMessage
-		(*USBDeviceDescriptor)(nil),               // 71: daemon.USBDeviceDescriptor
-		(*USBDeviceAttach)(nil),                   // 72: daemon.USBDeviceAttach
-		(*USBInterface)(nil),                      // 73: daemon.USBInterface
-		(*USBDeviceDetach)(nil),                   // 74: daemon.USBDeviceDetach
-		(*USBDeviceReady)(nil),                    // 75: daemon.USBDeviceReady
-		(*USBURBRequest)(nil),                     // 76: daemon.USBURBRequest
-		(*USBURBResponse)(nil),                    // 77: daemon.USBURBResponse
-		(*USBIsoPacket)(nil),                      // 78: daemon.USBIsoPacket
-		(*USBEndpointAbort)(nil),                  // 79: daemon.USBEndpointAbort
-		(*USBError)(nil),                          // 80: daemon.USBError
-		(*USBIPServerStatusUpdate)(nil),           // 81: daemon.USBIPServerStatusUpdate
-		(*USBIPServerStatus)(nil),                 // 82: daemon.USBIPServerStatus
-		(*USBSharedDevice)(nil),                   // 83: daemon.USBSharedDevice
-		(*OpenConnectStatusUpdate)(nil),           // 84: daemon.OpenConnectStatusUpdate
-		(*OpenConnectEndpointStatus)(nil),         // 85: daemon.OpenConnectEndpointStatus
-		(*OpenConnectTunnelInfo)(nil),             // 86: daemon.OpenConnectTunnelInfo
-		(*OpenConnectAuthChallenge)(nil),          // 87: daemon.OpenConnectAuthChallenge
-		(*OpenConnectAuthForm)(nil),               // 88: daemon.OpenConnectAuthForm
-		(*OpenConnectAuthFormField)(nil),          // 89: daemon.OpenConnectAuthFormField
-		(*OpenConnectAuthFormChoice)(nil),         // 90: daemon.OpenConnectAuthFormChoice
-		(*OpenConnectBrowserRequest)(nil),         // 91: daemon.OpenConnectBrowserRequest
-		(*OpenConnectBrowserCookie)(nil),          // 92: daemon.OpenConnectBrowserCookie
-		(*OpenConnectBrowserHeader)(nil),          // 93: daemon.OpenConnectBrowserHeader
-		(*OpenConnectAuthFormResponse)(nil),       // 94: daemon.OpenConnectAuthFormResponse
-		(*OpenConnectBrowserResult)(nil),          // 95: daemon.OpenConnectBrowserResult
-		(*OpenConnectAuthResponseSubmission)(nil), // 96: daemon.OpenConnectAuthResponseSubmission
-		(*OpenConnectAuthChallengeCancel)(nil),    // 97: daemon.OpenConnectAuthChallengeCancel
-		(*OpenVPNStatusUpdate)(nil),               // 98: daemon.OpenVPNStatusUpdate
-		(*OpenVPNEndpointStatus)(nil),             // 99: daemon.OpenVPNEndpointStatus
-		(*OpenVPNTunnelInfo)(nil),                 // 100: daemon.OpenVPNTunnelInfo
-		(*OpenVPNChallenge)(nil),                  // 101: daemon.OpenVPNChallenge
-		(*OpenVPNChallengeSubmission)(nil),        // 102: daemon.OpenVPNChallengeSubmission
-		(*OpenVPNChallengeCancel)(nil),            // 103: daemon.OpenVPNChallengeCancel
-		(*NotificationEvent)(nil),                 // 104: daemon.NotificationEvent
-		(*Notification)(nil),                      // 105: daemon.Notification
-		(*NotificationCancel)(nil),                // 106: daemon.NotificationCancel
-		(*Log_Message)(nil),                       // 107: daemon.Log.Message
-		nil,                                       // 108: daemon.OpenConnectAuthFormResponse.ValuesEntry
-		(*emptypb.Empty)(nil),                     // 109: google.protobuf.Empty
-	}
-)
-
+var file_daemon_started_service_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
+var file_daemon_started_service_proto_msgTypes = make([]protoimpl.MessageInfo, 104)
+var file_daemon_started_service_proto_goTypes = []any{
+	(LogLevel)(0),                             // 0: daemon.LogLevel
+	(ConnectionEventType)(0),                  // 1: daemon.ConnectionEventType
+	(USBDeviceState)(0),                       // 2: daemon.USBDeviceState
+	(USBBackend)(0),                           // 3: daemon.USBBackend
+	(ServiceStatus_Type)(0),                   // 4: daemon.ServiceStatus.Type
+	(*Version)(nil),                           // 5: daemon.Version
+	(*ServiceStatus)(nil),                     // 6: daemon.ServiceStatus
+	(*SubscribeStatusRequest)(nil),            // 7: daemon.SubscribeStatusRequest
+	(*Log)(nil),                               // 8: daemon.Log
+	(*DefaultLogLevel)(nil),                   // 9: daemon.DefaultLogLevel
+	(*Status)(nil),                            // 10: daemon.Status
+	(*Groups)(nil),                            // 11: daemon.Groups
+	(*Group)(nil),                             // 12: daemon.Group
+	(*GroupItem)(nil),                         // 13: daemon.GroupItem
+	(*URLTestRequest)(nil),                    // 14: daemon.URLTestRequest
+	(*SelectOutboundRequest)(nil),             // 15: daemon.SelectOutboundRequest
+	(*SetGroupExpandRequest)(nil),             // 16: daemon.SetGroupExpandRequest
+	(*ClashMode)(nil),                         // 17: daemon.ClashMode
+	(*ClashModeStatus)(nil),                   // 18: daemon.ClashModeStatus
+	(*SubscribeConnectionsRequest)(nil),       // 19: daemon.SubscribeConnectionsRequest
+	(*ConnectionEvent)(nil),                   // 20: daemon.ConnectionEvent
+	(*ConnectionEvents)(nil),                  // 21: daemon.ConnectionEvents
+	(*Connection)(nil),                        // 22: daemon.Connection
+	(*ProcessInfo)(nil),                       // 23: daemon.ProcessInfo
+	(*CloseConnectionRequest)(nil),            // 24: daemon.CloseConnectionRequest
+	(*DeprecatedWarnings)(nil),                // 25: daemon.DeprecatedWarnings
+	(*DeprecatedWarning)(nil),                 // 26: daemon.DeprecatedWarning
+	(*StartedAt)(nil),                         // 27: daemon.StartedAt
+	(*OutboundList)(nil),                      // 28: daemon.OutboundList
+	(*NetworkQualityTestRequest)(nil),         // 29: daemon.NetworkQualityTestRequest
+	(*NetworkQualityTestProgress)(nil),        // 30: daemon.NetworkQualityTestProgress
+	(*STUNTestRequest)(nil),                   // 31: daemon.STUNTestRequest
+	(*STUNTestProgress)(nil),                  // 32: daemon.STUNTestProgress
+	(*TailscaleStatusUpdate)(nil),             // 33: daemon.TailscaleStatusUpdate
+	(*TailscaleEndpointStatus)(nil),           // 34: daemon.TailscaleEndpointStatus
+	(*TailscaleUserGroup)(nil),                // 35: daemon.TailscaleUserGroup
+	(*TailscalePeer)(nil),                     // 36: daemon.TailscalePeer
+	(*TailscalePingRequest)(nil),              // 37: daemon.TailscalePingRequest
+	(*TailscalePingResponse)(nil),             // 38: daemon.TailscalePingResponse
+	(*SetTailscaleExitNodeRequest)(nil),       // 39: daemon.SetTailscaleExitNodeRequest
+	(*TailscaleLogoutRequest)(nil),            // 40: daemon.TailscaleLogoutRequest
+	(*TailscaleCertificateRequest)(nil),       // 41: daemon.TailscaleCertificateRequest
+	(*TailscaleCertificate)(nil),              // 42: daemon.TailscaleCertificate
+	(*TailscaleSSHClientMessage)(nil),         // 43: daemon.TailscaleSSHClientMessage
+	(*TailscaleSSHStart)(nil),                 // 44: daemon.TailscaleSSHStart
+	(*TailscaleSSHInput)(nil),                 // 45: daemon.TailscaleSSHInput
+	(*TailscaleSSHResize)(nil),                // 46: daemon.TailscaleSSHResize
+	(*TailscaleSSHServerMessage)(nil),         // 47: daemon.TailscaleSSHServerMessage
+	(*TailscaleSSHAuthBanner)(nil),            // 48: daemon.TailscaleSSHAuthBanner
+	(*TailscaleSSHReady)(nil),                 // 49: daemon.TailscaleSSHReady
+	(*TailscaleSSHOutput)(nil),                // 50: daemon.TailscaleSSHOutput
+	(*TailscaleSSHExit)(nil),                  // 51: daemon.TailscaleSSHExit
+	(*TailscaleSSHError)(nil),                 // 52: daemon.TailscaleSSHError
+	(*SubscribeTaildropInboxRequest)(nil),     // 53: daemon.SubscribeTaildropInboxRequest
+	(*MarkTaildropInboxReadRequest)(nil),      // 54: daemon.MarkTaildropInboxReadRequest
+	(*TaildropInbox)(nil),                     // 55: daemon.TaildropInbox
+	(*TaildropFile)(nil),                      // 56: daemon.TaildropFile
+	(*TaildropReceivingFile)(nil),             // 57: daemon.TaildropReceivingFile
+	(*TaildropSendClientMessage)(nil),         // 58: daemon.TaildropSendClientMessage
+	(*TaildropSendStart)(nil),                 // 59: daemon.TaildropSendStart
+	(*TaildropOutgoingFile)(nil),              // 60: daemon.TaildropOutgoingFile
+	(*TaildropFileChunk)(nil),                 // 61: daemon.TaildropFileChunk
+	(*TaildropFileDone)(nil),                  // 62: daemon.TaildropFileDone
+	(*TaildropSendServerMessage)(nil),         // 63: daemon.TaildropSendServerMessage
+	(*TaildropSendProgress)(nil),              // 64: daemon.TaildropSendProgress
+	(*DownloadTaildropFileRequest)(nil),       // 65: daemon.DownloadTaildropFileRequest
+	(*DownloadTaildropFileChunk)(nil),         // 66: daemon.DownloadTaildropFileChunk
+	(*DeleteTaildropFileRequest)(nil),         // 67: daemon.DeleteTaildropFileRequest
+	(*CancelTaildropReceivingRequest)(nil),    // 68: daemon.CancelTaildropReceivingRequest
+	(*USBProviderMessage)(nil),                // 69: daemon.USBProviderMessage
+	(*USBServerMessage)(nil),                  // 70: daemon.USBServerMessage
+	(*USBDeviceDescriptor)(nil),               // 71: daemon.USBDeviceDescriptor
+	(*USBDeviceAttach)(nil),                   // 72: daemon.USBDeviceAttach
+	(*USBInterface)(nil),                      // 73: daemon.USBInterface
+	(*USBDeviceDetach)(nil),                   // 74: daemon.USBDeviceDetach
+	(*USBDeviceReady)(nil),                    // 75: daemon.USBDeviceReady
+	(*USBURBRequest)(nil),                     // 76: daemon.USBURBRequest
+	(*USBURBResponse)(nil),                    // 77: daemon.USBURBResponse
+	(*USBIsoPacket)(nil),                      // 78: daemon.USBIsoPacket
+	(*USBEndpointAbort)(nil),                  // 79: daemon.USBEndpointAbort
+	(*USBError)(nil),                          // 80: daemon.USBError
+	(*USBIPServerStatusUpdate)(nil),           // 81: daemon.USBIPServerStatusUpdate
+	(*USBIPServerStatus)(nil),                 // 82: daemon.USBIPServerStatus
+	(*USBSharedDevice)(nil),                   // 83: daemon.USBSharedDevice
+	(*OpenConnectStatusUpdate)(nil),           // 84: daemon.OpenConnectStatusUpdate
+	(*OpenConnectEndpointStatus)(nil),         // 85: daemon.OpenConnectEndpointStatus
+	(*OpenConnectTunnelInfo)(nil),             // 86: daemon.OpenConnectTunnelInfo
+	(*OpenConnectAuthChallenge)(nil),          // 87: daemon.OpenConnectAuthChallenge
+	(*OpenConnectAuthForm)(nil),               // 88: daemon.OpenConnectAuthForm
+	(*OpenConnectAuthFormField)(nil),          // 89: daemon.OpenConnectAuthFormField
+	(*OpenConnectAuthFormChoice)(nil),         // 90: daemon.OpenConnectAuthFormChoice
+	(*OpenConnectBrowserRequest)(nil),         // 91: daemon.OpenConnectBrowserRequest
+	(*OpenConnectBrowserCookie)(nil),          // 92: daemon.OpenConnectBrowserCookie
+	(*OpenConnectBrowserHeader)(nil),          // 93: daemon.OpenConnectBrowserHeader
+	(*OpenConnectAuthFormResponse)(nil),       // 94: daemon.OpenConnectAuthFormResponse
+	(*OpenConnectBrowserResult)(nil),          // 95: daemon.OpenConnectBrowserResult
+	(*OpenConnectAuthResponseSubmission)(nil), // 96: daemon.OpenConnectAuthResponseSubmission
+	(*OpenConnectAuthChallengeCancel)(nil),    // 97: daemon.OpenConnectAuthChallengeCancel
+	(*OpenVPNStatusUpdate)(nil),               // 98: daemon.OpenVPNStatusUpdate
+	(*OpenVPNEndpointStatus)(nil),             // 99: daemon.OpenVPNEndpointStatus
+	(*OpenVPNTunnelInfo)(nil),                 // 100: daemon.OpenVPNTunnelInfo
+	(*OpenVPNChallenge)(nil),                  // 101: daemon.OpenVPNChallenge
+	(*OpenVPNChallengeSubmission)(nil),        // 102: daemon.OpenVPNChallengeSubmission
+	(*OpenVPNChallengeCancel)(nil),            // 103: daemon.OpenVPNChallengeCancel
+	(*NotificationEvent)(nil),                 // 104: daemon.NotificationEvent
+	(*Notification)(nil),                      // 105: daemon.Notification
+	(*NotificationCancel)(nil),                // 106: daemon.NotificationCancel
+	(*Log_Message)(nil),                       // 107: daemon.Log.Message
+	nil,                                       // 108: daemon.OpenConnectAuthFormResponse.ValuesEntry
+	(*emptypb.Empty)(nil),                     // 109: google.protobuf.Empty
+}
 var file_daemon_started_service_proto_depIdxs = []int32{
 	4,   // 0: daemon.ServiceStatus.status:type_name -> daemon.ServiceStatus.Type
 	107, // 1: daemon.Log.messages:type_name -> daemon.Log.Message

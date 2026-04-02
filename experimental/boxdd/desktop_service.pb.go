@@ -1,15 +1,13 @@
 package main
 
 import (
-	reflect "reflect"
-	sync "sync"
-	unsafe "unsafe"
-
 	daemon "github.com/sagernet/sing-box/daemon"
-
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
+	reflect "reflect"
+	sync "sync"
+	unsafe "unsafe"
 )
 
 const (
@@ -1828,47 +1826,44 @@ func file_experimental_boxdd_desktop_service_proto_rawDescGZIP() []byte {
 	return file_experimental_boxdd_desktop_service_proto_rawDescData
 }
 
-var (
-	file_experimental_boxdd_desktop_service_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-	file_experimental_boxdd_desktop_service_proto_msgTypes  = make([]protoimpl.MessageInfo, 28)
-	file_experimental_boxdd_desktop_service_proto_goTypes   = []any{
-		DaemonOwnership(0),                          // 0: desktop.DaemonOwnership
-		InstallUpdateResult(0),                      // 1: desktop.InstallUpdateResult
-		ProfileContent_Type(0),                      // 2: desktop.ProfileContent.Type
-		(*ArchiveReportRequest)(nil),                // 3: desktop.ArchiveReportRequest
-		(*StandaloneNetworkQualityTestRequest)(nil), // 4: desktop.StandaloneNetworkQualityTestRequest
-		(*StandaloneSTUNTestRequest)(nil),           // 5: desktop.StandaloneSTUNTestRequest
-		(*DaemonInfo)(nil),                          // 6: desktop.DaemonInfo
-		(*StartServiceRequest)(nil),                 // 7: desktop.StartServiceRequest
-		(*StartOptions)(nil),                        // 8: desktop.StartOptions
-		(*ConfigContent)(nil),                       // 9: desktop.ConfigContent
-		(*ProfileContent)(nil),                      // 10: desktop.ProfileContent
-		(*ProfileData)(nil),                         // 11: desktop.ProfileData
-		(*WorkingDirectoryInfo)(nil),                // 12: desktop.WorkingDirectoryInfo
-		(*CrashReportList)(nil),                     // 13: desktop.CrashReportList
-		(*CrashReportEntry)(nil),                    // 14: desktop.CrashReportEntry
-		(*CrashReportRequest)(nil),                  // 15: desktop.CrashReportRequest
-		(*CrashReportExportRequest)(nil),            // 16: desktop.CrashReportExportRequest
-		(*CrashReportContent)(nil),                  // 17: desktop.CrashReportContent
-		(*CrashReportFile)(nil),                     // 18: desktop.CrashReportFile
-		(*CrashReportArchive)(nil),                  // 19: desktop.CrashReportArchive
-		(*OOMReportList)(nil),                       // 20: desktop.OOMReportList
-		(*OOMReportEntry)(nil),                      // 21: desktop.OOMReportEntry
-		(*OOMReportRequest)(nil),                    // 22: desktop.OOMReportRequest
-		(*OOMReportExportRequest)(nil),              // 23: desktop.OOMReportExportRequest
-		(*OOMReportContent)(nil),                    // 24: desktop.OOMReportContent
-		(*OOMReportFile)(nil),                       // 25: desktop.OOMReportFile
-		(*SecuritySettings)(nil),                    // 26: desktop.SecuritySettings
-		(*SetInsecureModeEnabledRequest)(nil),       // 27: desktop.SetInsecureModeEnabledRequest
-		(*SetLocaleRequest)(nil),                    // 28: desktop.SetLocaleRequest
-		(*InstallUpdateRequest)(nil),                // 29: desktop.InstallUpdateRequest
-		(*InstallUpdateResponse)(nil),               // 30: desktop.InstallUpdateResponse
-		(*emptypb.Empty)(nil),                       // 31: google.protobuf.Empty
-		(*daemon.NetworkQualityTestProgress)(nil),   // 32: daemon.NetworkQualityTestProgress
-		(*daemon.STUNTestProgress)(nil),             // 33: daemon.STUNTestProgress
-	}
-)
-
+var file_experimental_boxdd_desktop_service_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_experimental_boxdd_desktop_service_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
+var file_experimental_boxdd_desktop_service_proto_goTypes = []any{
+	(DaemonOwnership)(0),                        // 0: desktop.DaemonOwnership
+	(InstallUpdateResult)(0),                    // 1: desktop.InstallUpdateResult
+	(ProfileContent_Type)(0),                    // 2: desktop.ProfileContent.Type
+	(*ArchiveReportRequest)(nil),                // 3: desktop.ArchiveReportRequest
+	(*StandaloneNetworkQualityTestRequest)(nil), // 4: desktop.StandaloneNetworkQualityTestRequest
+	(*StandaloneSTUNTestRequest)(nil),           // 5: desktop.StandaloneSTUNTestRequest
+	(*DaemonInfo)(nil),                          // 6: desktop.DaemonInfo
+	(*StartServiceRequest)(nil),                 // 7: desktop.StartServiceRequest
+	(*StartOptions)(nil),                        // 8: desktop.StartOptions
+	(*ConfigContent)(nil),                       // 9: desktop.ConfigContent
+	(*ProfileContent)(nil),                      // 10: desktop.ProfileContent
+	(*ProfileData)(nil),                         // 11: desktop.ProfileData
+	(*WorkingDirectoryInfo)(nil),                // 12: desktop.WorkingDirectoryInfo
+	(*CrashReportList)(nil),                     // 13: desktop.CrashReportList
+	(*CrashReportEntry)(nil),                    // 14: desktop.CrashReportEntry
+	(*CrashReportRequest)(nil),                  // 15: desktop.CrashReportRequest
+	(*CrashReportExportRequest)(nil),            // 16: desktop.CrashReportExportRequest
+	(*CrashReportContent)(nil),                  // 17: desktop.CrashReportContent
+	(*CrashReportFile)(nil),                     // 18: desktop.CrashReportFile
+	(*CrashReportArchive)(nil),                  // 19: desktop.CrashReportArchive
+	(*OOMReportList)(nil),                       // 20: desktop.OOMReportList
+	(*OOMReportEntry)(nil),                      // 21: desktop.OOMReportEntry
+	(*OOMReportRequest)(nil),                    // 22: desktop.OOMReportRequest
+	(*OOMReportExportRequest)(nil),              // 23: desktop.OOMReportExportRequest
+	(*OOMReportContent)(nil),                    // 24: desktop.OOMReportContent
+	(*OOMReportFile)(nil),                       // 25: desktop.OOMReportFile
+	(*SecuritySettings)(nil),                    // 26: desktop.SecuritySettings
+	(*SetInsecureModeEnabledRequest)(nil),       // 27: desktop.SetInsecureModeEnabledRequest
+	(*SetLocaleRequest)(nil),                    // 28: desktop.SetLocaleRequest
+	(*InstallUpdateRequest)(nil),                // 29: desktop.InstallUpdateRequest
+	(*InstallUpdateResponse)(nil),               // 30: desktop.InstallUpdateResponse
+	(*emptypb.Empty)(nil),                       // 31: google.protobuf.Empty
+	(*daemon.NetworkQualityTestProgress)(nil),   // 32: daemon.NetworkQualityTestProgress
+	(*daemon.STUNTestProgress)(nil),             // 33: daemon.STUNTestProgress
+}
 var file_experimental_boxdd_desktop_service_proto_depIdxs = []int32{
 	0,  // 0: desktop.DaemonInfo.ownership:type_name -> desktop.DaemonOwnership
 	8,  // 1: desktop.StartServiceRequest.options:type_name -> desktop.StartOptions

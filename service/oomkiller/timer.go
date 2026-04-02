@@ -161,6 +161,15 @@ func (t *adaptiveTimer) start(carriedState *timerState) {
 	t.startLocked()
 }
 
+func (t *adaptiveTimer) notifyPressure() {
+	t.access.Lock()
+	t.startLocked()
+	t.forceMinInterval = true
+	t.pendingPressureBaseline = true
+	t.access.Unlock()
+	t.poll()
+}
+
 func (t *adaptiveTimer) startLocked() {
 	if t.timer != nil {
 		return

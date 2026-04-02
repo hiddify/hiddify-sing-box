@@ -1,12 +1,11 @@
 package v2raygrpc
 
 import (
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
-
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
@@ -83,13 +82,10 @@ func file_transport_v2raygrpc_stream_proto_rawDescGZIP() []byte {
 	return file_transport_v2raygrpc_stream_proto_rawDescData
 }
 
-var (
-	file_transport_v2raygrpc_stream_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
-	file_transport_v2raygrpc_stream_proto_goTypes  = []any{
-		(*Hunk)(nil), // 0: transport.v2raygrpc.Hunk
-	}
-)
-
+var file_transport_v2raygrpc_stream_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
+var file_transport_v2raygrpc_stream_proto_goTypes = []any{
+	(*Hunk)(nil), // 0: transport.v2raygrpc.Hunk
+}
 var file_transport_v2raygrpc_stream_proto_depIdxs = []int32{
 	0, // 0: transport.v2raygrpc.GunService.Tun:input_type -> transport.v2raygrpc.Hunk
 	0, // 1: transport.v2raygrpc.GunService.Tun:output_type -> transport.v2raygrpc.Hunk

@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"os"
 	"unsafe"
+
 	_ "unsafe"
 )
 
@@ -14,10 +15,7 @@ func isExecutable(protection int32) bool {
 }
 
 func (b *profileBuilder) readMapping() {
-	added := machVMInfo(func(lo, hi, offset uint64, file, buildID string) {
-		b.addMappingEntry(lo, hi, offset, file, buildID, false)
-	})
-	if !added {
+	if !machVMInfo(b.addMapping) {
 		b.addMappingEntry(0, 0, 0, "", "", true)
 	}
 }

@@ -1,12 +1,11 @@
 package v2rayapi
 
 import (
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
-
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
@@ -484,19 +483,16 @@ func file_experimental_v2rayapi_stats_proto_rawDescGZIP() []byte {
 	return file_experimental_v2rayapi_stats_proto_rawDescData
 }
 
-var (
-	file_experimental_v2rayapi_stats_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
-	file_experimental_v2rayapi_stats_proto_goTypes  = []any{
-		(*GetStatsRequest)(nil),    // 0: experimental.v2rayapi.GetStatsRequest
-		(*Stat)(nil),               // 1: experimental.v2rayapi.Stat
-		(*GetStatsResponse)(nil),   // 2: experimental.v2rayapi.GetStatsResponse
-		(*QueryStatsRequest)(nil),  // 3: experimental.v2rayapi.QueryStatsRequest
-		(*QueryStatsResponse)(nil), // 4: experimental.v2rayapi.QueryStatsResponse
-		(*SysStatsRequest)(nil),    // 5: experimental.v2rayapi.SysStatsRequest
-		(*SysStatsResponse)(nil),   // 6: experimental.v2rayapi.SysStatsResponse
-	}
-)
-
+var file_experimental_v2rayapi_stats_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_experimental_v2rayapi_stats_proto_goTypes = []any{
+	(*GetStatsRequest)(nil),    // 0: experimental.v2rayapi.GetStatsRequest
+	(*Stat)(nil),               // 1: experimental.v2rayapi.Stat
+	(*GetStatsResponse)(nil),   // 2: experimental.v2rayapi.GetStatsResponse
+	(*QueryStatsRequest)(nil),  // 3: experimental.v2rayapi.QueryStatsRequest
+	(*QueryStatsResponse)(nil), // 4: experimental.v2rayapi.QueryStatsResponse
+	(*SysStatsRequest)(nil),    // 5: experimental.v2rayapi.SysStatsRequest
+	(*SysStatsResponse)(nil),   // 6: experimental.v2rayapi.SysStatsResponse
+}
 var file_experimental_v2rayapi_stats_proto_depIdxs = []int32{
 	1, // 0: experimental.v2rayapi.GetStatsResponse.stat:type_name -> experimental.v2rayapi.Stat
 	1, // 1: experimental.v2rayapi.QueryStatsResponse.stat:type_name -> experimental.v2rayapi.Stat
