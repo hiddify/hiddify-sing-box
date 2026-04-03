@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"net"
 	"net/netip"
-	"time"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/endpoint"
@@ -230,31 +229,19 @@ func (w *Endpoint) NewConnectionEx(ctx context.Context, conn net.Conn, source M.
 }
 
 func (o *Endpoint) Start(stage adapter.StartStage) error {
-	if stage != adapter.StartStateStart {
-		// return o.endpoint.Start(false)
+	if stage == adapter.StartStateStart {
+		if err := o.Device.Start(stage); err != nil {
+			return err
+		}
+		o.started = true
+		return nil
 	}
 	if stage == adapter.StartStatePostStart {
-		go o.readyChecker()
+		monitoring.Get(o.ctx).TestNow(o.Tag())
 	}
 	return nil
 }
 
-func (w *Endpoint) readyChecker() {
-	defer func() {
-		w.started = true
-		monitoring.Get(w.ctx).TestNow(w.Tag())
-	}()
-	for i := 0; i < 10; i++ {
-		if w.IsReady() {
-			return
-		}
-		select {
-		case <-w.ctx.Done():
-			return
-		case <-time.After(time.Second):
-		}
-	}
-}
 func (w *Endpoint) IsReady() bool {
 	return w.started
 }

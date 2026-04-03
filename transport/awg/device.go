@@ -87,7 +87,9 @@ func (d *Device) Start(stage adapter.StartStage) error {
 }
 
 func (d *Device) Close() error {
-	d.awgDevice.Close()
+	if d.awgDevice != nil {
+		d.awgDevice.Close()
+	}
 	return nil
 }
 
