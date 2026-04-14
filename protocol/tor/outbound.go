@@ -123,10 +123,6 @@ func (t *Outbound) Start(stage adapter.StartStage) error {
 			return err
 		}
 		t.proxy = proxy
-		err = proxy.Start()
-		if err != nil {
-			return err
-		}
 		err = t.start()
 		if err != nil {
 			t.Close()

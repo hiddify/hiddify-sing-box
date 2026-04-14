@@ -317,6 +317,7 @@ func (r *Router) NeighborResolver() adapter.NeighborResolver {
 }
 
 func (r *Router) ResetNetwork() {
+	r.network.ResetNetwork(r.ctx)
 	r.httpClientManager.ResetNetwork()
 	r.dns.ResetNetwork()
 	if r.processCache != nil {

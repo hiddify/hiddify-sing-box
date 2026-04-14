@@ -678,6 +678,14 @@ func (s *Box) Close() error {
 			return E.Cause(err, "close ", s.httpClientService.Name())
 		})
 	}
+	if s.httpClientService != nil {
+		s.logger.Trace("close ", s.httpClientService.Name())
+		startTime := time.Now()
+		err = E.Append(err, s.httpClientService.Close(), func(err error) error {
+			return E.Cause(err, "close ", s.httpClientService.Name())
+		})
+		s.logger.Trace("close ", s.httpClientService.Name(), " completed (", F.Seconds(time.Since(startTime).Seconds()), "s)")
+	}
 	for _, lifecycleService := range s.internalService {
 		cerr := s.closeWithTimeout(lifecycleService.Name(), closeTimeout, lifecycleService.Close)
 		err = E.Append(err, cerr, func(err error) error {

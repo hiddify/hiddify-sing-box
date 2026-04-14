@@ -120,10 +120,6 @@ func newAppleTransport(ctx context.Context, logger logger.ContextLogger, rawDial
 	if err != nil {
 		return nil, err
 	}
-	err = bridge.Start()
-	if err != nil {
-		return nil, err
-	}
 	shared := &appleTransportShared{
 		logger:   logger,
 		bridge:   bridge,
