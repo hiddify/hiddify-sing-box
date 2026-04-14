@@ -21,6 +21,7 @@ type DetourDialer struct {
 	detour                  string
 	defaultOutbound         bool
 	disableEmptyDirectCheck bool
+	legacyDNSDialer         bool
 	dialer                  N.Dialer
 	initOnce                sync.Once
 	initErr                 error
@@ -31,6 +32,14 @@ func NewDetour(outboundManager adapter.OutboundManager, detour string, disableEm
 		outboundManager:         outboundManager,
 		detour:                  detour,
 		disableEmptyDirectCheck: disableEmptyDirectCheck,
+	}
+}
+
+func NewLegacyDNSDetour(outboundManager adapter.OutboundManager, detour string) N.Dialer {
+	return &DetourDialer{
+		outboundManager: outboundManager,
+		detour:          detour,
+		legacyDNSDialer: true,
 	}
 }
 
@@ -66,7 +75,7 @@ func (d *DetourDialer) init() {
 	} else {
 		dialer = d.outboundManager.Default()
 	}
-	if !d.defaultOutbound && !d.disableEmptyDirectCheck {
+	if !d.defaultOutbound && !d.disableEmptyDirectCheck && !d.legacyDNSDialer {
 		if directDialer, isDirect := dialer.(DirectDialer); isDirect {
 			if directDialer.IsEmpty() {
 				d.initErr = E.New("detour to an empty direct outbound makes no sense")

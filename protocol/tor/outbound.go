@@ -86,11 +86,16 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 	if err != nil {
 		return nil, err
 	}
+	proxy, err := proxybridge.New(ctx, logger, "proxy", outboundDialer)
+	if err != nil {
+		return nil, err
+	}
 	return &Outbound{
 		Adapter:   outbound.NewAdapterWithDialerOptions(C.TypeTor, tag, []string{N.NetworkTCP}, options.DialerOptions),
 		ctx:       ctx,
 		logger:    logger,
 		dialer:    outboundDialer,
+		proxy:     proxy,
 		startConf: &startConf,
 		options:   options.Options,
 	}, nil

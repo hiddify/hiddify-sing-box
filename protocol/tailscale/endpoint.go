@@ -4,7 +4,6 @@ package tailscale
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"net"
 	"net/http"
@@ -23,6 +22,7 @@ import (
 	"github.com/sagernet/sing-box/common/iponly"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/dns"
+	"github.com/sagernet/sing-box/experimental/deprecated"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-box/protocol/tailscale/tailssh"
@@ -36,7 +36,6 @@ import (
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
-	"github.com/sagernet/sing/common/ntp"
 	"github.com/sagernet/sing/service"
 	"github.com/sagernet/sing/service/filemanager"
 	tailscaleroot "github.com/sagernet/tailscale"
@@ -162,6 +161,30 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 	if options.AdvertiseExitNode && options.ExitNode != "" {
 		return nil, E.New("cannot advertise an exit node and use an exit node at the same time.")
 	}
+	var remoteIsDomain bool
+	if options.ControlURL != "" {
+		controlURL, err := url.Parse(options.ControlURL)
+		if err != nil {
+			return nil, E.Cause(err, "parse control URL")
+		}
+		remoteIsDomain = M.ParseSocksaddr(controlURL.Hostname()).IsDomain()
+	} else {
+		// controlplane.tailscale.com
+		remoteIsDomain = true
+	}
+	hasLegacyDialer := !reflect.DeepEqual(options.DialerOptions, option.DialerOptions{})
+	hasControlHTTPClient := options.ControlHTTPClient != nil && !options.ControlHTTPClient.IsEmpty()
+	if hasLegacyDialer && hasControlHTTPClient {
+		return nil, E.New("control_http_client is conflict with deprecated dialer options")
+	}
+	controlHTTPClientOptions := common.PtrValueOrDefault(options.ControlHTTPClient)
+	if hasLegacyDialer {
+		deprecated.Report(ctx, deprecated.OptionLegacyTailscaleEndpointDialer)
+		controlHTTPClientOptions.DialerOptions = options.DialerOptions
+	}
+	if remoteIsDomain {
+		controlHTTPClientOptions.ResolveOnDetour = true
+	}
 	outboundDialer, err := dialer.NewWithOptions(dialer.Options{
 		Context:          ctx,
 		Options:          options.DialerOptions,
@@ -180,6 +203,12 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 	}
 	taildropDirectory = filemanager.BasePath(ctx, os.ExpandEnv(taildropDirectory))
 	taildropDirectory, _ = filepath.Abs(taildropDirectory)
+	httpClientManager := service.FromContext[adapter.HTTPClientManager](ctx)
+	controlTransport, err := httpClientManager.ResolveTransport(ctx, logger, controlHTTPClientOptions)
+	if err != nil {
+		return nil, E.Cause(err, "create control HTTP client")
+	}
+	controlHTTPClient := &http.Client{Transport: controlTransport}
 	tailscaleEndpoint := &Endpoint{
 		Adapter:           endpoint.NewAdapter(C.TypeTailscale, tag, []string{N.NetworkTCP, N.NetworkUDP, N.NetworkICMP}, nil),
 		ctx:               ctx,
@@ -208,19 +237,8 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 			LookupHook: func(ctx context.Context, host string) ([]netip.Addr, error) {
 				return dnsRouter.Lookup(ctx, host, dialerQueryOptions)
 			},
-			DNS: &dnsConfigurtor{},
-			HTTPClient: &http.Client{
-				Transport: &http.Transport{
-					ForceAttemptHTTP2: true,
-					DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
-						return outboundDialer.DialContext(ctx, network, M.ParseSocksaddr(address))
-					},
-					TLSClientConfig: &tls.Config{
-						RootCAs: adapter.RootPoolFromContext(ctx),
-						Time:    ntp.TimeFuncFromContext(ctx),
-					},
-				},
-			},
+			DNS:        &dnsConfigurtor{},
+			HTTPClient: controlHTTPClient,
 		},
 		acceptRoutes:               options.AcceptRoutes,
 		exitNode:                   options.ExitNode,

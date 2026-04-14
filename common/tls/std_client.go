@@ -299,3 +299,22 @@ func VerifyPinnedCertificate(certificateHashes [][]byte, publicKeyHashes [][]byt
 	return E.New("unrecognized peer certificate: sha256 ", base64.StdEncoding.EncodeToString(certificateHash[:]),
 		", public key sha256 ", base64.StdEncoding.EncodeToString(publicKeyHash[:]))
 }
+
+func VerifyPublicKeySHA256(knownHashValues [][]byte, rawCerts [][]byte) error {
+	if len(rawCerts) == 0 {
+		return E.New("missing peer certificate")
+	}
+	leafCertificate, err := x509.ParseCertificate(rawCerts[0])
+	if err != nil {
+		return E.Cause(err, "parse leaf certificate")
+	}
+	publicKeyBytes, err := x509.MarshalPKIXPublicKey(leafCertificate.PublicKey)
+	if err != nil {
+		return E.Cause(err, "marshal public key")
+	}
+	publicKeyHash := sha256.Sum256(publicKeyBytes)
+	if slices.ContainsFunc(knownHashValues, func(value []byte) bool { return bytes.Equal(value, publicKeyHash[:]) }) {
+		return nil
+	}
+	return E.New("unrecognized peer certificate: public key sha256 ", base64.StdEncoding.EncodeToString(publicKeyHash[:]))
+}

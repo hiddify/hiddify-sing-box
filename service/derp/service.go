@@ -375,11 +375,12 @@ func (d *Service) startMeshWithHost(derpServer *derpserver.Server, server *optio
 }
 
 func (d *Service) Close() error {
-	return common.Close(
+	err := common.Close(
 		common.PtrOrNil(d.listener),
 		common.PtrOrNil(d.stunListener),
 		d.tlsConfig,
 	)
+	return err
 }
 
 var homePage = `
