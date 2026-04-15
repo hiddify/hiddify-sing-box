@@ -102,6 +102,7 @@ func TestValidateOpenArgsFlags(t *testing.T) {
 	require.NoError(t, validateOpenArgs(LayerNetwork, 0, FlagSendOnly))
 	require.NoError(t, validateOpenArgs(LayerNetwork, 0, FlagSniff))
 	require.Error(t, validateOpenArgs(LayerNetwork, 0, FlagSniff|FlagSendOnly))
+	// Unknown flag bits must be rejected to surface caller mistakes early.
 	require.Error(t, validateOpenArgs(LayerNetwork, 0, Flag(0x10)))
 	require.Error(t, validateOpenArgs(LayerNetwork, 0, FlagSendOnly|Flag(0x10)))
 }

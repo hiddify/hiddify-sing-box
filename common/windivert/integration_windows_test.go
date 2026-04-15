@@ -35,18 +35,26 @@ func openHandle(t *testing.T, filter *Filter, flags Flag) *Handle {
 	return h
 }
 
+// A send-only handle installs+opens the driver but does not attach a
+// receive filter, so it exercises the full driver-install path without
+// diverting any live traffic on the host.
 func TestIntegrationOpenSendOnly(t *testing.T) {
 	h := openHandle(t, nil, FlagSendOnly)
 	require.NoError(t, h.Close())
 }
 
+// Close is idempotent per the doc contract.
 func TestIntegrationCloseTwice(t *testing.T) {
 	h := openHandle(t, nil, FlagSendOnly)
 	require.NoError(t, h.Close())
 	require.NoError(t, h.Close())
 }
 
+// Recv must unblock when the handle is closed concurrently. Without this,
+// the spoofer's run goroutine could deadlock on shutdown.
 func TestIntegrationRecvAbortsOnClose(t *testing.T) {
+	// A filter no live traffic will match, so Recv blocks indefinitely
+	// until Close aborts the overlapped I/O.
 	filter, err := OutboundTCP(
 		netip.MustParseAddrPort("10.255.255.254:1"),
 		netip.MustParseAddrPort("10.255.255.253:2"),
@@ -61,6 +69,7 @@ func TestIntegrationRecvAbortsOnClose(t *testing.T) {
 		errCh <- recvErr
 	}()
 
+	// Let Recv reach the blocking DeviceIoControl before Close races in.
 	time.Sleep(200 * time.Millisecond)
 	require.NoError(t, h.Close())
 
@@ -114,6 +123,8 @@ func stopDriver(t *testing.T) {
 	}, 60*time.Second, 200*time.Millisecond, "driver device remained openable after stop")
 }
 
+// Two concurrent Open calls must both succeed: the first wins the driver
+// install race, the second reuses the already-running service.
 func TestIntegrationConcurrentOpen(t *testing.T) {
 	stopDriver(t)
 	start := make(chan struct{})

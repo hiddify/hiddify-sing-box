@@ -38,6 +38,7 @@ func TestAddressSetTCPChecksum(t *testing.T) {
 	require.Equal(t, uint32(0), addr.bits)
 }
 
+// Setters must not disturb sibling bits.
 func TestAddressFlagBitsIndependent(t *testing.T) {
 	t.Parallel()
 	var addr Address
