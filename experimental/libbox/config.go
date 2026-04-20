@@ -37,6 +37,10 @@ func BaseContext(platformInterface PlatformInterface) context.Context {
 }
 
 func FromContext(ctx context.Context, platformInterface PlatformInterface) context.Context {
+	return fromContext(ctx, platformInterface)
+}
+
+func fromContext(ctx context.Context, platformInterface PlatformInterface) context.Context {
 	dnsRegistry := include.DNSTransportRegistry()
 	if platformInterface != nil {
 		if localTransport := platformInterface.LocalDNSTransport(); localTransport != nil {
