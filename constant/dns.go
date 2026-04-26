@@ -31,6 +31,7 @@ const (
 	DNSTypeSDNS        = "sdns"
 
 	DNSTypeMulti = "multi" //H
+	DNSTypeHMRD  = "hmrd"  //H — smart multi-resolver (github.com/hiddify/hmrd_multi_resolver_dns)
 )
 
 const (

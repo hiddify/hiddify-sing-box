@@ -432,3 +432,36 @@ type MultiDNSServerOptions struct {
 	Parallel     bool               `json:"parallel,omitempty"`
 	IgnoreRanges []badoption.Prefix `json:"ignore_ranges,omitempty"`
 }
+
+// HMRDUpstreamOptions describes one upstream resolver inside an "hmrd" DNS
+// transport (a smart multi-resolver pool with adaptive rate-limiting and
+// recovery probing — see github.com/hiddify/hmrd_multi_resolver_dns).
+type HMRDUpstreamOptions struct {
+	// Type is one of "udp" | "tcp" | "tls" | "https" (DoT / DoH).
+	Type string `json:"type"`
+	// Address is "host:port" for udp/tcp/tls, or a full https URL for DoH
+	// (e.g. https://cloudflare-dns.com/dns-query).
+	Address string `json:"address"`
+	// Weight is used by the "weighted" load-balance strategy. 0 means the
+	// upstream is a pure fallback (only reached when every weighted
+	// candidate is unavailable). Ignored by the other strategies.
+	Weight int `json:"weight,omitempty"`
+	// Name is an optional friendly id surfaced in stats. Defaults to
+	// "<type>://<address>".
+	Name string `json:"name,omitempty"`
+}
+
+// HMRDDNSServerOptions configures the "hmrd" DNS transport — a single sing-box
+// DNS server tag fronting many upstream resolvers, with deadline-aware
+// failover, AIMD rate-limit throttling, and background recovery probing. The
+// transport-level DialerOptions (including any "detour" outbound) is applied
+// to every upstream so a tunnelled outbound carries all resolver traffic.
+type HMRDDNSServerOptions struct {
+	RawLocalDNSServerOptions
+	Upstreams     []HMRDUpstreamOptions `json:"upstreams"`
+	LoadBalance   string                `json:"load_balance,omitempty"`   // "roundrobin" (default) | "weighted" | "lowest_latency"
+	Deadline      badoption.Duration    `json:"deadline,omitempty"`       // overall query deadline; default 5s
+	PerAttempt    badoption.Duration    `json:"per_attempt,omitempty"`    // per-resolver attempt cap; default 2s
+	ProbeInterval badoption.Duration    `json:"probe_interval,omitempty"` // recovery probe cadence; default 5s
+	DownAfter     int                   `json:"down_after,omitempty"`     // consecutive failures before "down"; default 8
+}
