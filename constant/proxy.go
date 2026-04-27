@@ -50,12 +50,13 @@ const (
 	TypeACME               = "acme"
 	TypeCloudflareOriginCA = "cloudflare-origin-ca"
 
-	TypeHInvalidConfig = "hinvalid" //H
-	TypeXray           = "xray"     //H
-	TypeCustom         = "custom"   //H
-	TypeBalancer       = "balancer" //H
-	TypeDNSTT          = "dnstt"      //H
-	TypeGooseRelay     = "gooserelay" //H
+	TypeHInvalidConfig = "hinvalid"       //H
+	TypeXray           = "xray"           //H
+	TypeCustom         = "custom"         //H
+	TypeBalancer       = "balancer"       //H
+	TypeDNSTT          = "dnstt"          //H
+	TypeGooseRelay     = "gooserelay"     //H
+	TypeSmartDNSPool   = "smart_dns_pool" //H — local recursive-resolver pool with AIMD throttling + recovery probing (github.com/hiddify/hmrd_multi_resolver_dns)
 )
 
 const (
