@@ -127,18 +127,18 @@ func (h *Outbound) PostStart() error {
 			h.logger.ErrorContext(runCtx, "carrier run exited: ", err)
 		}
 	}()
-	go h.diagnoseAndMarkReady()
+	go h.diagnoseAndMarkReady(runCtx)
 	return nil
 }
 
-func (h *Outbound) diagnoseAndMarkReady() {
+func (h *Outbound) diagnoseAndMarkReady(runCtx context.Context) {
 	budget := defaultDiagnoseTimeout
 	if h.options.HandshakeTimeout != nil {
 		if d := h.options.HandshakeTimeout.Build(); d > 0 {
 			budget = d
 		}
 	}
-	probeCtx, cancel := context.WithTimeout(h.ctx, budget)
+	probeCtx, cancel := context.WithTimeout(runCtx, budget)
 	defer cancel()
 
 	if err := h.client.Diagnose(probeCtx); err != nil {
@@ -151,7 +151,7 @@ func (h *Outbound) diagnoseAndMarkReady() {
 	h.mu.Lock()
 	h.started = 1
 	h.mu.Unlock()
-	h.logger.InfoContext(h.ctx, "goose-relay ready (", len(h.options.ScriptKeys), " endpoints)")
+	h.logger.InfoContext(runCtx, "goose-relay ready (", len(h.options.ScriptKeys), " endpoints)")
 }
 
 func (h *Outbound) IsReady() bool {
