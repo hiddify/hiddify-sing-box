@@ -15,8 +15,7 @@ import (
 	"sync"
 	"time"
 
-	carrier "github.com/kianmhz/GooseRelayVPN/pkg/carrier"
-	gsocks "github.com/kianmhz/GooseRelayVPN/pkg/socks"
+	"github.com/kianmhz/GooseRelayVPN/goose"
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/outbound"
 	C "github.com/sagernet/sing-box/constant"
@@ -47,7 +46,7 @@ type Outbound struct {
 	ctx       context.Context
 	logger    logger.ContextLogger
 	options   option.GooseRelayOptions
-	client    *carrier.Client
+	client    *goose.Client
 	uotClient *uot.Client
 
 	mu        sync.Mutex
@@ -90,14 +89,14 @@ func New(ctx context.Context, router adapter.Router, logger log.ContextLogger, t
 		scriptURLs = append(scriptURLs, fmt.Sprintf("https://script.google.com/macros/s/%s/exec", key))
 	}
 
-	client, err := carrier.New(carrier.Config{
+	client, err := goose.New(goose.Config{
 		ScriptURLs:  scriptURLs,
-		Fronting:    carrier.FrontingConfig{GoogleIP: googleHost, SNIHosts: sniHosts},
+		Fronting:    goose.FrontingConfig{GoogleIP: googleHost, SNIHosts: sniHosts},
 		AESKeyHex:   options.TunnelKey,
 		DebugTiming: options.DebugTiming,
 	})
 	if err != nil {
-		return nil, E.Cause(err, "construct carrier")
+		return nil, E.Cause(err, "construct goose client")
 	}
 
 	out := &Outbound{
@@ -158,7 +157,7 @@ func (h *Outbound) diagnoseAndMarkReady(runCtx context.Context) {
 	if len(sniHosts) == 0 {
 		sniHosts = defaultSNIHosts
 	}
-	fronting := carrier.FrontingConfig{GoogleIP: googleHost, SNIHosts: sniHosts}
+	fronting := goose.FrontingConfig{GoogleIP: googleHost, SNIHosts: sniHosts}
 
 	type probeResult struct {
 		key string
@@ -169,7 +168,7 @@ func (h *Outbound) diagnoseAndMarkReady(runCtx context.Context) {
 	for _, key := range keys {
 		go func(k string) {
 			trimmed := strings.TrimSpace(k)
-			probe, err := carrier.New(carrier.Config{
+			probe, err := goose.New(goose.Config{
 				ScriptURLs: []string{fmt.Sprintf("https://script.google.com/macros/s/%s/exec", trimmed)},
 				Fronting:   fronting,
 				AESKeyHex:  h.options.TunnelKey,
@@ -219,8 +218,7 @@ func (h *Outbound) DialContext(ctx context.Context, network string, destination 
 	default:
 		return nil, E.New("network ", network, " not supported by goose-relay")
 	}
-	sess := h.client.NewSession(destination.String())
-	return gsocks.NewVirtualConn(sess), nil
+	return h.client.Dial(destination.String()), nil
 }
 
 func (h *Outbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {

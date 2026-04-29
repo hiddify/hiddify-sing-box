@@ -233,6 +233,8 @@ github.com/hdevalence/ed25519consensus v0.2.0 h1:37ICyZqdyj0lAZ8P4D1d1id3HqbbG1N
 github.com/hdevalence/ed25519consensus v0.2.0/go.mod h1:w3BHWjwJbFU29IRHL1Iqkw3sus+7FctEyM4RqDxYNzo=
 github.com/hiddify/GooseRelayVPN v0.0.0-20260429110100-fc78a0e0328b h1:gBPBXr9FwpIOOpHXqnLzdLDZ6RStSEKYx9D7d/s7n7A=
 github.com/hiddify/GooseRelayVPN v0.0.0-20260429110100-fc78a0e0328b/go.mod h1:LI/1qA7FDU3MumegfyFOHGZCXcOw6rjIk7NPXga3/pQ=
+github.com/hiddify/GooseRelayVPN v0.0.0-20260429125124-0e68c2a3ae4c h1:9Zc0hJ14G+SNJvGxtaSCSsvGB/RdLltrgjgR//9zgTQ=
+github.com/hiddify/GooseRelayVPN v0.0.0-20260429125124-0e68c2a3ae4c/go.mod h1:LI/1qA7FDU3MumegfyFOHGZCXcOw6rjIk7NPXga3/pQ=
 github.com/hiddify/psiphon-quic-go v0.0.0-20260205155832-2164d1653824 h1:a5HGC6a/s4SmRvfqsYWBGd6ump3iploFoddqKpIyO7M=
 github.com/hiddify/psiphon-quic-go v0.0.0-20260205155832-2164d1653824/go.mod h1:rONdWgPMbFjyyBai7gB1IBF4pT9r4l0GyiDst5XR1SY=
 github.com/hiddify/psiphon-tls v0.0.0-20260205181946-4af85c2fb9f2 h1:42YhXZ/qMbWOlH+AE6KZKpv96G60FXMaeQ+TYFUFwNU=

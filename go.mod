@@ -24,7 +24,7 @@ require (
 	github.com/insomniacslk/dhcp v0.0.0-20260220084031-5adc3eb26f91
 	github.com/jsimonetti/rtnetlink v1.4.1
 	github.com/keybase/go-keychain v0.0.1
-	github.com/kianmhz/GooseRelayVPN v0.0.0-20260429110100-fc78a0e0328b
+	github.com/kianmhz/GooseRelayVPN v0.0.0-20260429125124-0e68c2a3ae4c
 	github.com/libdns/acmedns v0.5.0
 	github.com/libdns/alidns v1.0.6
 	github.com/libdns/cloudflare v0.2.2
@@ -291,4 +291,4 @@ replace github.com/Psiphon-Labs/psiphon-tls => ./replace/psiphon-tls
 
 replace github.com/net2share/vaydns => github.com/hiddify/vaydns v0.0.0-20260401180616-890dc987a6a9
 
-replace github.com/kianmhz/GooseRelayVPN => github.com/hiddify/GooseRelayVPN v0.0.0-20260429110100-fc78a0e0328b
+replace github.com/kianmhz/GooseRelayVPN => github.com/hiddify/GooseRelayVPN v0.0.0-20260429125124-0e68c2a3ae4c
