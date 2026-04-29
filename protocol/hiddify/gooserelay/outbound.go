@@ -62,8 +62,11 @@ func New(ctx context.Context, router adapter.Router, logger log.ContextLogger, t
 	if options.TunnelKey == "" {
 		return nil, E.New("tunnel_key is required")
 	}
-	if _, err := hex.DecodeString(options.TunnelKey); err != nil || len(options.TunnelKey) != 64 {
+	if len(options.TunnelKey) != 64 {
 		return nil, E.New("tunnel_key must be 64 hex characters (AES-256)")
+	}
+	if _, err := hex.DecodeString(options.TunnelKey); err != nil {
+		return nil, E.Cause(err, "tunnel_key not valid hex")
 	}
 
 	googleHost := options.GoogleHost
