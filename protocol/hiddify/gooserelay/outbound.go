@@ -84,6 +84,9 @@ func New(ctx context.Context, router adapter.Router, logger log.ContextLogger, t
 		if key == "" {
 			return nil, E.New("script_keys[", i, "] is empty")
 		}
+		if strings.ContainsAny(key, "/?#") {
+			return nil, E.New("script_keys[", i, "] contains a URL separator (/?#); paste the deployment ID only")
+		}
 		scriptURLs = append(scriptURLs, fmt.Sprintf("https://script.google.com/macros/s/%s/exec", key))
 	}
 
