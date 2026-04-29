@@ -27,6 +27,7 @@ import (
 	"github.com/sagernet/sing-box/protocol/group"
 	"github.com/sagernet/sing-box/protocol/group/balancer"
 	"github.com/sagernet/sing-box/protocol/hiddify/dnstt"
+	"github.com/sagernet/sing-box/protocol/hiddify/gooserelay"
 	"github.com/sagernet/sing-box/protocol/hiddify/hinvalid"
 
 	"github.com/sagernet/sing-box/protocol/hiddify/xray"
@@ -116,6 +117,7 @@ func OutboundRegistry() *outbound.Registry {
 	xray.RegisterOutbound(registry)
 	mieru.RegisterOutbound(registry)
 	dnstt.RegisterOutbound(registry)
+	gooserelay.RegisterOutbound(registry)
 	balancer.RegisterLoadBalance(registry)
 
 	registerQUICOutbounds(registry)

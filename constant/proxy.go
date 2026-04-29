@@ -54,7 +54,8 @@ const (
 	TypeXray           = "xray"     //H
 	TypeCustom         = "custom"   //H
 	TypeBalancer       = "balancer" //H
-	TypeDNSTT          = "dnstt"    //H
+	TypeDNSTT          = "dnstt"      //H
+	TypeGooseRelay     = "gooserelay" //H
 )
 
 const (
@@ -150,6 +151,8 @@ func ProxyDisplayName(proxyType string) string {
 		return "Balancer"
 	case TypeDNSTT:
 		return "DNSTT"
+	case TypeGooseRelay:
+		return "GooseRelay"
 	default:
 		return "Unknown"
 	}

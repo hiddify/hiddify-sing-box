@@ -231,6 +231,8 @@ github.com/hashicorp/yamux v0.1.2 h1:XtB8kyFOyHXYVFnwT5C3+Bdo8gArse7j2AQ0DA0Uey8
 github.com/hashicorp/yamux v0.1.2/go.mod h1:C+zze2n6e/7wshOZep2A70/aQU6QBRWJO/G6FT1wIns=
 github.com/hdevalence/ed25519consensus v0.2.0 h1:37ICyZqdyj0lAZ8P4D1d1id3HqbbG1N3iBb1Tb4rdcU=
 github.com/hdevalence/ed25519consensus v0.2.0/go.mod h1:w3BHWjwJbFU29IRHL1Iqkw3sus+7FctEyM4RqDxYNzo=
+github.com/hiddify/GooseRelayVPN v0.0.0-20260429110100-fc78a0e0328b h1:gBPBXr9FwpIOOpHXqnLzdLDZ6RStSEKYx9D7d/s7n7A=
+github.com/hiddify/GooseRelayVPN v0.0.0-20260429110100-fc78a0e0328b/go.mod h1:LI/1qA7FDU3MumegfyFOHGZCXcOw6rjIk7NPXga3/pQ=
 github.com/hiddify/psiphon-quic-go v0.0.0-20260205155832-2164d1653824 h1:a5HGC6a/s4SmRvfqsYWBGd6ump3iploFoddqKpIyO7M=
 github.com/hiddify/psiphon-quic-go v0.0.0-20260205155832-2164d1653824/go.mod h1:rONdWgPMbFjyyBai7gB1IBF4pT9r4l0GyiDst5XR1SY=
 github.com/hiddify/psiphon-tls v0.0.0-20260205181946-4af85c2fb9f2 h1:42YhXZ/qMbWOlH+AE6KZKpv96G60FXMaeQ+TYFUFwNU=
@@ -529,6 +531,8 @@ github.com/tevino/abool v1.2.0 h1:heAkClL8H6w+mK5md9dzsuohKeXHUpY7Vw0ZCKW+huA=
 github.com/tevino/abool v1.2.0/go.mod h1:qc66Pna1RiIsPa7O4Egxxs9OqkuxDX55zznh9K07Tzg=
 github.com/tevino/abool/v2 v2.1.0 h1:7w+Vf9f/5gmKT4m4qkayb33/92M+Um45F2BkHOR+L/c=
 github.com/tevino/abool/v2 v2.1.0/go.mod h1:+Lmlqk6bHDWHqN1cbxqhwEAwMPXgc8I1SDEamtseuXY=
+github.com/things-go/go-socks5 v0.1.1 h1:48hy9cHEXPKeG91G/g4n8zW4uynzPUQy/FkcrJ7r5AY=
+github.com/things-go/go-socks5 v0.1.1/go.mod h1:1YBHVYG7Oli5ae+Pwkp630cPAwY1pjUPmohO1n0Emg0=
 github.com/tidwall/gjson v1.14.2/go.mod h1:/wbyibRr2FHMks5tjHJ5F8dMZh3AcwJEMf5vlfC0lxk=
 github.com/tidwall/gjson v1.18.0 h1:FIDeeyB800efLX89e5a8Y0BNH+LOngJyGrIWxG2FKQY=
 github.com/tidwall/gjson v1.18.0/go.mod h1:/wbyibRr2FHMks5tjHJ5F8dMZh3AcwJEMf5vlfC0lxk=
