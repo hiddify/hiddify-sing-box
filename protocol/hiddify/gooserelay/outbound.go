@@ -31,7 +31,7 @@ import (
 
 const (
 	defaultGoogleHost      = "216.239.38.120:443"
-	defaultHandshakeBudget = 10 * time.Second
+	defaultDiagnoseTimeout = 10 * time.Second
 )
 
 var defaultSNIHosts = []string{"www.google.com"}
@@ -126,7 +126,7 @@ func (h *Outbound) PostStart() error {
 }
 
 func (h *Outbound) diagnoseAndMarkReady() {
-	budget := defaultHandshakeBudget
+	budget := defaultDiagnoseTimeout
 	if h.options.HandshakeTimeout != nil {
 		if d := h.options.HandshakeTimeout.Build(); d > 0 {
 			budget = d
