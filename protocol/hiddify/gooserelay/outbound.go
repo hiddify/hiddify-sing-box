@@ -131,6 +131,15 @@ func (h *Outbound) PostStart() error {
 	return nil
 }
 
+// diagnoseAndMarkReady probes every configured script_key concurrently using a
+// throwaway one-endpoint carrier per probe, and flips h.started:
+//   - +1 (ready) as soon as ANY endpoint passes Diagnose,
+//   - -1 (failed) only if ALL endpoints fail.
+//
+// Throwaway probes are cheap: carrier.New only allocates HTTP clients and
+// returns; no goroutines are launched until Run is called, which we never do
+// for probes. Cancelling probeCtx on first success aborts the remaining
+// in-flight HTTP requests.
 func (h *Outbound) diagnoseAndMarkReady(runCtx context.Context) {
 	budget := defaultDiagnoseTimeout
 	if h.options.HandshakeTimeout != nil {
@@ -141,17 +150,58 @@ func (h *Outbound) diagnoseAndMarkReady(runCtx context.Context) {
 	probeCtx, cancel := context.WithTimeout(runCtx, budget)
 	defer cancel()
 
-	if err := h.client.Diagnose(probeCtx); err != nil {
-		h.logger.ErrorContext(probeCtx, "goose-relay diagnose failed: ", err)
-		h.mu.Lock()
-		h.started = -1
-		h.mu.Unlock()
-		return
+	googleHost := h.options.GoogleHost
+	if googleHost == "" {
+		googleHost = defaultGoogleHost
 	}
+	sniHosts := h.options.SNI
+	if len(sniHosts) == 0 {
+		sniHosts = defaultSNIHosts
+	}
+	fronting := carrier.FrontingConfig{GoogleIP: googleHost, SNIHosts: sniHosts}
+
+	type probeResult struct {
+		key string
+		err error
+	}
+	keys := h.options.ScriptKeys
+	results := make(chan probeResult, len(keys))
+	for _, key := range keys {
+		go func(k string) {
+			trimmed := strings.TrimSpace(k)
+			probe, err := carrier.New(carrier.Config{
+				ScriptURLs: []string{fmt.Sprintf("https://script.google.com/macros/s/%s/exec", trimmed)},
+				Fronting:   fronting,
+				AESKeyHex:  h.options.TunnelKey,
+			})
+			if err != nil {
+				results <- probeResult{trimmed, err}
+				return
+			}
+			results <- probeResult{trimmed, probe.Diagnose(probeCtx)}
+		}(key)
+	}
+
+	for i := 0; i < len(keys); i++ {
+		select {
+		case r := <-results:
+			if r.err == nil {
+				h.mu.Lock()
+				h.started = 1
+				h.mu.Unlock()
+				h.logger.InfoContext(runCtx, "goose-relay ready (first healthy endpoint: ", r.key, ")")
+				return
+			}
+			h.logger.WarnContext(probeCtx, "goose-relay endpoint ", r.key, " diagnose failed: ", r.err)
+		case <-runCtx.Done():
+			return
+		}
+	}
+
 	h.mu.Lock()
-	h.started = 1
+	h.started = -1
 	h.mu.Unlock()
-	h.logger.InfoContext(runCtx, "goose-relay ready (", len(h.options.ScriptKeys), " endpoints)")
+	h.logger.ErrorContext(runCtx, "goose-relay: all ", len(keys), " endpoints failed diagnose")
 }
 
 func (h *Outbound) IsReady() bool {
