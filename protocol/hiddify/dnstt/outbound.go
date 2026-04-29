@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	multidns "github.com/hiddify/hmrd_multi_resolver_dns"
 	dnstt "github.com/net2share/vaydns/client"
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/outbound"
@@ -45,6 +46,8 @@ type Outbound struct {
 	started            int
 	resolve            bool
 	tunnel_index       int
+
+	mdMgr *multidns.Manager // smart pool, set when options.SmartPool
 
 	options option.DnsttOptions
 }
@@ -110,6 +113,17 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 		options: options,
 	}
 
+	if options.SmartPool {
+		mgr, addr, err := multidns.StartLocal(multidns.Options{})
+		if err != nil {
+			return nil, err
+		}
+		out.mdMgr = mgr
+		out.resolvers = []dnstt.Resolver{{ResolverType: dnstt.ResolverTypeUDP, ResolverAddr: addr}}
+		out.tunnels = []*dnstt.Tunnel{nil}
+		logger.InfoContext(ctx, "dnstt smart_pool listening on ", addr)
+	}
+
 	return out, nil
 
 }
@@ -157,6 +171,9 @@ func (c *Outbound) Close() error {
 		if t != nil {
 			t.Close()
 		}
+	}
+	if c.mdMgr != nil {
+		_ = c.mdMgr.Close()
 	}
 	return nil
 }

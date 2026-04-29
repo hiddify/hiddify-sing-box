@@ -165,7 +165,7 @@ require (
 	github.com/grafov/m3u8 v0.0.0-20171211212457-6ab8f28ed427 // indirect
 	github.com/hashicorp/yamux v0.1.2 // indirect
 	github.com/hdevalence/ed25519consensus v0.2.0 // indirect
-	github.com/hiddify/hmrd_multi_resolver_dns v0.0.0-20260427063951-838b38fc5cf9
+	github.com/hiddify/hmrd_multi_resolver_dns v0.0.0-20260429114007-8d809dc33d0e
 	github.com/huin/goupnp v1.3.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
