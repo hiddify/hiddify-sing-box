@@ -527,6 +527,8 @@ func (r *NetworkManager) ReleaseMemory(ctx context.Context) {
 			keeper.CloseIdleConnections()
 		}
 	}
+
+	r.router.ResetNetwork()
 }
 
 func (r *NetworkManager) notifyInterfaceUpdate(defaultInterface *control.Interface, flags int) {
