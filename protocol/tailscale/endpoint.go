@@ -4,6 +4,7 @@ package tailscale
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"net/http"
@@ -36,6 +37,7 @@ import (
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
+	"github.com/sagernet/sing/common/ntp"
 	"github.com/sagernet/sing/service"
 	"github.com/sagernet/sing/service/filemanager"
 	tailscaleroot "github.com/sagernet/tailscale"
@@ -171,19 +173,6 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 	} else {
 		// controlplane.tailscale.com
 		remoteIsDomain = true
-	}
-	hasLegacyDialer := !reflect.DeepEqual(options.DialerOptions, option.DialerOptions{})
-	hasControlHTTPClient := options.ControlHTTPClient != nil && !options.ControlHTTPClient.IsEmpty()
-	if hasLegacyDialer && hasControlHTTPClient {
-		return nil, E.New("control_http_client is conflict with deprecated dialer options")
-	}
-	controlHTTPClientOptions := common.PtrValueOrDefault(options.ControlHTTPClient)
-	if hasLegacyDialer {
-		deprecated.Report(ctx, deprecated.OptionLegacyTailscaleEndpointDialer)
-		controlHTTPClientOptions.DialerOptions = options.DialerOptions
-	}
-	if remoteIsDomain {
-		controlHTTPClientOptions.ResolveOnDetour = true
 	}
 	outboundDialer, err := dialer.NewWithOptions(dialer.Options{
 		Context:          ctx,
@@ -356,6 +345,58 @@ func (t *Endpoint) postStart() error {
 		return err
 	}
 	t.serverStarted = true
+	t.server.ExportLocalBackend().ExportEngine().(wgengine.ExportedUserspaceEngine).SetOnReconfigListener(t.onReconfig)
+
+	ipStack := t.server.ExportNetstack().ExportIPStack()
+	gErr := ipStack.SetSpoofing(tun.DefaultNIC, true)
+	if gErr != nil {
+		return gonet.TranslateNetstackError(gErr)
+	}
+	gErr = ipStack.SetPromiscuousMode(tun.DefaultNIC, true)
+	if gErr != nil {
+		return gonet.TranslateNetstackError(gErr)
+	}
+	icmpForwarder := tun.NewICMPForwarder(t.ctx, ipStack, t, t.icmpTimeout)
+	ipStack.SetTransportProtocolHandler(icmp.ProtocolNumber4, icmpForwarder.HandlePacket)
+	ipStack.SetTransportProtocolHandler(icmp.ProtocolNumber6, icmpForwarder.HandlePacket)
+	t.stack = ipStack
+	t.icmpForwarder = icmpForwarder
+	netstack := t.server.ExportNetstack()
+	if netstack != nil {
+		previousTCP := netstack.GetTCPHandlerForFlow
+		netstack.GetTCPHandlerForFlow = func(src, dst netip.AddrPort) (handler func(net.Conn), intercept bool) {
+			if previousTCP != nil {
+				handler, intercept = previousTCP(src, dst)
+				if handler != nil || !intercept {
+					return handler, intercept
+				}
+			}
+			return func(conn net.Conn) {
+				ctx := log.ContextWithNewID(t.ctx)
+				source := M.SocksaddrFrom(src.Addr(), src.Port())
+				destination := M.SocksaddrFrom(dst.Addr(), dst.Port())
+				t.NewConnectionEx(ctx, conn, source, destination, nil)
+			}, true
+		}
+
+		previousUDP := netstack.GetUDPHandlerForFlow
+		netstack.GetUDPHandlerForFlow = func(src, dst netip.AddrPort) (handler func(nettype.ConnPacketConn), intercept bool) {
+			if previousUDP != nil {
+				handler, intercept = previousUDP(src, dst)
+				if handler != nil || !intercept {
+					return handler, intercept
+				}
+			}
+			return func(conn nettype.ConnPacketConn) {
+				ctx := log.ContextWithNewID(t.ctx)
+				source := M.SocksaddrFrom(src.Addr(), src.Port())
+				destination := M.SocksaddrFrom(dst.Addr(), dst.Port())
+				packetConn := bufio.NewUnbindPacketConnWithAddr(conn, destination)
+				t.NewPacketConnectionEx(ctx, packetConn, source, destination, nil)
+			}, true
+		}
+	}
+
 	localBackend := t.server.ExportLocalBackend()
 	t.localBackend.Store(localBackend)
 	if !version.IsAppleTV() {
