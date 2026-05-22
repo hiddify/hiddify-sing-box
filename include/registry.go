@@ -37,6 +37,7 @@ import (
 	"github.com/sagernet/sing-box/protocol/redirect"
 	"github.com/sagernet/sing-box/protocol/shadowsocks"
 	"github.com/sagernet/sing-box/protocol/shadowtls"
+	snellprotocol "github.com/sagernet/sing-box/protocol/snell"
 	"github.com/sagernet/sing-box/protocol/socks"
 	"github.com/sagernet/sing-box/protocol/ssh"
 	"github.com/sagernet/sing-box/protocol/tor"
@@ -77,6 +78,7 @@ func InboundRegistry() *inbound.Registry {
 	anytls.RegisterInbound(registry)
 	mieru.RegisterInbound(registry)
 	ssh.RegisterInbound(registry)
+	snellprotocol.RegisterInbound(registry)
 
 	registerQUICInbounds(registry)
 	registerCloudflaredInbound(registry)
@@ -113,6 +115,7 @@ func OutboundRegistry() *outbound.Registry {
 	dnstt.RegisterOutbound(registry)
 	gooserelay.RegisterOutbound(registry)
 	balancer.RegisterLoadBalance(registry)
+	snellprotocol.RegisterOutbound(registry)
 
 	registerQUICOutbounds(registry)
 	registerStubForRemovedOutbounds(registry)
