@@ -25,8 +25,8 @@ type PlatformInterface interface {
 	CheckPlatformShell() error
 	OpenShellSession(user *PlatformUser, command string, environ StringIterator, term string, rows int32, cols int32) (ShellSession, error)
 	LookupUser(username string) (*PlatformUser, error)
-	LookupSFTPServer() (string, error)
-	ReadSystemSSHHostKey() (string, error)
+	LookupSFTPServer() (*StringBox, error)
+	ReadSystemSSHHostKey() (*StringBox, error)
 	TailscaleHostname() string
 	UsePlatformBridge() bool
 	CreateBridge(options *BridgeOptions) (BridgeSession, error)
