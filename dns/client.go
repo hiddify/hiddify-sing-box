@@ -61,10 +61,7 @@ type ClientOptions struct {
 }
 
 func NewClient(options ClientOptions) *Client {
-	cacheCapacity := options.CacheCapacity
-	if cacheCapacity < 1024 {
-		cacheCapacity = 1024
-	}
+	cacheCapacity := max(options.CacheCapacity, 1024)
 	client := &Client{
 		ctx:               options.Context,
 		timeout:           options.Timeout,
@@ -186,8 +183,6 @@ func (c *Client) Exchange(ctx context.Context, transport adapter.DNSTransport, m
 		if loaded {
 			select {
 			case <-cond:
-			case <-time.After(c.timeout):
-				return nil, E.New("cache wait timeout")
 			case <-ctx.Done():
 				return nil, ctx.Err()
 			}
@@ -224,7 +219,7 @@ func (c *Client) Exchange(ctx context.Context, transport adapter.DNSTransport, m
 			return nil, ErrResponseRejectedCached
 		}
 	}
-	response, err := c.exchangeToTransport(ctx, transport, message)
+	response, err := c.exchangeToTransport(ctx, transport, message, options.Timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -276,9 +271,10 @@ func (c *Client) Lookup(ctx context.Context, transport adapter.DNSTransport, dom
 	if options.LookupStrategy != C.DomainStrategyAsIS {
 		lookupOptions.Strategy = strategy
 	}
-	if strategy == C.DomainStrategyIPv4Only {
+	switch strategy {
+	case C.DomainStrategyIPv4Only:
 		return c.lookupToExchange(ctx, transport, dnsName, dns.TypeA, lookupOptions, responseChecker)
-	} else if strategy == C.DomainStrategyIPv6Only {
+	case C.DomainStrategyIPv6Only:
 		return c.lookupToExchange(ctx, transport, dnsName, dns.TypeAAAA, lookupOptions, responseChecker)
 	}
 	var response4 []netip.Addr
@@ -427,10 +423,7 @@ func (c *Client) loadResponse(question dns.Question, transport adapter.DNSTransp
 		c.cache.Remove(key)
 		return nil, 0, false
 	}
-	nowTTL := int(expireAt.Sub(timeNow).Seconds())
-	if nowTTL < 0 {
-		nowTTL = 0
-	}
+	nowTTL := max(int(expireAt.Sub(timeNow).Seconds()), 0)
 	response = response.Copy()
 	normalizeTTL(response, uint32(nowTTL))
 	return response, nowTTL, false
@@ -457,10 +450,7 @@ func (c *Client) loadPersistentResponse(question dns.Question, transport adapter
 		}
 		return nil, 0, false
 	}
-	nowTTL := int(expireAt.Sub(timeNow).Seconds())
-	if nowTTL < 0 {
-		nowTTL = 0
-	}
+	nowTTL := max(int(expireAt.Sub(timeNow).Seconds()), 0)
 	normalizeTTL(response, uint32(nowTTL))
 	return response, nowTTL, false
 }
@@ -499,10 +489,10 @@ func (c *Client) backgroundRefreshDNS(transport adapter.DNSTransport, question d
 	go func() {
 		defer c.backgroundRefresh.Delete(key)
 		ctx := contextWithTransportTag(c.ctx, transport.Tag())
-		response, err := c.exchangeToTransport(ctx, transport, message)
+		response, err := c.exchangeToTransport(ctx, transport, message, options.Timeout)
 		if err != nil {
 			if c.logger != nil {
-				c.logger.Debug("optimistic refresh failed for ", FqdnToDomain(question.Name), ": ", err)
+				c.logger.DebugContext(ctx, "optimistic refresh failed for ", FqdnToDomain(question.Name), ": ", err)
 			}
 			return
 		}
@@ -514,6 +504,9 @@ func (c *Client) backgroundRefreshDNS(transport adapter.DNSTransport, question d
 				rejected = !responseChecker(response)
 			}
 			if rejected {
+				if c.logger != nil {
+					c.logger.DebugContext(ctx, "optimistic refresh rejected for ", FqdnToDomain(question.Name))
+				}
 				if c.rdrc != nil {
 					c.rdrc.SaveRDRCAsync(transport.Tag(), question.Name, question.Qtype, c.logger)
 				}
@@ -524,6 +517,7 @@ func (c *Client) backgroundRefreshDNS(transport adapter.DNSTransport, question d
 		}
 		timeToLive := applyResponseOptions(question, response, options)
 		c.storeCache(transport, question, response, timeToLive)
+		logRefreshedResponse(c.logger, ctx, response, timeToLive)
 	}()
 }
 
@@ -550,8 +544,11 @@ func stripDNSPadding(response *dns.Msg) {
 	}
 }
 
-func (c *Client) exchangeToTransport(ctx context.Context, transport adapter.DNSTransport, message *dns.Msg) (*dns.Msg, error) {
-	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+func (c *Client) exchangeToTransport(ctx context.Context, transport adapter.DNSTransport, message *dns.Msg, timeout time.Duration) (*dns.Msg, error) {
+	if timeout == 0 {
+		timeout = c.timeout
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	response, err := transport.Exchange(ctx, message)
 	if err == nil {
@@ -567,18 +564,6 @@ func (c *Client) exchangeToTransport(ctx context.Context, transport adapter.DNST
 
 func MessageToAddresses(response *dns.Msg) []netip.Addr {
 	return adapter.DNSResponseAddresses(response)
-}
-
-func wrapError(err error) error {
-	switch dnsErr := err.(type) {
-	case *net.DNSError:
-		if dnsErr.IsNotFound {
-			return RcodeNameError
-		}
-	case *net.AddrError:
-		return RcodeNameError
-	}
-	return err
 }
 
 type transportKey struct{}

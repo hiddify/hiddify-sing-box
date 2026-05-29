@@ -36,6 +36,11 @@ type TailscaleEndpointOptions struct {
 type TailscaleDNSServerOptions struct {
 	Endpoint               string `json:"endpoint,omitempty"`
 	AcceptDefaultResolvers bool   `json:"accept_default_resolvers,omitempty"`
+	AcceptSearchDomain     bool   `json:"accept_search_domain,omitempty"`
+}
+
+type TailscaleCertificateProviderOptions struct {
+	Endpoint string `json:"endpoint,omitempty"`
 }
 
 type TailscaleCertificateProviderOptions struct {

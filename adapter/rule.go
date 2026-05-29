@@ -23,7 +23,6 @@ type DNSRule interface {
 	LegacyPreMatch(metadata *InboundContext) bool
 	WithAddressLimit() bool
 	MatchAddressLimit(metadata *InboundContext, response *dns.Msg) bool
-	BypassIfFailed() bool
 }
 
 type RuleAction interface {

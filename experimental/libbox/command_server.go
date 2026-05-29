@@ -41,6 +41,7 @@ type CommandServerHandler interface {
 	SetSystemProxyEnabled(enabled bool) error
 	TriggerNativeCrash() error
 	WriteDebugMessage(message string)
+	ConnectSSHAgent() (int32, error)
 }
 
 func NewCommandServer(handler CommandServerHandler, platformInterface PlatformInterface) (*CommandServer, error) {
@@ -117,7 +118,7 @@ func (s *CommandServer) Start() error {
 	if sCommandServerListenPort == 0 {
 		sockPath := filepath.Join(sBasePath, "command.sock")
 		os.Remove(sockPath)
-		for i := 0; i < 30; i++ {
+		for range 30 {
 			listener, err = net.ListenUnix("unix", &net.UnixAddr{
 				Name: sockPath,
 				Net:  "unix",
@@ -243,7 +244,7 @@ func (s *CommandServer) ResetNetwork() {
 	if instance == nil || instance.Box() == nil {
 		return
 	}
-	instance.Box().Router().ResetNetwork()
+	instance.Box().Network().ResetNetwork()
 }
 
 func (s *CommandServer) UpdateWIFIState() {
@@ -285,4 +286,8 @@ func (h *platformHandler) TriggerNativeCrash() error {
 
 func (h *platformHandler) WriteDebugMessage(message string) {
 	(*CommandServer)(h).handler.WriteDebugMessage(message)
+}
+
+func (h *platformHandler) ConnectSSHAgent() (int32, error) {
+	return (*CommandServer)(h).handler.ConnectSSHAgent()
 }

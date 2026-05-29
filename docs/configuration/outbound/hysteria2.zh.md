@@ -1,7 +1,9 @@
 !!! quote "sing-box 1.14.0 中的更改"
 
     :material-plus: [hop_interval_max](#hop_interval_max)  
-    :material-plus: [bbr_profile](#bbr_profile)
+    :material-plus: [bbr_profile](#bbr_profile)  
+    :material-plus: [realm](#realm)  
+    :material-alert: [obfs](#obfstype)
 
 !!! quote "sing-box 1.11.0 中的更改"
 
@@ -36,6 +38,13 @@
 
   "bbr_profile": "",
   "brutal_debug": false,
+  "realm": {
+    "server_url": "https://realm.example.com",
+    "token": "",
+    "realm_id": "",
+    "stun_servers": [],
+    "http_client": {}
+  },
 
   ... // 拨号字段
 }
@@ -59,6 +68,8 @@
 
 服务器地址。
 
+与 `realm` 冲突。
+
 #### server_port
 
 ==必填==
@@ -67,13 +78,15 @@
 
 如果设置了 `server_ports`，则忽略此项。
 
+与 `realm` 冲突。
+
 #### server_ports
 
 !!! question "自 sing-box 1.11.0 起"
 
 服务器端口范围列表。
 
-与 `server_port` 冲突。
+与 `server_port` 和 `realm` 冲突。
 
 #### hop_interval
 
@@ -99,13 +112,29 @@
 
 #### obfs.type
 
-QUIC 流量混淆器类型，仅可设为 `salamander`。
+QUIC 流量混淆器类型，可选 `salamander` `gecko`。
 
 如果为空则禁用。
 
 #### obfs.password
 
-QUIC 流量混淆器密码.
+QUIC 流量混淆器密码。
+
+#### obfs.min_packet_size
+
+!!! question "自 sing-box 1.14.0 起"
+
+最小线上数据包大小（字节）。仅限 Gecko。
+
+默认使用 `512`。
+
+#### obfs.max_packet_size
+
+!!! question "自 sing-box 1.14.0 起"
+
+最大线上数据包大小（字节）。仅限 Gecko。
+
+默认使用 `1200`。
 
 #### password
 
@@ -140,6 +169,50 @@ BBR 拥塞控制算法配置，可选 `conservative` `standard` `aggressive`。
 #### brutal_debug
 
 启用 Hysteria Brutal CC 的调试信息日志记录。
+
+#### realm
+
+!!! question "自 sing-box 1.14.0 起"
+
+通过 Hysteria Realm 会合服务连接 Hysteria2 服务器。
+
+出站从 realm 查询服务器当前的公网地址，执行 UDP 打洞，然后进行常规的 QUIC 握手。
+
+与 `server`、`server_port` 和 `server_ports` 冲突。
+
+TLS SNI 默认使用 `server_url` 中的主机名。需设置 `tls.server_name` 以匹配 Hysteria2 服务器证书覆盖的名字。
+
+会合服务参阅 [Hysteria Realm](/zh/configuration/service/hysteria-realm/)。
+
+#### realm.server_url
+
+==必填==
+
+Realm 会合服务 URL。
+
+#### realm.token
+
+Realm 的 Bearer 令牌，需与 realm 上配置的 `users[].token` 之一匹配。
+
+#### realm.realm_id
+
+==必填==
+
+目标 Hysteria2 服务器注册时使用的相同槽位标识符。
+
+#### realm.stun_servers
+
+==必填==
+
+用于发现本客户端公网地址的 STUN 服务器列表（`host` 或 `host:port`）。
+
+域名通过 [拨号字段](/zh/configuration/shared/dial/) 中的 [`domain_resolver`](/zh/configuration/shared/dial/#domain_resolver) 解析。
+
+#### realm.http_client
+
+与 realm 通信使用的 HTTP 客户端。
+
+参阅 [HTTP 客户端](/zh/configuration/shared/http-client/) 了解详情。
 
 ### 拨号字段
 

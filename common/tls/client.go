@@ -22,26 +22,20 @@ import (
 var errMissingServerName = E.New("missing server_name or insecure=true")
 
 func parseTLSSpoofOptions(serverName string, options option.OutboundTLSOptions) (string, tlsspoof.Method, error) {
-	if options.Spoof == "" {
-		if options.SpoofMethod != "" {
-			return "", 0, E.New("`spoof_method` requires `spoof`")
-		}
-		return "", 0, nil
+	spoof, method, err := tlsspoof.ParseOptions(options.Spoof, options.SpoofMethod)
+	if err != nil {
+		return "", 0, err
 	}
-	if !tlsspoof.PlatformSupported {
-		return "", 0, E.New("`spoof` is not supported on this platform")
+	if spoof == "" {
+		return "", 0, nil
 	}
 	if options.DisableSNI || serverName == "" || M.ParseAddr(serverName).IsValid() {
 		return "", 0, E.New("`spoof` requires TLS ClientHello with SNI")
 	}
-	if strings.EqualFold(options.Spoof, serverName) {
+	if strings.EqualFold(spoof, serverName) {
 		return "", 0, E.New("`spoof` must differ from `server_name`")
 	}
-	method, err := tlsspoof.ParseMethod(options.SpoofMethod)
-	if err != nil {
-		return "", 0, err
-	}
-	return options.Spoof, method, nil
+	return spoof, method, nil
 }
 
 func applyTLSSpoof(conn net.Conn, spoof string, method tlsspoof.Method) (net.Conn, error) {
@@ -98,9 +92,11 @@ func NewClientWithOptions(options ClientOptions) (Config, error) {
 		options.Logger.Warn("enabling kTLS RX will definitely reduce performance, please checkout https://sing-box.sagernet.org/configuration/shared/tls/#kernel_rx")
 	}
 	switch options.Options.Engine {
-	case C.TLSEngineDefault, "go":
+	case "", C.TLSEngineGo:
 	case C.TLSEngineApple:
 		return newAppleClient(options.Context, options.Logger, options.ServerAddress, options.Options, options.AllowEmptyServerName)
+	case C.TLSEngineWindows:
+		return newWindowsClient(options.Context, options.Logger, options.ServerAddress, options.Options, options.AllowEmptyServerName)
 	default:
 		return nil, E.New("unknown tls engine: ", options.Options.Engine)
 	}

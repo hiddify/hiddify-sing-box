@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"slices"
 	"strings"
 	"time"
 	"unsafe"
@@ -112,11 +113,17 @@ func NewCertificateProvider(ctx context.Context, logger log.ContextLogger, tag s
 		config.KeySource = certmagic.StandardKeyGenerator{KeyType: keyType}
 	}
 
+	profile := options.Profile
+	if profile == "" && acmeServer == certmagic.LetsEncryptProductionCA && slices.ContainsFunc(options.Domain, certmagic.SubjectIsIP) {
+		profile = "shortlived"
+	}
+
 	acmeIssuer := certmagic.ACMEIssuer{
 		CA:                      acmeServer,
 		Email:                   options.Email,
 		AccountKeyPEM:           options.AccountKey,
 		Agreed:                  true,
+		Profile:                 profile,
 		DisableHTTPChallenge:    options.DisableHTTPChallenge,
 		DisableTLSALPNChallenge: options.DisableTLSALPNChallenge,
 		AltHTTPPort:             int(options.AlternativeHTTPPort),

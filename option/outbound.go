@@ -90,13 +90,11 @@ type DialerOptions struct {
 
 	// Deprecated: migrated to domain resolver
 	DomainStrategy DomainStrategy `json:"domain_strategy,omitempty"`
-
-	TLSFragment TLSFragmentOptions `json:"tls_fragment,omitempty"` //hiddify
-
 }
 
 type _DomainResolveOptions struct {
 	Server                 string                `json:"server"`
+	Timeout                badoption.Duration    `json:"timeout,omitempty"`
 	Strategy               DomainStrategy        `json:"strategy,omitempty"`
 	DisableCache           bool                  `json:"disable_cache,omitempty"`
 	DisableOptimisticCache bool                  `json:"disable_optimistic_cache,omitempty"`
@@ -110,6 +108,7 @@ func (o DomainResolveOptions) MarshalJSON() ([]byte, error) {
 	if o.Server == "" {
 		return []byte("{}"), nil
 	} else if o.Strategy == DomainStrategy(C.DomainStrategyAsIS) &&
+		o.Timeout == 0 &&
 		!o.DisableCache &&
 		!o.DisableOptimisticCache &&
 		o.RewriteTTL == nil &&

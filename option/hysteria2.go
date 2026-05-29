@@ -19,14 +19,70 @@ type Hysteria2InboundOptions struct {
 	IgnoreClientBandwidth bool            `json:"ignore_client_bandwidth,omitempty"`
 	InboundTLSOptionsContainer
 	QUICOptions
-	Masquerade  *Hysteria2Masquerade `json:"masquerade,omitempty"`
-	BBRProfile  string               `json:"bbr_profile,omitempty"`
-	BrutalDebug bool                 `json:"brutal_debug,omitempty"`
+	Masquerade  *Hysteria2Masquerade   `json:"masquerade,omitempty"`
+	BBRProfile  string                 `json:"bbr_profile,omitempty"`
+	BrutalDebug bool                   `json:"brutal_debug,omitempty"`
+	Realm       *Hysteria2InboundRealm `json:"realm,omitempty"`
 }
 
-type Hysteria2Obfs struct {
-	Type     string `json:"type,omitempty"`
-	Password string `json:"password,omitempty"`
+type Hysteria2Realm struct {
+	ServerURL   string                     `json:"server_url"`
+	Token       string                     `json:"token,omitempty"`
+	RealmID     string                     `json:"realm_id"`
+	STUNServers badoption.Listable[string] `json:"stun_servers"`
+	HTTPClient  *HTTPClientOptions         `json:"http_client,omitempty"`
+}
+
+type Hysteria2InboundRealm struct {
+	Hysteria2Realm
+	STUNDomainResolver *DomainResolveOptions `json:"stun_domain_resolver,omitempty"`
+}
+
+type Hysteria2ObfsGecko struct {
+	MinPacketSize int `json:"min_packet_size,omitempty"`
+	MaxPacketSize int `json:"max_packet_size,omitempty"`
+}
+
+type _Hysteria2Obfs struct {
+	Type         string             `json:"type,omitempty"`
+	Password     string             `json:"password,omitempty"`
+	GeckoOptions Hysteria2ObfsGecko `json:"-"`
+}
+
+type Hysteria2Obfs _Hysteria2Obfs
+
+func (o Hysteria2Obfs) MarshalJSON() ([]byte, error) {
+	var v any
+	switch o.Type {
+	case C.Hysteria2ObfsTypeSalamander:
+	case C.Hysteria2ObfsTypeGecko:
+		v = o.GeckoOptions
+	default:
+		return nil, E.New("unknown obfs type: ", o.Type)
+	}
+	if v == nil {
+		return json.Marshal((_Hysteria2Obfs)(o))
+	}
+	return badjson.MarshallObjects((_Hysteria2Obfs)(o), v)
+}
+
+func (o *Hysteria2Obfs) UnmarshalJSON(bytes []byte) error {
+	err := json.Unmarshal(bytes, (*_Hysteria2Obfs)(o))
+	if err != nil {
+		return err
+	}
+	var v any
+	switch o.Type {
+	case C.Hysteria2ObfsTypeSalamander:
+	case C.Hysteria2ObfsTypeGecko:
+		v = &o.GeckoOptions
+	default:
+		return E.New("unknown obfs type: ", o.Type)
+	}
+	if v == nil {
+		return nil
+	}
+	return badjson.UnmarshallExcluded(bytes, (*_Hysteria2Obfs)(o), v)
 }
 
 type Hysteria2User struct {
@@ -124,6 +180,20 @@ type Hysteria2OutboundOptions struct {
 	Network        NetworkList                `json:"network,omitempty"`
 	OutboundTLSOptionsContainer
 	QUICOptions
-	BBRProfile  string `json:"bbr_profile,omitempty"`
-	BrutalDebug bool   `json:"brutal_debug,omitempty"`
+	BBRProfile  string          `json:"bbr_profile,omitempty"`
+	BrutalDebug bool            `json:"brutal_debug,omitempty"`
+	Realm       *Hysteria2Realm `json:"realm,omitempty"`
+}
+
+type HysteriaRealmUser struct {
+	Name      string `json:"name"`
+	Token     string `json:"token"`
+	MaxRealms int    `json:"max_realms,omitempty"`
+}
+
+type HysteriaRealmServiceOptions struct {
+	ListenOptions
+	InboundTLSOptionsContainer
+	HTTP2Options
+	Users []HysteriaRealmUser `json:"users"`
 }

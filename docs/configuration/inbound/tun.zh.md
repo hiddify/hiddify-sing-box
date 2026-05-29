@@ -5,7 +5,9 @@ icon: material/new-box
 !!! quote "sing-box 1.14.0 中的更改"
 
     :material-plus: [include_mac_address](#include_mac_address)  
-    :material-plus: [exclude_mac_address](#exclude_mac_address)
+    :material-plus: [exclude_mac_address](#exclude_mac_address)  
+    :material-plus: [dns_mode](#dns_mode)  
+    :material-plus: [dns_address](#dns_address)
 
 !!! quote "sing-box 1.13.3 中的更改"
 
@@ -15,7 +17,8 @@ icon: material/new-box
 
     :material-plus: [auto_redirect_reset_mark](#auto_redirect_reset_mark)  
     :material-plus: [auto_redirect_nfqueue](#auto_redirect_nfqueue)  
-    :material-plus: [exclude_mptcp](#exclude_mptcp)
+    :material-plus: [exclude_mptcp](#exclude_mptcp)  
+    :material-plus: [auto_redirect_iproute2_fallback_rule_index](#auto_redirect_iproute2_fallback_rule_index)
 
 !!! quote "sing-box 1.12.0 中的更改"
 
@@ -72,6 +75,11 @@ icon: material/new-box
     "fdfe:dcba:9876::1/126"
   ],
   "mtu": 9000,
+  "dns_mode": "hijack",
+  "dns_address": [
+    "172.18.0.2",
+    "fdfe:dcba:9876::2"
+  ],
   "auto_route": true,
   "iproute2_table_index": 2022,
   "iproute2_rule_index": 9000,
@@ -80,6 +88,7 @@ icon: material/new-box
   "auto_redirect_output_mark": "0x2024",
   "auto_redirect_reset_mark": "0x2025",
   "auto_redirect_nfqueue": 100,
+  "auto_redirect_iproute2_fallback_rule_index": 32768,
   "exclude_mptcp": false,
   "loopback_address": [
     "10.7.0.1"
@@ -220,6 +229,46 @@ tun 接口的 IPv6 前缀。
 
 最大传输单元。
 
+#### dns_mode
+
+!!! question "自 sing-box 1.14.0 起"
+
+TUN 接口上 DNS 的处理方式。
+
+| 模式       | 描述                                                                                                  |
+|------------|-------------------------------------------------------------------------------------------------------|
+| `disabled` | 不设置原生 DNS，也不劫持 DNS 流量。                                                                    |
+| `native`   | 尽可能设置平台的原生接口 DNS：Windows 与 Apple 上的接口 DNS，Linux 上的 `systemd-resolved` 接口 DNS。   |
+| `hijack`   | 与 `native` 相同，并额外执行下文所述的 53 端口劫持。默认使用。                                         |
+
+`hijack` 在 `native` 之上额外执行：
+
+*Linux*：只能劫持发往非本机地址的 DNS。发往本机接口地址（如 `127.0.0.53`
+或本机 LAN 接口 IP）的流量由内核 `local` 路由表在所有用户规则之前直接交付，
+`OUTPUT` 链 NAT 也无法对走 `lo` 的包生效。
+
+- 未启用 `auto_redirect` 时：通过 `iproute2` 规则让 53 端口跳过 `main` 表的
+  具体路由查找，把本来会经直连子网直接送达的 DNS 改走 TUN —— 不重写目的地址。
+- 启用 `auto_redirect` 时：通过 nftables 规则将 53 端口流量直接 DNAT 至
+  [`dns_address`](#dns_address)。
+
+*Windows 启用 [`strict_route`](#strict_route) 时*：通过 WFP 过滤器阻止经由非
+TUN 接口的 53 端口流量。
+
+#### dns_address
+
+!!! question "自 sing-box 1.14.0 起"
+
+[`dns_mode`](#dns_mode) 使用的 DNS 服务器地址列表。
+
+未设置时，sing-box 会按地址族在 [`address`](#address) 的第一个 IPv4/IPv6
+条目后面取下一个 IP 作为 DNS 服务器地址，并将流向这些推导地址的连接额外劫持到
+sing-box DNS 模块，等价于一条
+[`hijack-dns`](/zh/configuration/route/rule_action/#hijack-dns) 路由动作；这与此选项加入之前的行为一致。
+
+设置后，将不再自动劫持；如仍需此行为，请显式配置
+[`hijack-dns`](/zh/configuration/route/rule_action/#hijack-dns) 路由规则。
+
 #### gso
 
 !!! failure "已在 sing-box 1.11.0 废弃"
@@ -317,13 +366,24 @@ tun 接口的 IPv6 前缀。
 
 默认使用 `100`。
 
+#### auto_redirect_iproute2_fallback_rule_index
+
+!!! question "自 sing-box 1.12.18 起"
+
+`auto_redirect` 生成的 iproute2 回退规则索引。
+
+此规则在系统默认规则（32766: main，32767: default）之后检查，
+仅当系统路由表中未找到路由时才将流量路由到 sing-box 路由表。
+
+默认使用 `32768`。
+
 #### exclude_mptcp
 
 !!! question "自 sing-box 1.13.0 起"
 
 !!! quote ""
 
-    仅支持 Linux，且需要 nftables，`auto_route` 和 `auto_redirect` 已启用。 
+    仅支持 Linux，且需要 nftables，`auto_route` 和 `auto_redirect` 已启用。
 
 由于协议限制，MPTCP 无法被透明代理。
 

@@ -47,7 +47,6 @@ type CacheFile struct {
 	cacheID            []byte
 	storeFakeIP        bool
 	storeRDRC          bool
-	storeWARPConfig    bool
 	storeDNS           bool
 	disableExpire      bool
 	rdrcTimeout        time.Duration
@@ -101,20 +100,19 @@ func New(ctx context.Context, logger logger.Logger, options option.CacheFileOpti
 		}
 	}
 	return &CacheFile{
-		ctx:             ctx,
-		logger:          logger,
-		path:            filemanager.BasePath(ctx, path),
-		cacheID:         cacheIDBytes,
-		storeFakeIP:     options.StoreFakeIP,
-		storeRDRC:       options.StoreRDRC,
-		storeWARPConfig: options.StoreWARPConfig,
-		storeDNS:        options.StoreDNS,
-		rdrcTimeout:     rdrcTimeout,
-		saveDomain:      make(map[netip.Addr]string),
-		saveAddress4:    make(map[string]netip.Addr),
-		saveAddress6:    make(map[string]netip.Addr),
-		saveRDRC:        make(map[saveCacheKey]bool),
-		saveDNSCache:    make(map[saveCacheKey]saveDNSCacheEntry),
+		ctx:          ctx,
+		logger:       logger,
+		path:         filemanager.BasePath(ctx, path),
+		cacheID:      cacheIDBytes,
+		storeFakeIP:  options.StoreFakeIP,
+		storeRDRC:    options.StoreRDRC,
+		storeDNS:     options.StoreDNS,
+		rdrcTimeout:  rdrcTimeout,
+		saveDomain:   make(map[netip.Addr]string),
+		saveAddress4: make(map[string]netip.Addr),
+		saveAddress6: make(map[string]netip.Addr),
+		saveRDRC:     make(map[saveCacheKey]bool),
+		saveDNSCache: make(map[saveCacheKey]saveDNSCacheEntry),
 	}
 }
 
@@ -170,7 +168,7 @@ func (c *CacheFile) start() error {
 		db  *bbolt.DB
 		err error
 	)
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		db, err = bbolt.Open(c.path, fileMode, &options)
 		if err == nil {
 			break
@@ -415,42 +413,5 @@ func (c *CacheFile) SaveRuleSet(tag string, set *adapter.SavedBinary) error {
 			return err
 		}
 		return bucket.Put([]byte(tag), setBinary)
-	})
-}
-
-func (c *CacheFile) StoreWARPConfig() bool {
-	return c.storeWARPConfig
-}
-
-func (c *CacheFile) LoadBinary(tag string) *adapter.SavedBinary {
-	var savedConfig adapter.SavedBinary
-	err := c.DB.View(func(t *bbolt.Tx) error {
-		bucket := c.bucket(t, bucketRuleSet)
-		if bucket == nil {
-			return os.ErrNotExist
-		}
-		configBinary := bucket.Get([]byte(tag))
-		if len(configBinary) == 0 {
-			return os.ErrInvalid
-		}
-		return savedConfig.UnmarshalBinary(configBinary)
-	})
-	if err != nil {
-		return nil
-	}
-	return &savedConfig
-}
-
-func (c *CacheFile) SaveBinary(tag string, set *adapter.SavedBinary) error {
-	return c.DB.Batch(func(t *bbolt.Tx) error {
-		bucket, err := c.createBucket(t, bucketRuleSet)
-		if err != nil {
-			return err
-		}
-		configBinary, err := set.MarshalBinary()
-		if err != nil {
-			return err
-		}
-		return bucket.Put([]byte(tag), configBinary)
 	})
 }

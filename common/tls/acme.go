@@ -5,6 +5,7 @@ package tls
 import (
 	"context"
 	"crypto/tls"
+	"slices"
 	"strings"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -69,10 +70,16 @@ func startACME(ctx context.Context, logger logger.Logger, options option.Inbound
 		Storage:           storage,
 		Logger:            zapLogger,
 	}
+	profile := options.Profile
+	if profile == "" && acmeServer == certmagic.LetsEncryptProductionCA && slices.ContainsFunc(options.Domain, certmagic.SubjectIsIP) {
+		profile = "shortlived"
+	}
+
 	acmeConfig := certmagic.ACMEIssuer{
 		CA:                      acmeServer,
 		Email:                   options.Email,
 		Agreed:                  true,
+		Profile:                 profile,
 		DisableHTTPChallenge:    options.DisableHTTPChallenge,
 		DisableTLSALPNChallenge: options.DisableTLSALPNChallenge,
 		AltHTTPPort:             int(options.AlternativeHTTPPort),

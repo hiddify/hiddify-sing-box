@@ -15,6 +15,8 @@ import (
 
 type OOMReporter interface {
 	WriteReport(memoryUsage uint64) error
+	WriteDraft(memoryUsage uint64) error
+	DiscardDraft() error
 }
 
 func RegisterService(registry *boxService.Registry) {
@@ -25,10 +27,12 @@ type Service struct {
 	boxService.Adapter
 	ctx            context.Context
 	logger         log.ContextLogger
-	router         adapter.Router
+	network        adapter.NetworkManager
 	timerConfig    timerConfig
 	adaptiveTimer  *adaptiveTimer
 	lastReportTime atomic.Int64
+	//nolint:unused // touched only on darwin && cgo via writeOOMDraft/discardOOMDraft.
+	draftCancelled atomic.Bool
 }
 
 func NewService(ctx context.Context, logger log.ContextLogger, tag string, options option.OOMKillerServiceOptions) (adapter.Service, error) {
@@ -41,13 +45,13 @@ func NewService(ctx context.Context, logger log.ContextLogger, tag string, optio
 		Adapter:     boxService.NewAdapter(boxConstant.TypeOOMKiller, tag),
 		ctx:         ctx,
 		logger:      logger,
-		router:      service.FromContext[adapter.Router](ctx),
+		network:     service.FromContext[adapter.NetworkManager](ctx),
 		timerConfig: config,
 	}, nil
 }
 
 func (s *Service) createTimer() {
-	s.adaptiveTimer = newAdaptiveTimer(s.logger, s.router, s.timerConfig, s.writeOOMReport)
+	s.adaptiveTimer = newAdaptiveTimer(s.logger, s.network, s.timerConfig, s.writeOOMReport)
 }
 
 func (s *Service) startTimer() {

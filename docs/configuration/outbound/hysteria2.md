@@ -1,7 +1,9 @@
 !!! quote "Changes in sing-box 1.14.0"
 
     :material-plus: [hop_interval_max](#hop_interval_max)  
-    :material-plus: [bbr_profile](#bbr_profile)
+    :material-plus: [bbr_profile](#bbr_profile)  
+    :material-plus: [realm](#realm)  
+    :material-alert: [obfs](#obfstype)
 
 !!! quote "Changes in sing-box 1.11.0"
 
@@ -36,6 +38,13 @@
 
   "bbr_profile": "",
   "brutal_debug": false,
+  "realm": {
+    "server_url": "https://realm.example.com",
+    "token": "",
+    "realm_id": "",
+    "stun_servers": [],
+    "http_client": {}
+  },
 
   ... // Dial Fields
 }
@@ -61,6 +70,8 @@
 
 The server address.
 
+Conflicts with `realm`.
+
 #### server_port
 
 ==Required==
@@ -69,13 +80,15 @@ The server port.
 
 Ignored if `server_ports` is set.
 
+Conflicts with `realm`.
+
 #### server_ports
 
 !!! question "Since sing-box 1.11.0"
 
 Server port range list.
 
-Conflicts with `server_port`.
+Conflicts with `server_port` and `realm`.
 
 #### hop_interval
 
@@ -101,13 +114,29 @@ If empty, the BBR congestion control algorithm will be used instead of Hysteria 
 
 #### obfs.type
 
-QUIC traffic obfuscator type, only available with `salamander`.
+QUIC traffic obfuscator type, one of `salamander` `gecko`.
 
 Disabled if empty.
 
 #### obfs.password
 
 QUIC traffic obfuscator password.
+
+#### obfs.min_packet_size
+
+!!! question "Since sing-box 1.14.0"
+
+Minimum on-wire packet size in bytes. Gecko only.
+
+`512` is used by default.
+
+#### obfs.max_packet_size
+
+!!! question "Since sing-box 1.14.0"
+
+Maximum on-wire packet size in bytes. Gecko only.
+
+`1200` is used by default.
 
 #### password
 
@@ -142,6 +171,50 @@ BBR congestion control algorithm profile, one of `conservative` `standard` `aggr
 #### brutal_debug
 
 Enable debug information logging for Hysteria Brutal CC.
+
+#### realm
+
+!!! question "Since sing-box 1.14.0"
+
+Connect to a Hysteria2 server through a Hysteria Realm rendezvous service.
+
+The outbound queries the realm for the server's current public addresses, performs UDP hole-punching, and proceeds with the normal QUIC handshake.
+
+Conflicts with `server`, `server_port` and `server_ports`.
+
+The TLS SNI defaults to the host portion of `server_url`. Set `tls.server_name` to match the certificate the Hysteria2 server presents.
+
+See [Hysteria Realm](/configuration/service/hysteria-realm/) for the rendezvous service.
+
+#### realm.server_url
+
+==Required==
+
+Realm rendezvous service URL.
+
+#### realm.token
+
+Bearer token for the realm. Must match one of `users[].token` configured on the realm.
+
+#### realm.realm_id
+
+==Required==
+
+The same slot identifier the target Hysteria2 server registered.
+
+#### realm.stun_servers
+
+==Required==
+
+List of STUN servers (`host` or `host:port`) used to discover this client's public addresses.
+
+Domain names are resolved using [`domain_resolver`](/configuration/shared/dial/#domain_resolver) from Dial Fields.
+
+#### realm.http_client
+
+HTTP client used to talk to the realm.
+
+See [HTTP Client](/configuration/shared/http-client/) for details.
 
 ### Dial Fields
 

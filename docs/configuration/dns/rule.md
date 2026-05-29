@@ -6,6 +6,7 @@ icon: material/alert-decagram
 
     :material-plus: [source_mac_address](#source_mac_address)  
     :material-plus: [source_hostname](#source_hostname)  
+    :material-plus: [preferred_by](#preferred_by)  
     :material-plus: [match_response](#match_response)  
     :material-delete-clock: [rule_set_ip_cidr_accept_empty](#rule_set_ip_cidr_accept_empty)  
     :material-plus: [response_rcode](#response_rcode)  
@@ -165,6 +166,10 @@ icon: material/alert-decagram
         ],
         "source_hostname": [
           "my-device"
+        ],
+        "preferred_by": [
+          "local",
+          "ts-dns"
         ],
         "wifi_ssid": [
           "My WIFI"
@@ -495,6 +500,20 @@ Match source device MAC address.
     Only supported on Linux, macOS, or in graphical clients on Android and macOS. See [Neighbor Resolution](/configuration/shared/neighbor/) for setup.
 
 Match source device hostname from DHCP leases.
+
+#### preferred_by
+
+!!! question "Since sing-box 1.14.0"
+
+Match specified DNS servers' preferred domains.
+
+| Type        | Match                                                                        |
+|-------------|------------------------------------------------------------------------------|
+| `hosts`     | Match predefined entries and entries in hosts files                          |
+| `local`     | Match hosts entries, neighbor-resolved hosts, and mDNS local domains         |
+| `mdns`      | Match mDNS local domains (`*.local.` and IPv4/IPv6 link-local reverse zones) |
+| `tailscale` | Match MagicDNS hosts and DNS route suffixes                                  |
+| `resolved`  | Match split DNS and search domains from systemd-resolved links               |
 
 #### wifi_ssid
 

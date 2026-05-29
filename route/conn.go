@@ -13,7 +13,9 @@ import (
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/dialer"
+	"github.com/sagernet/sing-box/common/sniff"
 	"github.com/sagernet/sing-box/common/tlsfragment"
+	"github.com/sagernet/sing-box/common/tlsspoof"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
@@ -131,11 +133,23 @@ func (m *ConnectionManager) NewConnection(ctx context.Context, this N.Dialer, co
 	if metadata.TLSFragment || metadata.TLSRecordFragment {
 		remoteConn = tf.NewConn(remoteConn, ctx, metadata.TLSFragment, metadata.TLSRecordFragment, metadata.TLSFragmentFallbackDelay)
 	}
+	if metadata.TLSSpoof != "" {
+		spoofConn, spoofErr := tlsspoof.NewConn(remoteConn, metadata.TLSSpoofMethod, metadata.TLSSpoof)
+		if spoofErr != nil {
+			spoofErr = E.Cause(spoofErr, "tls_spoof setup")
+			remoteConn.Close()
+			N.CloseOnHandshakeFailure(conn, onClose, spoofErr)
+			m.logger.ErrorContext(ctx, spoofErr)
+			return
+		}
+		remoteConn = spoofConn
+	}
+	serverFirst := sniff.Skip(&metadata)
 	var done atomic.Bool
-	if m.kickWriteHandshake(ctx, conn, remoteConn, false, &done, onClose) {
+	if m.kickWriteHandshake(ctx, conn, remoteConn, serverFirst, false, &done, onClose) {
 		return
 	}
-	if m.kickWriteHandshake(ctx, remoteConn, conn, true, &done, onClose) {
+	if m.kickWriteHandshake(ctx, remoteConn, conn, serverFirst, true, &done, onClose) {
 		return
 	}
 	go m.connectionCopy(ctx, conn, remoteConn, false, &done, onClose)
@@ -302,37 +316,43 @@ func (m *ConnectionManager) connectionCopy(ctx context.Context, source net.Conn,
 	}
 }
 
-func (m *ConnectionManager) kickWriteHandshake(ctx context.Context, source net.Conn, destination net.Conn, direction bool, done *atomic.Bool, onClose N.CloseHandlerFunc) bool {
+func (m *ConnectionManager) kickWriteHandshake(ctx context.Context, source net.Conn, destination net.Conn, serverFirst bool, direction bool, done *atomic.Bool, onClose N.CloseHandlerFunc) bool {
 	if !N.NeedHandshakeForWrite(destination) {
 		return false
 	}
 	var (
-		cachedBuffer *buf.Buffer
+		err          error
 		wrotePayload bool
 	)
-	sourceReader, readCounters := N.UnwrapCountReader(source, nil)
-	destinationWriter, writeCounters := N.UnwrapCountWriter(destination, nil)
-	if cachedReader, ok := sourceReader.(N.CachedReader); ok {
-		cachedBuffer = cachedReader.ReadCached()
-	}
-	var err error
-	if cachedBuffer != nil {
-		wrotePayload = true
-		dataLen := cachedBuffer.Len()
-		_, err = destinationWriter.Write(cachedBuffer.Bytes())
-		cachedBuffer.Release()
-		if err == nil {
-			for _, counter := range readCounters {
-				counter(int64(dataLen))
-			}
-			for _, counter := range writeCounters {
-				counter(int64(dataLen))
-			}
-		}
-	} else {
+	if serverFirst {
 		_ = destination.SetWriteDeadline(time.Now().Add(C.ReadPayloadTimeout))
-		_, err = destinationWriter.Write(nil)
+		_, err = destination.Write(nil)
 		_ = destination.SetWriteDeadline(time.Time{})
+	} else {
+		var cachedBuffer *buf.Buffer
+		sourceReader, readCounters := N.UnwrapCountReader(source, nil)
+		destinationWriter, writeCounters := N.UnwrapCountWriter(destination, nil)
+		if cachedReader, ok := sourceReader.(N.CachedReader); ok {
+			cachedBuffer = cachedReader.ReadCached()
+		}
+		if cachedBuffer != nil {
+			wrotePayload = true
+			dataLen := cachedBuffer.Len()
+			_, err = destinationWriter.Write(cachedBuffer.Bytes())
+			cachedBuffer.Release()
+			if err == nil {
+				for _, counter := range readCounters {
+					counter(int64(dataLen))
+				}
+				for _, counter := range writeCounters {
+					counter(int64(dataLen))
+				}
+			}
+		} else {
+			_ = destination.SetWriteDeadline(time.Now().Add(C.ReadPayloadTimeout))
+			_, err = destinationWriter.Write(nil)
+			_ = destination.SetWriteDeadline(time.Time{})
+		}
 	}
 	if err == nil {
 		return false

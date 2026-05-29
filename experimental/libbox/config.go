@@ -3,6 +3,7 @@ package libbox
 import (
 	"bytes"
 	"context"
+	"net/netip"
 	"os"
 
 	box "github.com/sagernet/sing-box"
@@ -26,18 +27,6 @@ import (
 var sOOMReporter oomkiller.OOMReporter
 
 func baseContext(platformInterface PlatformInterface) context.Context {
-	return fromContext(context.Background(), platformInterface)
-}
-
-func BaseContext(platformInterface PlatformInterface) context.Context {
-	return baseContext(platformInterface)
-}
-
-func FromContext(ctx context.Context, platformInterface PlatformInterface) context.Context {
-	return fromContext(ctx, platformInterface)
-}
-
-func fromContext(ctx context.Context, platformInterface PlatformInterface) context.Context {
 	dnsRegistry := include.DNSTransportRegistry()
 	if platformInterface != nil {
 		if localTransport := platformInterface.LocalDNSTransport(); localTransport != nil {
@@ -46,7 +35,7 @@ func fromContext(ctx context.Context, platformInterface PlatformInterface) conte
 			})
 		}
 	}
-
+	ctx := context.Background()
 	ctx = filemanager.WithDefault(ctx, sWorkingPath, sTempPath, sUserID, sGroupID)
 	if sOOMReporter != nil {
 		ctx = service.ContextWith[oomkiller.OOMReporter](ctx, sOOMReporter)
@@ -68,24 +57,17 @@ func CheckConfig(configContent string) error {
 	if err != nil {
 		return err
 	}
-	return checkConfigOptionsFromContext(ctx, &options)
-}
-
-func checkConfigOptionsFromContext(ctx context.Context, options *option.Options) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	ctx = service.ContextWith[adapter.PlatformInterface](ctx, (*platformInterfaceStub)(nil))
 	instance, err := box.New(box.Options{
 		Context: ctx,
-		Options: *options,
+		Options: options,
 	})
 	if err == nil {
 		instance.Close()
 	}
 	return err
-}
-func CheckConfigOptions(options *option.Options) error {
-	return checkConfigOptionsFromContext(BaseContext(nil), options)
 }
 
 type platformInterfaceStub struct{}
@@ -166,6 +148,10 @@ func (s *platformInterfaceStub) UsePlatformNotification() bool {
 }
 
 func (s *platformInterfaceStub) SendNotification(notification *adapter.Notification) error {
+	return nil
+}
+
+func (s *platformInterfaceStub) MyInterfaceAddress() []netip.Addr {
 	return nil
 }
 

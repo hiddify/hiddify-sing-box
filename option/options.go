@@ -11,6 +11,7 @@ import (
 
 type _Options struct {
 	RawMessage           json.RawMessage       `json:"-"`
+	CommentsSet          *json.CommentSet      `json:"-"`
 	Schema               string                `json:"$schema,omitempty"`
 	Log                  *LogOptions           `json:"log,omitempty"`
 	DNS                  *DNSOptions           `json:"dns,omitempty"`
@@ -24,11 +25,13 @@ type _Options struct {
 	Route                *RouteOptions         `json:"route,omitempty"`
 	Services             []Service             `json:"services,omitempty"`
 	Experimental         *ExperimentalOptions  `json:"experimental,omitempty"`
-
-	Custom *map[string]any `json:"custom,omitempty"` //H
 }
 
 type Options _Options
+
+func (o Options) MarshalJSONContext(ctx context.Context) ([]byte, error) {
+	return json.MarshalContext(ctx, (_Options)(o))
+}
 
 func (o *Options) UnmarshalJSONContext(ctx context.Context, content []byte) error {
 	decoder := json.NewDecoderContext(ctx, bytes.NewReader(content))
@@ -41,12 +44,12 @@ func (o *Options) UnmarshalJSONContext(ctx context.Context, content []byte) erro
 	return checkOptions(o)
 }
 
-func (o *Options) MarshalJSONContext(ctx context.Context) ([]byte, error) {
-	var buffer bytes.Buffer
-	encoder := json.NewEncoderContext(ctx, &buffer)
-	encoder.SetIndent("", "  ")
-	err := encoder.Encode((*_Options)(o))
-	return buffer.Bytes(), err
+func (o Options) Comments() *json.CommentSet {
+	return o.CommentsSet
+}
+
+func (o *Options) SetComments(comments *json.CommentSet) {
+	o.CommentsSet = comments
 }
 
 type LogOptions struct {

@@ -100,11 +100,12 @@ func buildTimerConfig(options option.OOMKillerServiceOptions, memoryLimit uint64
 type adaptiveTimer struct {
 	timerConfig
 	logger          log.ContextLogger
-	router          adapter.Router
+	network         adapter.NetworkManager
 	onTriggered     func(uint64)
 	limitThresholds pressureThresholds
 
 	access                  sync.Mutex
+	cleanupTriggered        bool
 	timer                   *time.Timer
 	state                   pressureState
 	currentInterval         time.Duration
@@ -114,11 +115,11 @@ type adaptiveTimer struct {
 	pressureBaselineTime    time.Time
 }
 
-func newAdaptiveTimer(logger log.ContextLogger, router adapter.Router, config timerConfig, onTriggered func(uint64)) *adaptiveTimer {
+func newAdaptiveTimer(logger log.ContextLogger, network adapter.NetworkManager, config timerConfig, onTriggered func(uint64)) *adaptiveTimer {
 	t := &adaptiveTimer{
 		timerConfig: config,
 		logger:      logger,
-		router:      router,
+		network:     network,
 		onTriggered: onTriggered,
 	}
 	if config.policyMode == policyModeMemoryLimit || config.policyMode == policyModeNetworkExtension {
@@ -131,15 +132,6 @@ func (t *adaptiveTimer) start() {
 	t.access.Lock()
 	defer t.access.Unlock()
 	t.startLocked()
-}
-
-func (t *adaptiveTimer) notifyPressure() {
-	t.access.Lock()
-	t.startLocked()
-	t.forceMinInterval = true
-	t.pendingPressureBaseline = true
-	t.access.Unlock()
-	t.poll()
 }
 
 func (t *adaptiveTimer) startLocked() {
@@ -161,10 +153,6 @@ func (t *adaptiveTimer) stop() {
 }
 
 func (t *adaptiveTimer) poll() {
-	if t.timerConfig.policyMode == policyModeNetworkExtension {
-		runtimeDebug.FreeOSMemory()
-	}
-
 	var triggered bool
 	var rateTriggered bool
 	sample := readMemorySample(t.policyMode)
@@ -173,6 +161,12 @@ func (t *adaptiveTimer) poll() {
 	if t.timer == nil {
 		t.access.Unlock()
 		return
+	}
+	if t.timerConfig.policyMode == policyModeNetworkExtension {
+		if t.cleanupTriggered {
+			runtimeDebug.FreeOSMemory()
+			t.cleanupTriggered = true
+		}
 	}
 	if t.pendingPressureBaseline {
 		t.pressureBaseline = sample
@@ -205,26 +199,27 @@ func (t *adaptiveTimer) poll() {
 		}
 	}
 	t.access.Unlock()
-
 	if !triggered {
 		return
 	}
+	t.cleanupTriggered = false
 	t.onTriggered(sample.usage)
 	if rateTriggered {
 		if t.killerDisabled {
 			t.logger.Warn("memory growth rate critical (report only), usage: ", byteformats.FormatMemoryBytes(sample.usage), t.logDetails(sample))
 		} else {
 			t.logger.Error("memory growth rate critical, usage: ", byteformats.FormatMemoryBytes(sample.usage), t.logDetails(sample), ", resetting network")
-			t.router.ResetNetwork()
+			t.network.ResetNetwork()
 		}
 	} else {
 		if t.killerDisabled {
 			t.logger.Warn("memory threshold reached (report only), usage: ", byteformats.FormatMemoryBytes(sample.usage), t.logDetails(sample))
 		} else {
 			t.logger.Error("memory threshold reached, usage: ", byteformats.FormatMemoryBytes(sample.usage), t.logDetails(sample), ", resetting network")
-			t.router.ResetNetwork()
+			t.network.ResetNetwork()
 		}
 	}
+	badCleanup()
 	runtimeDebug.FreeOSMemory()
 }
 

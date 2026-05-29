@@ -2,7 +2,180 @@
 icon: material/alert-decagram
 ---
 
-#### 1.14.0-alpha.14
+#### 1.14.0-alpha.26
+
+* Add gecko obfs for Hysteria2 **1**
+* Fixes and improvements
+
+**1**:
+
+Adds `gecko` as a new QUIC traffic obfuscation type for
+[Hysteria2 inbound](/configuration/inbound/hysteria2/#obfstype) and
+[outbound](/configuration/outbound/hysteria2/#obfstype), alongside the
+existing `salamander`. Gecko supports configurable
+[`min_packet_size`](/configuration/inbound/hysteria2/#obfsmin_packet_size)
+(default 512) and
+[`max_packet_size`](/configuration/inbound/hysteria2/#obfsmax_packet_size)
+(default 1200) fields.
+
+#### 1.14.0-alpha.25
+
+* Revert Tailscale endpoint dial fields deprecation and remove `control_http_client` **1**
+* Fixes and improvements
+
+**1**:
+
+The `control_http_client` field on
+[Tailscale](/configuration/endpoint/tailscale/) endpoints introduced in
+`1.14.0-alpha.13` is removed, and the deprecation of
+[Dial Fields](/configuration/endpoint/tailscale/#dial-fields) is reverted.
+
+#### 1.13.12
+
+* Update naiveproxy to v148.0.7778.96-1
+* Fixes and improvements
+
+#### 1.14.0-alpha.22
+
+* Add Hysteria Realm service and Hysteria2 NAT traversal support **1**
+* Fixes and improvements
+
+**1**:
+
+The new [Hysteria Realm service](/configuration/service/hysteria-realm/)
+is a rendezvous service for Hysteria2 NAT traversal. A Hysteria2 server
+behind NAT registers its STUN-discovered public addresses on a stable
+realm endpoint via the new
+[`realm`](/configuration/inbound/hysteria2/#realm) inbound field;
+clients query the realm via the new
+[`realm`](/configuration/outbound/hysteria2/#realm) outbound field to
+learn the server's current addresses and perform UDP hole-punching to
+establish a direct QUIC connection. Once hole-punching succeeds, all
+proxy traffic flows directly between client and server.
+
+#### 1.14.0-alpha.21
+
+* Allow customizing TUN DNS mode and hijack interface DNS by default **1**
+* Add mDNS DNS server **2**
+* Add `preferred_by` DNS rule item **3**
+* Add neighbor-based hostname resolution for the local DNS server **4**
+* Update NaiveProxy to 148.0.7778.96-1
+* Add more TLS spoof methods and route rule action support **5**
+* Fixes and improvements
+
+**1**:
+
+Adds [`dns_mode`](/configuration/inbound/tun/#dns_mode) and
+[`dns_address`](/configuration/inbound/tun/#dns_address) on the TUN inbound.
+The default `hijack` mode now sets the platform's native interface DNS
+(`systemd-resolved` on Linux, per-interface DNS on Windows and Apple) and
+installs platform-level DNS hijacking (an `iproute2` rule on Linux,
+nftables DNAT when `auto_redirect` is enabled, WFP filters on Windows when
+`strict_route` is enabled). Earlier versions did not touch the interface
+DNS or the platform firewall.
+
+**2**:
+
+The new [mDNS DNS server](/configuration/dns/server/mdns/) sends queries via
+multicast on the local network. The default
+[local DNS server](/configuration/dns/server/local/) also routes queries for
+`*.local.` and IPv4/IPv6 link-local reverse zones via mDNS on non-Apple
+platforms (and via the system resolver on Apple), so an explicit `mdns`
+server is only needed to reference it from
+[`preferred_by`](/configuration/dns/rule/#preferred_by) or to use it
+standalone.
+
+**3**:
+
+The new [`preferred_by`](/configuration/dns/rule/#preferred_by) DNS rule
+item matches domains that the listed DNS servers consider their preferred
+names. Supported server types are `hosts`, `local`, `mdns`, `tailscale`, and
+`resolved`. The [Tailscale](/configuration/dns/server/tailscale/),
+[Hosts](/configuration/dns/server/hosts/) and
+[Resolved](/configuration/dns/server/resolved/) example pages have been
+updated to use this rule item in place of the previous `evaluate` +
+`ip_accept_any` + `respond` pattern.
+
+**4**:
+
+Adds [`neighbor_domain`](/configuration/dns/server/local/#neighbor_domain)
+on the local DNS server. Listed suffixes (each starting with `.`) cause
+A/AAAA queries for single-label hosts under those suffixes to be answered
+from the [neighbor resolver](/configuration/shared/neighbor/) instead of
+the upstream (for example `[".", ".lan"]`).
+
+**5**:
+
+Adds `wrong-ack`, `wrong-md5`, and `wrong-timestamp`
+[spoof methods](/configuration/shared/tls/#spoof_method), and adds
+[`tls_spoof`](/configuration/route/rule_action/#tls_spoof) /
+[`tls_spoof_method`](/configuration/route/rule_action/#tls_spoof_method)
+to route rule actions for per-rule TLS spoofing without outbound TLS settings.
+
+#### 1.14.0-alpha.20
+
+** Fixes and improvements
+
+#### 1.14.0-alpha.19
+
+* Preserve comments between formatting
+* Add cipher, MAC, and key exchange algorithm options for SSH outbound **1**
+* Add DNS query timeout options **2**
+** Fixes and improvements
+
+**1**:
+
+See [SSH](/configuration/outbound/ssh/#cipher).
+
+**2**:
+
+Adds [`dns.timeout`](/configuration/dns/#timeout), with per-query
+overrides via [DNS rule action](/configuration/dns/rule_action/#timeout)
+and [`resolve` route rule action](/configuration/route/rule_action/#timeout),
+and a `timeout` field on
+[`domain_resolver`](/configuration/shared/dial/#domain_resolver).
+
+#### 1.14.0-alpha.18
+
+* Add Windows TLS engine **1**
+* Fixes and improvements
+
+**1**:
+
+The new `windows` value for outbound TLS
+[`engine`](/configuration/shared/tls/#engine) routes the TLS handshake
+through Schannel via SSPI. Only available on Windows build 17763 or
+later (Windows 10 version 1809, Windows Server 2019, or newer); TLS 1.3
+is only negotiated on Windows 11 or Windows Server 2022 and newer.
+
+#### 1.13.11
+
+* Fix process searcher failure introduced in 1.13.9
+* Fixes and improvements
+
+#### 1.14.0-alpha.16
+
+* Add ACME profile support for IP address certificates **1**
+* Fixes and improvements
+
+**1**:
+
+See [ACME Certificate Provider](/configuration/shared/certificate-provider/acme/#profile).
+
+#### 1.13.10
+
+* Fix process searcher failure introduced in 1.13.9
+
+#### 1.14.0-alpha.15
+
+* Add search domain support for Tailscale DNS **1**
+* Fixes and improvements
+
+**1**:
+
+See [Tailscale DNS Server](/configuration/dns/server/tailscale/#accept_search_domain).
+
+#### 1.13.9
 
 * Fixes and improvements
 
@@ -182,10 +355,6 @@ See [Cloudflared](/configuration/inbound/cloudflared/).
 **1**:
 
 See [Hysteria2 Inbound](/configuration/inbound/hysteria2/#bbr_profile) and [Hysteria2 Outbound](/configuration/outbound/hysteria2/#bbr_profile).
-
-#### 1.14.0-alpha.8
-
-* Fixes and improvements
 
 #### 1.13.5
 

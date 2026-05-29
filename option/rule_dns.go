@@ -103,6 +103,7 @@ type RawDefaultDNSRule struct {
 	DefaultInterfaceAddress  badoption.Listable[*badoption.Prefixable]                                   `json:"default_interface_address,omitempty"`
 	SourceMACAddress         badoption.Listable[string]                                                  `json:"source_mac_address,omitempty"`
 	SourceHostname           badoption.Listable[string]                                                  `json:"source_hostname,omitempty"`
+	PreferredBy              badoption.Listable[string]                                                  `json:"preferred_by,omitempty"`
 	RuleSet                  badoption.Listable[string]                                                  `json:"rule_set,omitempty"`
 	RuleSetIPCIDRMatchSource bool                                                                        `json:"rule_set_ip_cidr_match_source,omitempty"`
 	MatchResponse            bool                                                                        `json:"match_response,omitempty"`
@@ -114,9 +115,6 @@ type RawDefaultDNSRule struct {
 	ResponseNs               badoption.Listable[DNSRecordOptions]                                        `json:"response_ns,omitempty"`
 	ResponseExtra            badoption.Listable[DNSRecordOptions]                                        `json:"response_extra,omitempty"`
 	Invert                   bool                                                                        `json:"invert,omitempty"`
-
-	TunnelSource      badoption.Listable[string] `json:"tunnel_source,omitempty"`      //E
-	TunnelDestination badoption.Listable[string] `json:"tunnel_destination,omitempty"` //E
 
 	// Deprecated: removed in sing-box 1.12.0
 	Geosite     badoption.Listable[string] `json:"geosite,omitempty"`
