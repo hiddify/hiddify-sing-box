@@ -117,6 +117,7 @@ func OutboundRegistry() *outbound.Registry {
 	balancer.RegisterLoadBalance(registry)
 	snellprotocol.RegisterOutbound(registry)
 
+	registerMASQUEOutbound(registry)
 	registerQUICOutbounds(registry)
 	registerStubForRemovedOutbounds(registry)
 
