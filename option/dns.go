@@ -153,7 +153,8 @@ type RawLocalDNSServerOptions struct {
 
 type LocalDNSServerOptions struct {
 	RawLocalDNSServerOptions
-	PreferGo bool `json:"prefer_go,omitempty"`
+	PreferGo       bool                     `json:"prefer_go,omitempty"`
+	NeighborDomain badoption.Listable[string] `json:"neighbor_domain,omitempty"`
 }
 
 type RemoteDNSServerOptions struct {
@@ -181,6 +182,11 @@ type FakeIPDNSServerOptions struct {
 type DHCPDNSServerOptions struct {
 	LocalDNSServerOptions
 	Interface string `json:"interface,omitempty"`
+}
+
+type MDNSDNSServerOptions struct {
+	LocalDNSServerOptions
+	Interface badoption.Listable[string] `json:"interface,omitempty"`
 }
 
 type SDNSDNSServerOptions struct {

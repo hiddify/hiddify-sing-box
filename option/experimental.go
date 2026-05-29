@@ -1,22 +1,28 @@
 package option
 
-import "github.com/sagernet/sing/common/json/badoption"
+import (
+	"github.com/sagernet/sing/common/json/badoption"
+)
 
 type ExperimentalOptions struct {
-	CacheFile *CacheFileOptions `json:"cache_file,omitempty"`
-	ClashAPI  *ClashAPIOptions  `json:"clash_api,omitempty"`
-	V2RayAPI  *V2RayAPIOptions  `json:"v2ray_api,omitempty"`
-	Debug     *DebugOptions     `json:"debug,omitempty"`
+	CacheFile    *CacheFileOptions    `json:"cache_file,omitempty"`
+	ClashAPI     *ClashAPIOptions     `json:"clash_api,omitempty"`
+	V2RayAPI     *V2RayAPIOptions     `json:"v2ray_api,omitempty"`
+	UnifiedDelay *UnifiedDelayOptions `json:"unified_delay,omitempty"`
+	Debug        *DebugOptions        `json:"debug,omitempty"`
+
+	Monitoring *MonitoringOptions `json:"monitoring,omitempty"`
 }
 
 type CacheFileOptions struct {
-	Enabled     bool               `json:"enabled,omitempty"`
-	Path        string             `json:"path,omitempty"`
-	CacheID     string             `json:"cache_id,omitempty"`
-	StoreFakeIP bool               `json:"store_fakeip,omitempty"`
-	StoreRDRC   bool               `json:"store_rdrc,omitempty"`
-	RDRCTimeout badoption.Duration `json:"rdrc_timeout,omitempty"`
-	StoreDNS    bool               `json:"store_dns,omitempty"`
+	Enabled         bool               `json:"enabled,omitempty"`
+	Path            string             `json:"path,omitempty"`
+	CacheID         string             `json:"cache_id,omitempty"`
+	StoreFakeIP     bool               `json:"store_fakeip,omitempty"`
+	StoreRDRC       bool               `json:"store_rdrc,omitempty"`
+	StoreWARPConfig bool               `json:"store_warp_config,omitempty"`
+	RDRCTimeout     badoption.Duration `json:"rdrc_timeout,omitempty"`
+	StoreDNS        bool               `json:"store_dns,omitempty"`
 }
 
 type ClashAPIOptions struct {
@@ -52,4 +58,8 @@ type V2RayStatsServiceOptions struct {
 	Inbounds  []string `json:"inbounds,omitempty"`
 	Outbounds []string `json:"outbounds,omitempty"`
 	Users     []string `json:"users,omitempty"`
+}
+
+type UnifiedDelayOptions struct {
+	Enabled bool `json:"enabled,omitempty"`
 }
