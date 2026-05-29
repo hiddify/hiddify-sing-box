@@ -15,15 +15,21 @@ const (
 	TypeTrojan             = "trojan"
 	TypeNaive              = "naive"
 	TypeWireGuard          = "wireguard"
+	TypeWARP               = "warp"
 	TypeHysteria           = "hysteria"
 	TypeTor                = "tor"
 	TypeSSH                = "ssh"
 	TypeShadowTLS          = "shadowtls"
+	TypeMieru              = "mieru"
 	TypeAnyTLS             = "anytls"
 	TypeShadowsocksR       = "shadowsocksr"
 	TypeVLESS              = "vless"
 	TypeTUIC               = "tuic"
 	TypeHysteria2          = "hysteria2"
+	TypeHysteriaRealm      = "hysteria-realm"
+	TypePsiphon            = "psiphon"
+	TypeTunnelClient       = "tunnel_client"
+	TypeTunnelServer       = "tunnel_server"
 	TypeTailscale          = "tailscale"
 	TypeCloudflared        = "cloudflared"
 	TypeDERP               = "derp"
@@ -32,9 +38,17 @@ const (
 	TypeCCM                = "ccm"
 	TypeOCM                = "ocm"
 	TypeOOMKiller          = "oom-killer"
-	TypeHysteriaRealm      = "hysteria-realm"
 	TypeACME               = "acme"
 	TypeCloudflareOriginCA = "cloudflare-origin-ca"
+
+	TypeHInvalidConfig = "hinvalid" //H
+	TypeXray           = "xray"     //H
+	TypeCustom         = "custom"   //H
+	TypeAwg            = "awg"      //H
+	TypeBalancer       = "balancer" //H
+	TypeDNSTT          = "dnstt"    //H
+  TypeGooseRelay     = "gooserelay" //H
+	TypeSmartDNSPool   = "smart_dns_pool" //H — local recursive-resolver pool with AIMD throttling + recovery probing (github.com/hiddify/hmrd_multi_resolver_dns)
 )
 
 const (
@@ -72,6 +86,8 @@ func ProxyDisplayName(proxyType string) string {
 		return "Naive"
 	case TypeWireGuard:
 		return "WireGuard"
+	case TypeWARP:
+		return "WARP"
 	case TypeHysteria:
 		return "Hysteria"
 	case TypeTor:
@@ -88,8 +104,12 @@ func ProxyDisplayName(proxyType string) string {
 		return "TUIC"
 	case TypeHysteria2:
 		return "Hysteria2"
+	case TypeMieru:
+		return "Mieru"
 	case TypeAnyTLS:
 		return "AnyTLS"
+	case TypePsiphon:
+		return "Psiphon"
 	case TypeTailscale:
 		return "Tailscale"
 	case TypeCloudflared:
@@ -98,7 +118,27 @@ func ProxyDisplayName(proxyType string) string {
 		return "Selector"
 	case TypeURLTest:
 		return "URLTest"
+	case TypeHInvalidConfig:
+		return "Invalid"
+	case TypeXray:
+		return "xray"
+	case TypeCustom:
+		return "custom"
+	case TypeTunnelClient:
+		return "Tunnel Client"
+	case TypeTunnelServer:
+		return "Tunnel Server"
+	case TypeAwg:
+		return "Awg"
+	case TypeBalancer:
+		return "Balancer"
+	case TypeDNSTT:
+		return "DNSTT"
+	case TypeGooseRelay:
+		return "GooseRelay"
 	default:
 		return "Unknown"
 	}
 }
+
+const DefaultBrowserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"

@@ -6,7 +6,6 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/sagernet/sing-box/common/tlsspoof"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
@@ -23,12 +22,12 @@ type Inbound interface {
 
 type TCPInjectableInbound interface {
 	Inbound
-	ConnectionHandler
+	ConnectionHandlerEx
 }
 
 type UDPInjectableInbound interface {
 	Inbound
-	PacketConnectionHandler
+	PacketConnectionHandlerEx
 }
 
 type InboundRegistry interface {
@@ -81,8 +80,6 @@ type InboundContext struct {
 	TLSFragment               bool
 	TLSFragmentFallbackDelay  time.Duration
 	TLSRecordFragment         bool
-	TLSSpoof                  string
-	TLSSpoofMethod            tlsspoof.Method
 
 	NetworkStrategy     *C.NetworkStrategy
 	NetworkType         []C.InterfaceType

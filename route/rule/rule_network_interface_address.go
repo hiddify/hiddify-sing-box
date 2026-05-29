@@ -40,13 +40,9 @@ func NewNetworkInterfaceAddressItem(networkManager adapter.NetworkManager, inter
 
 func (r *NetworkInterfaceAddressItem) Match(metadata *adapter.InboundContext) bool {
 	interfaces := r.networkManager.NetworkInterfaces()
-	myInterface := r.networkManager.InterfaceMonitor().MyInterface()
 match:
 	for ifType, addresses := range r.interfaceAddresses {
 		for _, networkInterface := range interfaces {
-			if networkInterface.Name == myInterface {
-				continue
-			}
 			if networkInterface.Type != ifType {
 				continue
 			}

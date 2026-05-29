@@ -110,12 +110,6 @@ func (r *neighborResolver) LookupMAC(address netip.Addr) (net.HardwareAddr, bool
 	return nil, false
 }
 
-func (r *neighborResolver) LookupAddresses(hostname string) []netip.Addr {
-	r.access.RLock()
-	defer r.access.RUnlock()
-	return lookupAddressesByHostname(hostname, r.ipToHostname, r.macToHostname, r.neighborIPToMAC, r.leaseIPToMAC)
-}
-
 func (r *neighborResolver) LookupHostname(address netip.Addr) (string, bool) {
 	r.access.RLock()
 	defer r.access.RUnlock()

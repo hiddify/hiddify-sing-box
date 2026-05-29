@@ -25,9 +25,9 @@ type Listener struct {
 	logger                   logger.ContextLogger
 	network                  []string
 	listenOptions            option.ListenOptions
-	connHandler              adapter.ConnectionHandler
-	packetHandler            adapter.PacketHandler
-	oobPacketHandler         adapter.OOBPacketHandler
+	connHandler              adapter.ConnectionHandlerEx
+	packetHandler            adapter.PacketHandlerEx
+	oobPacketHandler         adapter.OOBPacketHandlerEx
 	threadUnsafePacketWriter bool
 	disablePacketOutput      bool
 	setSystemProxy           bool
@@ -48,9 +48,9 @@ type Options struct {
 	Logger                   logger.ContextLogger
 	Network                  []string
 	Listen                   option.ListenOptions
-	ConnectionHandler        adapter.ConnectionHandler
-	PacketHandler            adapter.PacketHandler
-	OOBPacketHandler         adapter.OOBPacketHandler
+	ConnectionHandler        adapter.ConnectionHandlerEx
+	PacketHandler            adapter.PacketHandlerEx
+	OOBPacketHandler         adapter.OOBPacketHandlerEx
 	ThreadUnsafePacketWriter bool
 	DisablePacketOutput      bool
 	SetSystemProxy           bool

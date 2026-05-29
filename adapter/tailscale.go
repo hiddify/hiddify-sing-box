@@ -5,7 +5,6 @@ import "context"
 type TailscaleEndpoint interface {
 	SubscribeTailscaleStatus(ctx context.Context, fn func(*TailscaleEndpointStatus)) error
 	StartTailscalePing(ctx context.Context, peerIP string, fn func(*TailscalePingResult)) error
-	SetTailscaleExitNode(ctx context.Context, stableID string) error
 }
 
 type TailscalePingResult struct {
@@ -23,7 +22,6 @@ type TailscaleEndpointStatus struct {
 	NetworkName    string
 	MagicDNSSuffix string
 	Self           *TailscalePeer
-	ExitNode       *TailscalePeer
 	UserGroups     []*TailscaleUserGroup
 }
 
@@ -36,21 +34,16 @@ type TailscaleUserGroup struct {
 }
 
 type TailscalePeer struct {
-	StableID       string
 	HostName       string
 	DNSName        string
 	OS             string
 	TailscaleIPs   []string
-	SSHHostKeys    []string
 	Online         bool
 	ExitNode       bool
 	ExitNodeOption bool
-	ShareeNode     bool
-	Expired        bool
 	Active         bool
 	RxBytes        int64
 	TxBytes        int64
 	UserID         int64
 	KeyExpiry      int64
-	LastSeen       int64
 }

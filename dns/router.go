@@ -15,7 +15,7 @@ import (
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	R "github.com/sagernet/sing-box/route/rule"
-	"github.com/sagernet/sing-tun"
+	tun "github.com/sagernet/sing-tun"
 	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
 	F "github.com/sagernet/sing/common/format"
@@ -80,7 +80,6 @@ func NewRouter(ctx context.Context, logFactory log.Factory, options option.DNSOp
 	}
 	router.client = NewClient(ClientOptions{
 		Context:           ctx,
-		Timeout:           time.Duration(options.DNSClientOptions.Timeout),
 		DisableCache:      options.DNSClientOptions.DisableCache,
 		DisableExpire:     options.DNSClientOptions.DisableExpire,
 		OptimisticTimeout: optimisticTimeout,
@@ -315,9 +314,6 @@ func (r *Router) matchDNS(ctx context.Context, rules []adapter.DNSRule, allowFak
 				if action.RewriteTTL != nil {
 					options.RewriteTTL = action.RewriteTTL
 				}
-				if action.Timeout > 0 {
-					options.Timeout = action.Timeout
-				}
 				if action.ClientSubnet.IsValid() {
 					options.ClientSubnet = action.ClientSubnet
 				}
@@ -331,9 +327,6 @@ func (r *Router) matchDNS(ctx context.Context, rules []adapter.DNSRule, allowFak
 				}
 				if action.RewriteTTL != nil {
 					options.RewriteTTL = action.RewriteTTL
-				}
-				if action.Timeout > 0 {
-					options.Timeout = action.Timeout
 				}
 				if action.ClientSubnet.IsValid() {
 					options.ClientSubnet = action.ClientSubnet
@@ -361,9 +354,6 @@ func (r *Router) applyDNSRouteOptions(options *adapter.DNSQueryOptions, routeOpt
 	}
 	if routeOptions.RewriteTTL != nil {
 		options.RewriteTTL = routeOptions.RewriteTTL
-	}
-	if routeOptions.Timeout > 0 {
-		options.Timeout = routeOptions.Timeout
 	}
 	if routeOptions.ClientSubnet.IsValid() {
 		options.ClientSubnet = routeOptions.ClientSubnet
@@ -705,22 +695,34 @@ func (r *Router) Exchange(ctx context.Context, message *mDNS.Msg, options adapte
 			}
 			response, err = r.client.Exchange(dnsCtx, transport, message, dnsOptions, responseCheck)
 			var rejected bool
+			var bypass bool
 			if err != nil {
 				if errors.Is(err, ErrResponseRejectedCached) {
 					rejected = true
-					r.logger.DebugContext(ctx, E.Cause(err, "response rejected for ", FormatQuestion(message.Question[0].String())), " (cached)")
+					r.logger.DebugContext(ctx, E.Cause(err, "response ", transport.Tag(), " rejected for ", FormatQuestion(message.Question[0].String())), " (cached)")
 				} else if errors.Is(err, ErrResponseRejected) {
 					rejected = true
-					r.logger.DebugContext(ctx, E.Cause(err, "response rejected for ", FormatQuestion(message.Question[0].String())))
+					r.logger.DebugContext(ctx, E.Cause(err, "response ", transport.Tag(), " rejected for ", FormatQuestion(message.Question[0].String())))
 				} else if len(message.Question) > 0 {
-					r.logger.ErrorContext(ctx, E.Cause(err, "exchange failed for ", FormatQuestion(message.Question[0].String())))
+					r.logger.ErrorContext(ctx, E.Cause(err, "exchange ", transport.Tag(), " failed for ", FormatQuestion(message.Question[0].String())))
 				} else {
-					r.logger.ErrorContext(ctx, E.Cause(err, "exchange failed for <empty query>"))
+					r.logger.ErrorContext(ctx, E.Cause(err, "exchange ", transport.Tag(), " failed for <empty query>"))
+				}
+				if rule != nil && rule.BypassIfFailed() && ruleIndex != -1 {
+					select {
+					case <-ctx.Done():
+					default:
+						bypass = true
+					}
 				}
 			}
 			if responseCheck != nil && rejected {
 				continue
 			}
+			if bypass {
+				continue
+			}
+
 			break
 		}
 	}
@@ -818,6 +820,8 @@ func (r *Router) Lookup(ctx context.Context, domain string, options adapter.DNSQ
 								responseAddrs = append(responseAddrs, M.AddrFromIP(record.AAAA))
 							}
 						}
+						responseAddrs = FilterBlocked(responseAddrs)
+
 					}
 					goto response
 				}
@@ -827,6 +831,9 @@ func (r *Router) Lookup(ctx context.Context, domain string, options adapter.DNSQ
 				dnsOptions.Strategy = r.defaultDomainStrategy
 			}
 			responseAddrs, err = r.client.Lookup(dnsCtx, transport, domain, dnsOptions, responseCheck)
+			if rule != nil && len(responseAddrs) == 0 && rule.BypassIfFailed() && ruleIndex != -1 {
+				continue
+			}
 			if responseCheck == nil || err == nil {
 				break
 			}
@@ -865,9 +872,6 @@ func (r *Router) ClearCache() {
 	r.client.ClearCache()
 	if r.platformInterface != nil {
 		r.platformInterface.ClearDNSCache()
-	}
-	if r.dnsReverseMapping != nil {
-		r.dnsReverseMapping.Purge()
 	}
 }
 
@@ -1009,6 +1013,33 @@ func lookupDNSRuleSetMetadata(router adapter.Router, tag string, metadataOverrid
 		return adapter.RuleSetMetadata{}, E.New("rule-set not found: ", tag)
 	}
 	return ruleSet.Metadata(), nil
+}
+
+func referencedDNSRuleSetTags(rules []option.DNSRule) []string {
+	tagMap := make(map[string]bool)
+	var walkRule func(rule option.DNSRule)
+	walkRule = func(rule option.DNSRule) {
+		switch rule.Type {
+		case "", C.RuleTypeDefault:
+			for _, tag := range rule.DefaultOptions.RuleSet {
+				tagMap[tag] = true
+			}
+		case C.RuleTypeLogical:
+			for _, subRule := range rule.LogicalOptions.Rules {
+				walkRule(subRule)
+			}
+		}
+	}
+	for _, rule := range rules {
+		walkRule(rule)
+	}
+	tags := make([]string, 0, len(tagMap))
+	for tag := range tagMap {
+		if tag != "" {
+			tags = append(tags, tag)
+		}
+	}
+	return tags
 }
 
 func validateLegacyDNSModeDisabledRules(router adapter.Router, rules []option.DNSRule, metadataOverrides map[string]adapter.RuleSetMetadata) error {

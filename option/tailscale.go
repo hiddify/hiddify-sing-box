@@ -43,10 +43,6 @@ type TailscaleCertificateProviderOptions struct {
 	Endpoint string `json:"endpoint,omitempty"`
 }
 
-type TailscaleCertificateProviderOptions struct {
-	Endpoint string `json:"endpoint,omitempty"`
-}
-
 type DERPServiceOptions struct {
 	ListenOptions
 	InboundTLSOptionsContainer

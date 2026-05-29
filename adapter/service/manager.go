@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/taskmonitor"
@@ -11,6 +12,7 @@ import (
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
+	F "github.com/sagernet/sing/common/format"
 )
 
 var _ adapter.ServiceManager = (*Manager)(nil)
@@ -44,12 +46,13 @@ func (m *Manager) Start(stage adapter.StartStage) error {
 	m.access.Unlock()
 	for _, service := range services {
 		name := "service/" + service.Type() + "[" + service.Tag() + "]"
-		done := adapter.LogElapsed(m.logger, stage, " ", name)
+		m.logger.Trace(stage, " ", name)
+		startTime := time.Now()
 		err := adapter.LegacyStart(service, stage)
-		done()
 		if err != nil {
 			return E.Cause(err, stage, " ", name)
 		}
+		m.logger.Trace(stage, " ", name, " completed (", F.Seconds(time.Since(startTime).Seconds()), "s)")
 	}
 	return nil
 }
@@ -67,13 +70,14 @@ func (m *Manager) Close() error {
 	var err error
 	for _, service := range services {
 		name := "service/" + service.Type() + "[" + service.Tag() + "]"
-		done := adapter.LogElapsed(m.logger, "close ", name)
+		m.logger.Trace("close ", name)
+		startTime := time.Now()
 		monitor.Start("close ", name)
 		err = E.Append(err, service.Close(), func(err error) error {
 			return E.Cause(err, "close ", name)
 		})
 		monitor.Finish()
-		done()
+		m.logger.Trace("close ", name, " completed (", F.Seconds(time.Since(startTime).Seconds()), "s)")
 	}
 	return nil
 }
@@ -124,12 +128,13 @@ func (m *Manager) Create(ctx context.Context, logger log.ContextLogger, tag stri
 	if m.started {
 		name := "service/" + service.Type() + "[" + service.Tag() + "]"
 		for _, stage := range adapter.ListStartStages {
-			done := adapter.LogElapsed(m.logger, stage, " ", name)
+			m.logger.Trace(stage, " ", name)
+			startTime := time.Now()
 			err = adapter.LegacyStart(service, stage)
-			done()
 			if err != nil {
 				return E.Cause(err, stage, " ", name)
 			}
+			m.logger.Trace(stage, " ", name, " completed (", F.Seconds(time.Since(startTime).Seconds()), "s)")
 		}
 	}
 	if existsService, loaded := m.serviceByTag[tag]; loaded {
