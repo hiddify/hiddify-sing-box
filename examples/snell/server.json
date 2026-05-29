@@ -12,27 +12,24 @@
   },
   "inbounds": [
     {
-      "type": "mixed",
-      "tag": "mixed-in",
-      "listen_port": 7897
+      "type": "snell",
+      "tag": "snell-in",
+      "listen": "0.0.0.0",
+      "listen_port": 4400,
+      "psk": "my-pre-shared-key",
+      "version": 4,
+      "obfs_mode": "http",
+      "obfs_host": "example.com"
     }
   ],
   "outbounds": [
     {
       "type": "direct",
-      "tag": "direct-out"
-    },
-    {
-      "type": "vless",
-      "tag": "vless-out",
-      "server": "0.0.0.0",
-      "server_port": 8000,
-      "uuid": "9b65b7e1-04c8-4717-8f45-2aa61fd25937",
-      "network": "tcp"
+      "tag": "direct"
     }
   ],
   "route": {
-    "final": "vless-out",
+    "final": "direct",
     "default_domain_resolver": "default",
     "auto_detect_interface": true
   }

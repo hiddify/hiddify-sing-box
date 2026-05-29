@@ -1,6 +1,6 @@
 {
   "log": {
-    "level": "error"
+    "level": "trace"
   },
   "dns": {
     "servers": [
@@ -12,7 +12,7 @@
   },
   "inbounds": [
     {
-      "type": "mixed",
+      "type": "socks",
       "tag": "mixed-in",
       "listen_port": 7897
     }
@@ -20,19 +20,21 @@
   "outbounds": [
     {
       "type": "direct",
-      "tag": "direct-out"
+      "tag": "direct"
     },
     {
-      "type": "vless",
-      "tag": "vless-out",
-      "server": "0.0.0.0",
-      "server_port": 8000,
-      "uuid": "9b65b7e1-04c8-4717-8f45-2aa61fd25937",
-      "network": "tcp"
+      "type": "shadowsocks",
+      "tag": "ss-out",
+      "server": "127.0.0.1",
+      "server_port": 8388,
+      "method": "chacha20-ietf-poly1305",
+      "password": "your-password",
+      // "plugin": "obfs-local",
+      // "plugin_opts": "obfs=http;obfs-host=example.com"
     }
   ],
   "route": {
-    "final": "vless-out",
+    "final": "ss-out",
     "default_domain_resolver": "default",
     "auto_detect_interface": true
   }

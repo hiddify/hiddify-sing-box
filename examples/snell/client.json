@@ -23,24 +23,18 @@
       "tag": "direct"
     },
     {
-      "type": "mieru",
-      "tag": "mieru-out",
+      "type": "snell",
+      "tag": "snell-out",
       "server": "example.com",
-      "server_port": 27017,
-      "portBindings": [
-        {
-          "protocol": "TCP",
-          "port": 27017
-        }
-      ],
-      "network": "tcp",
-      "username": "username",
-      "password": "password",
-      "multiplexing": "MULTIPLEXING_LOW"
+      "server_port": 4400,
+      "psk": "my-pre-shared-key",
+      "version": 4,
+      "obfs_mode": "http",
+      "obfs_host": "example.com"
     }
   ],
   "route": {
-    "final": "mieru-out",
+    "final": "snell-out",
     "default_domain_resolver": "default",
     "auto_detect_interface": true
   }

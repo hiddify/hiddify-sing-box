@@ -29,7 +29,6 @@
       "use_ipv6": false,
       "profile": {
         "detour": "direct",
-        // For getting existing MASQUE device profile, else sing-box will create new profile
         "id": "",
         "auth_token": ""
       },
@@ -37,17 +36,11 @@
       "udp_keepalive_period": "30s",
       "udp_initial_packet_size": 0,
       "reconnect_delay": "5s",
-      "tls": { // https://sing-box.sagernet.org/configuration/shared/tls/#fields
-        "insecure": false,
-        "cipher_suites": [],
-        "curve_preferences": [],
-        "fragment": false,
-        "fragment_fallback_delay": "",
-        "record_fragment": false,
-        "kernel_tx": false,
-        "kernel_rx": false,
-      }
-      // Dial Fields
+      "insecure": false,
+      "fragment": false,
+      "record_fragment": false,
+      "kernel_tx": false,
+      "kernel_rx": false
     }
   ],
   "route": {

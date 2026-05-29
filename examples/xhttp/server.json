@@ -22,12 +22,11 @@
           "uuid": "3179dce2-2ff9-413c-85b4-c1d53ed41668"
         }
       ],
-      "tls": { // https://sing-box.sagernet.org/configuration/shared/tls/#inbound
+      "tls": {
         "enabled": true,
         "server_name": "example.com",
-        "alpn": "h2", // h3 for QUIC
-        "certificate_path": "/path/to/fullchain.pem",
-        "key_path": "/path/to/privkey.pem"
+        "alpn": "h2",
+        "insecure": true
       },
       "transport": {
         "type": "xhttp",
