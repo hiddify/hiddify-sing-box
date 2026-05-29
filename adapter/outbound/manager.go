@@ -6,16 +6,13 @@ import (
 	"os"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/taskmonitor"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
-	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
-	F "github.com/sagernet/sing/common/format"
 	"github.com/sagernet/sing/common/logger"
 )
 
@@ -85,13 +82,12 @@ func (m *Manager) Start(stage adapter.StartStage) error {
 		m.access.Unlock()
 		for _, outbound := range outbounds {
 			name := "outbound/" + outbound.Type() + "[" + outbound.Tag() + "]"
-			m.logger.Trace(stage, " ", name)
-			startTime := time.Now()
+			done := adapter.LogElapsed(m.logger, stage, " ", name)
 			err := adapter.LegacyStart(outbound, stage)
+			done()
 			if err != nil {
 				return E.Cause(err, stage, " ", name)
 			}
-			m.logger.Trace(stage, " ", name, " completed (", F.Seconds(time.Since(startTime).Seconds()), "s)")
 		}
 	}
 	return nil
@@ -118,27 +114,25 @@ func (m *Manager) startOutbounds(outbounds []adapter.Outbound) error {
 			canContinue = true
 			name := "outbound/" + outboundToStart.Type() + "[" + outboundTag + "]"
 			if starter, isStarter := outboundToStart.(adapter.Lifecycle); isStarter {
-				m.logger.Trace("start ", name)
-				startTime := time.Now()
+				done := adapter.LogElapsed(m.logger, "start ", name)
 				monitor.Start("start ", name)
 				err := starter.Start(adapter.StartStateStart)
 				monitor.Finish()
+				done()
 				if err != nil {
 					return E.Cause(err, "start ", name)
 				}
-				m.logger.Trace("start ", name, " completed (", F.Seconds(time.Since(startTime).Seconds()), "s)")
 			} else if starter, isStarter := outboundToStart.(interface {
 				Start() error
 			}); isStarter {
-				m.logger.Trace("start ", name)
-				startTime := time.Now()
+				done := adapter.LogElapsed(m.logger, "start ", name)
 				monitor.Start("start ", name)
 				err := starter.Start()
 				monitor.Finish()
+				done()
 				if err != nil {
 					return E.Cause(err, "start ", name)
 				}
-				m.logger.Trace("start ", name, " completed (", F.Seconds(time.Since(startTime).Seconds()), "s)")
 			}
 		}
 		if len(started) == len(outbounds) {
@@ -186,14 +180,13 @@ func (m *Manager) Close() error {
 	for _, outbound := range outbounds {
 		if closer, isCloser := outbound.(io.Closer); isCloser {
 			name := "outbound/" + outbound.Type() + "[" + outbound.Tag() + "]"
-			m.logger.Trace("close ", name)
-			startTime := time.Now()
+			done := adapter.LogElapsed(m.logger, "close ", name)
 			monitor.Start("close ", name)
 			err = E.Append(err, closer.Close(), func(err error) error {
 				return E.Cause(err, "close ", name)
 			})
 			monitor.Finish()
-			m.logger.Trace("close ", name, " completed (", F.Seconds(time.Since(startTime).Seconds()), "s)")
+			done()
 		}
 	}
 	return nil
@@ -270,28 +263,18 @@ func (m *Manager) Create(ctx context.Context, router adapter.Router, logger log.
 		return os.ErrInvalid
 	}
 	outbound, err := m.registry.CreateOutbound(ctx, router, logger, tag, inboundType, options)
-	if err != nil { // hiddify fallback to invalid config
-		err2 := E.New("parse outbound[", tag, "] error: ", err)
-		m.logger.Error(err2)
-		outbound, err = m.registry.CreateOutbound(ctx, router, logger, tag, C.TypeHInvalidConfig, &option.HInvalidOptions{
-			InvalidConfig: options,
-			Err:           err2,
-		})
-		if err != nil {
-			return err
-		}
+	if err != nil {
+		return err
 	}
-
 	if m.started {
 		name := "outbound/" + outbound.Type() + "[" + outbound.Tag() + "]"
 		for _, stage := range adapter.ListStartStages {
-			m.logger.Trace(stage, " ", name)
-			startTime := time.Now()
+			done := adapter.LogElapsed(m.logger, stage, " ", name)
 			err = adapter.LegacyStart(outbound, stage)
+			done()
 			if err != nil {
 				return E.Cause(err, stage, " ", name)
 			}
-			m.logger.Trace(stage, " ", name, " completed (", F.Seconds(time.Since(startTime).Seconds()), "s)")
 		}
 	}
 	m.access.Lock()
