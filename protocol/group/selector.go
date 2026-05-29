@@ -8,7 +8,6 @@ import (
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/outbound"
 	"github.com/sagernet/sing-box/common/interrupt"
-	"github.com/sagernet/sing-box/common/monitoring"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
@@ -26,9 +25,9 @@ func RegisterSelector(registry *outbound.Registry) {
 }
 
 var (
-	_ adapter.OutboundGroup             = (*Selector)(nil)
-	_ adapter.ConnectionHandlerEx       = (*Selector)(nil)
-	_ adapter.PacketConnectionHandlerEx = (*Selector)(nil)
+	_ adapter.OutboundGroup           = (*Selector)(nil)
+	_ adapter.ConnectionHandler       = (*Selector)(nil)
+	_ adapter.PacketConnectionHandler = (*Selector)(nil)
 )
 
 type Selector struct {
@@ -80,6 +79,7 @@ func (s *Selector) Start() error {
 		}
 		s.outbounds[tag] = detour
 	}
+
 	if s.Tag() != "" {
 		cacheFile := service.FromContext[adapter.CacheFile](s.ctx)
 		if cacheFile != nil {
@@ -107,11 +107,6 @@ func (s *Selector) Start() error {
 	return nil
 }
 
-func (s *Selector) PostStart() error {
-	s.pingSelected()
-	return nil
-}
-
 func (s *Selector) Now() string {
 	selected := s.selected.Load()
 	if selected == nil {
@@ -125,12 +120,10 @@ func (s *Selector) All() []string {
 }
 
 func (s *Selector) SelectOutbound(tag string) bool {
-	defer s.pingSelected()
 	detour, loaded := s.outbounds[tag]
 	if !loaded {
 		return false
 	}
-
 	if s.selected.Swap(detour) == detour {
 		return true
 	}
@@ -143,28 +136,10 @@ func (s *Selector) SelectOutbound(tag string) bool {
 			}
 		}
 	}
-
 	s.interruptGroup.Interrupt(s.interruptExternalConnections)
 	return true
 }
-func (s *Selector) pingSelected() {
-	selected := s.selected.Load()
-	if selected == nil {
-		s.logger.Warn("no outbound selected")
-		return
-	}
-	realTag := RealTag(selected)
-	// s.logger.Debug("pinging selected outbound: ", selected.Tag(), " (real tag: ", realTag, ")")
-	if r, ok := s.outbound.Outbound(realTag); ok {
-		// s.logger.Debug("found real tag: ", selected.Tag(), " (real tag: ", r.Tag(), ")")
-		if _, ok := r.(adapter.OutboundGroup); !ok {
-			monitoring.Get(s.ctx).TestNow(realTag)
-		} else {
-			// s.logger.Debug(" real tag: is a group so skipping ping", selected.Tag(), " (real tag: ", r.Tag(), ")")
-			monitoring.Get(s.ctx).SignalChange(s.Tag())
-		}
-	}
-}
+
 func (s *Selector) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
 	conn, err := s.selected.Load().DialContext(ctx, network, destination)
 	if err != nil {
@@ -181,23 +156,21 @@ func (s *Selector) ListenPacket(ctx context.Context, destination M.Socksaddr) (n
 	return s.interruptGroup.NewPacketConn(conn, interrupt.IsExternalConnectionFromContext(ctx)), nil
 }
 
-func (s *Selector) NewConnectionEx(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
+func (s *Selector) NewConnection(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
 	ctx = interrupt.ContextWithIsExternalConnection(ctx)
 	selected := s.selected.Load()
-	conn = s.interruptGroup.NewConn(conn, interrupt.IsExternalConnectionFromContext(ctx))
-	if outboundHandler, isHandler := selected.(adapter.ConnectionHandlerEx); isHandler {
-		outboundHandler.NewConnectionEx(ctx, conn, metadata, onClose)
+	if outboundHandler, isHandler := selected.(adapter.ConnectionHandler); isHandler {
+		outboundHandler.NewConnection(ctx, conn, metadata, onClose)
 	} else {
 		s.connection.NewConnection(ctx, selected, conn, metadata, onClose)
 	}
 }
 
-func (s *Selector) NewPacketConnectionEx(ctx context.Context, conn N.PacketConn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
+func (s *Selector) NewPacketConnection(ctx context.Context, conn N.PacketConn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
 	ctx = interrupt.ContextWithIsExternalConnection(ctx)
 	selected := s.selected.Load()
-	conn = s.interruptGroup.NewSingPacketConn(conn, interrupt.IsExternalConnectionFromContext(ctx))
-	if outboundHandler, isHandler := selected.(adapter.PacketConnectionHandlerEx); isHandler {
-		outboundHandler.NewPacketConnectionEx(ctx, conn, metadata, onClose)
+	if outboundHandler, isHandler := selected.(adapter.PacketConnectionHandler); isHandler {
+		outboundHandler.NewPacketConnection(ctx, conn, metadata, onClose)
 	} else {
 		s.connection.NewPacketConnection(ctx, selected, conn, metadata, onClose)
 	}

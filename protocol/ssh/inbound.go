@@ -132,7 +132,7 @@ func (h *Inbound) Start(stage adapter.StartStage) error {
 }
 
 //nolint:staticcheck
-func (h *Inbound) NewConnectionEx(ctx context.Context, rawConn net.Conn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
+func (h *Inbound) NewConnection(ctx context.Context, rawConn net.Conn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
 	ctx = log.ContextWithNewID(ctx)
 	h.logger.Debug("getting connection", fmt.Sprint(metadata))
 	sshConn, chans, reqs, err := ssh.NewServerConn(rawConn, h.config)
