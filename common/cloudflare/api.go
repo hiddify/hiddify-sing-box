@@ -1,6 +1,7 @@
 package cloudflare
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -161,4 +162,63 @@ func (api *CloudflareApi) DeleteProfile(ctx context.Context, profile *Cloudflare
 		return fmt.Errorf("status code is not 200")
 	}
 	return nil
+}
+
+type DeviceUpdate struct {
+	Name    string `json:"name"`
+	Key     string `json:"key"`
+	KeyType string `json:"key_type"`
+	TunType string `json:"tunnel_type"`
+}
+
+func (api *CloudflareApi) GetProfile4471(ctx context.Context, authToken string, id string) (*CloudflareProfile, error) {
+	request, err := http.NewRequest("GET", ApiUrl+"/"+ApiVersion+"/reg/"+id, nil)
+	if err != nil {
+		return nil, err
+	}
+	for k, v := range Headers {
+		request.Header.Set(k, v)
+	}
+	request.Header.Set("Authorization", "Bearer "+authToken)
+	response, err := api.client.Do(request.WithContext(ctx))
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("status code is not 200")
+	}
+	profile := new(CloudflareProfile)
+	return profile, json.NewDecoder(response.Body).Decode(profile)
+}
+
+func (api *CloudflareApi) EnrollKey(ctx context.Context, authToken string, id string, keyType, tunType, publicKey string) (*CloudflareProfile, error) {
+	deviceUpdate := DeviceUpdate{
+		Name:    "PC",
+		Key:     publicKey,
+		KeyType: keyType,
+		TunType: tunType,
+	}
+	jsonData, err := json.Marshal(deviceUpdate)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal json: %v", err)
+	}
+	request, err := http.NewRequest("PATCH", ApiUrl+"/"+ApiVersion+"/reg/"+id, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, err
+	}
+	for k, v := range Headers {
+		request.Header.Set(k, v)
+	}
+	request.Header.Set("Authorization", "Bearer "+authToken)
+	response, err := api.client.Do(request.WithContext(ctx))
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to enroll key: %v", response.StatusCode)
+	}
+	profile := new(CloudflareProfile)
+	return profile, json.NewDecoder(response.Body).Decode(profile)
 }

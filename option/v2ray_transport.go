@@ -21,6 +21,7 @@ type _V2RayTransportOptions struct {
 	GRPCOptions        V2RayGRPCOptions        `json:"-"`
 	HTTPUpgradeOptions V2RayHTTPUpgradeOptions `json:"-"`
 	XHTTPOptions       V2RayXHTTPOptions       `json:"-"`
+	DNSTTOptions       DnsttOptions            `json:"-"`
 }
 
 type V2RayTransportOptions _V2RayTransportOptions
@@ -161,6 +162,10 @@ const (
 	PlacementBody          = "body"
 )
 
+func (c V2RayXHTTPOptions) MarshalJSON() ([]byte, error) {
+	return json.Marshal((*_V2RayXHTTPOptions)(&c))
+}
+
 func (c *V2RayXHTTPOptions) UnmarshalJSON(bytes []byte) error {
 	err := json.Unmarshal(bytes, (*_V2RayXHTTPOptions)(c))
 	if err != nil {
@@ -244,7 +249,8 @@ func checkV2RayXHTTPBaseOptions(mode string, options *V2RayXHTTPBaseOptions) err
 	switch options.SeqPlacement {
 	case "":
 		options.SeqPlacement = "path"
-	case "path", "cookie", "header", "query":
+	case "path":
+	case "cookie", "header", "query":
 		if options.SessionPlacement == "path" {
 			return E.New("SeqPlacement must be path when SessionPlacement is path")
 		}

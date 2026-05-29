@@ -57,7 +57,7 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 		var appConfig *Config
 		var err error
 		if !options.Profile.Recreate && cacheFile != nil && cacheFile.StoreMASQUEConfig() {
-			savedProfile := cacheFile.LoadMASQUEConfig(tag)
+			savedProfile := cacheFile.LoadBinary(tag)
 			if savedProfile != nil {
 				if err = json.Unmarshal(savedProfile.Content, &appConfig); err != nil {
 					logger.ErrorContext(ctx, err)
@@ -77,7 +77,7 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 					logger.ErrorContext(ctx, err)
 					return
 				}
-				cacheFile.SaveMASQUEConfig(tag, &adapter.SavedBinary{
+				cacheFile.SaveBinary(tag, &adapter.SavedBinary{
 					LastUpdated: time.Now(),
 					Content:     content,
 					LastEtag:    "",
@@ -262,7 +262,7 @@ func (w *Outbound) createConfig() (*Config, error) {
 	var profile *cloudflare.CloudflareProfile
 	var err error
 	if w.options.Profile.AuthToken != "" && w.options.Profile.ID != "" {
-		profile, err = api.GetProfile(w.ctx, w.options.Profile.AuthToken, w.options.Profile.ID)
+		profile, err = api.GetProfile4471(w.ctx, w.options.Profile.AuthToken, w.options.Profile.ID)
 		if err != nil {
 			return nil, err
 		}
