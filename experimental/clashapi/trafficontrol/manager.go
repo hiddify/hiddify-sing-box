@@ -92,16 +92,22 @@ func (m *Manager) Leave(c Tracker) {
 	}
 }
 
-func (m *Manager) PushUploaded(outbound string, size int64) {
+func (m *Manager) PushUploaded(size int64) {
 	m.uploadTotal.Add(size)
+}
+
+func (m *Manager) PushDownloaded(size int64) {
+	m.downloadTotal.Add(size)
+}
+
+func (m *Manager) PushOutboundUploaded(outbound string, size int64) {
 	v, _ := m.outboundUploadTotal.LoadOrStore(outbound, &atomic.Int64{})
 	v.(*atomic.Int64).Add(size)
 }
 
-func (m *Manager) PushDownloaded(outbound string, size int64) {
-	m.downloadTotal.Add(size)
+func (m *Manager) PushOutboundDownloaded(outbound string, size int64) {
 	v, _ := m.outboundDownloadTotal.LoadOrStore(outbound, &atomic.Int64{})
-	v.(*atomic.Int64).Add(100)
+	v.(*atomic.Int64).Add(size)
 }
 
 func (m *Manager) Total() (up int64, down int64) {
@@ -185,6 +191,12 @@ func (m *Manager) ResetStatistic() {
 		m.outboundDownloadTotal.Delete(key)
 		return true
 	})
+}
+
+func (m *Manager) Clear() {
+	m.closedConnectionsAccess.Lock()
+	defer m.closedConnectionsAccess.Unlock()
+	m.closedConnections.Init()
 }
 
 type Snapshot struct {

@@ -47,6 +47,7 @@ type CacheFile struct {
 	cacheID            []byte
 	storeFakeIP        bool
 	storeRDRC          bool
+	storeWARPConfig    bool
 	storeDNS           bool
 	disableExpire      bool
 	rdrcTimeout        time.Duration
@@ -104,9 +105,10 @@ func New(ctx context.Context, logger logger.Logger, options option.CacheFileOpti
 		logger:       logger,
 		path:         filemanager.BasePath(ctx, path),
 		cacheID:      cacheIDBytes,
-		storeFakeIP:  options.StoreFakeIP,
-		storeRDRC:    options.StoreRDRC,
-		storeDNS:     options.StoreDNS,
+		storeFakeIP:     options.StoreFakeIP,
+		storeRDRC:       options.StoreRDRC,
+		storeWARPConfig: options.StoreWARPConfig,
+		storeDNS:        options.StoreDNS,
 		rdrcTimeout:  rdrcTimeout,
 		saveDomain:   make(map[netip.Addr]string),
 		saveAddress4: make(map[string]netip.Addr),
@@ -414,4 +416,16 @@ func (c *CacheFile) SaveRuleSet(tag string, set *adapter.SavedBinary) error {
 		}
 		return bucket.Put([]byte(tag), setBinary)
 	})
+}
+
+func (c *CacheFile) StoreWARPConfig() bool {
+	return c.storeWARPConfig
+}
+
+func (c *CacheFile) LoadBinary(tag string) *adapter.SavedBinary {
+	return c.LoadRuleSet(tag)
+}
+
+func (c *CacheFile) SaveBinary(tag string, set *adapter.SavedBinary) error {
+	return c.SaveRuleSet(tag, set)
 }
