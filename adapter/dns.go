@@ -38,24 +38,26 @@ type DNSQueryOptions struct {
 	DisableCache           bool
 	DisableOptimisticCache bool
 	RewriteTTL             *uint32
+	Timeout                time.Duration
 	ClientSubnet           netip.Prefix
 }
 
-func DNSQueryOptionsFrom(ctx context.Context, options *option.DomainResolveOptions) (*DNSQueryOptions, error) {
-	if options == nil {
-		return &DNSQueryOptions{}, nil
+func DNSQueryOptionsFrom(ctx context.Context, options *option.DomainResolveOptions) (DNSQueryOptions, error) {
+	if options == nil || options.Server == "" {
+		return DNSQueryOptions{}, nil
 	}
 	transportManager := service.FromContext[DNSTransportManager](ctx)
 	transport, loaded := transportManager.Transport(options.Server)
 	if !loaded {
-		return nil, E.New("domain resolver not found: " + options.Server)
+		return DNSQueryOptions{}, E.New("domain resolver not found: " + options.Server)
 	}
-	return &DNSQueryOptions{
+	return DNSQueryOptions{
 		Transport:              transport,
 		Strategy:               C.DomainStrategy(options.Strategy),
 		DisableCache:           options.DisableCache,
 		DisableOptimisticCache: options.DisableOptimisticCache,
 		RewriteTTL:             options.RewriteTTL,
+		Timeout:                time.Duration(options.Timeout),
 		ClientSubnet:           options.ClientSubnet.Build(netip.Prefix{}),
 	}, nil
 }
@@ -78,8 +80,15 @@ type DNSTransport interface {
 	Type() string
 	Tag() string
 	Dependencies() []string
+	// Reset closes the transport's existing connections so later requests use fresh connections.
+	// Exchanges that are currently using those connections may fail.
 	Reset()
 	Exchange(ctx context.Context, message *dns.Msg) (*dns.Msg, error)
+}
+
+type DNSTransportWithPreferredDomain interface {
+	DNSTransport
+	PreferredDomain(domain string) bool
 }
 
 type DNSTransportRegistry interface {
