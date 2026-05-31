@@ -1,11 +1,10 @@
-package wireguard
+package warp
 
 import (
 	"context"
 	"encoding/json"
 	"math/rand"
 	"net"
-	"net/netip"
 	"strings"
 	"sync"
 	"time"
@@ -18,14 +17,13 @@ import (
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
-	"github.com/sagernet/sing/common/json/badoption"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/service"
 )
 
 func RegisterWARPEndpoint(registry *endpoint.Registry) {
-	endpoint.Register[option.WireGuardWARPEndpointOptions](registry, C.TypeWARP, NewWARPEndpoint)
+	endpoint.Register[option.WARPEndpointOptions](registry, C.TypeWARP, NewWARPEndpoint)
 }
 
 type WARPEndpoint struct {
@@ -36,7 +34,7 @@ type WARPEndpoint struct {
 	mtx sync.Mutex
 }
 
-func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.WireGuardWARPEndpointOptions) (adapter.Endpoint, error) {
+func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.WARPEndpointOptions) (adapter.Endpoint, error) {
 	var dependencies []string
 	if options.Detour != "" {
 		dependencies = append(dependencies, options.Detour)
@@ -100,41 +98,11 @@ func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.Cont
 		if options.ServerOptions.ServerPort != 0 {
 			perrPort = options.ServerOptions.ServerPort
 		}
-		warpEndpoint.endpoint, err = NewEndpoint(
-			ctx,
-			router,
-			logger,
-			tag,
-			option.WireGuardEndpointOptions{
-				System:                     options.System,
-				Name:                       options.Name,
-				ListenPort:                 options.ListenPort,
-				UDPTimeout:                 options.UDPTimeout,
-				Workers:                    options.Workers,
-				PreallocatedBuffersPerPool: options.PreallocatedBuffersPerPool,
-				DisablePauses:              options.DisablePauses,
-				Noise:                      options.Noise,
-				DialerOptions:              options.DialerOptions,
-
-				Address: badoption.Listable[netip.Prefix]{
-					netip.MustParsePrefix(config.Interface.Addresses.V4 + "/32"),
-					netip.MustParsePrefix(config.Interface.Addresses.V6 + "/128"),
-				},
-				PrivateKey: config.PrivateKey,
-				Peers: []option.WireGuardPeer{
-					{
-						Address:   peerAddr,
-						Port:      perrPort,
-						PublicKey: peer.PublicKey,
-						AllowedIPs: badoption.Listable[netip.Prefix]{
-							netip.MustParsePrefix("0.0.0.0/0"),
-							netip.MustParsePrefix("::/0"),
-						},
-					},
-				},
-				MTU: options.MTU,
-			},
-		)
+		if options.AWG != nil && options.AWG.IsAvailble() {
+			warpEndpoint.endpoint, err = createWARPAwgEndpoint(ctx, router, logger, tag, options, config, peerAddr, perrPort, peer.PublicKey)
+		} else {
+			warpEndpoint.endpoint, err = createWARPWireGuardEndpoint(ctx, router, logger, tag, options, config, peerAddr, perrPort, peer.PublicKey)
+		}
 		if err != nil {
 			logger.ErrorContext(ctx, err)
 			return

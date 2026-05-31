@@ -131,6 +131,7 @@ func EndpointRegistry() *endpoint.Registry {
 	tunnel.RegisterClientEndpoint(registry)
 
 	registerWireGuardEndpoint(registry)
+	registerWarpEndpoint(registry)
 	registerTailscaleEndpoint(registry)
 	registerAwgEndpoint(registry)
 

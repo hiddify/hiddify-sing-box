@@ -63,7 +63,7 @@ func NewDevice(ctx context.Context, logger logger.ContextLogger, dial network.Di
 
 	return &Device{
 		tun:       tun,
-		bind:      newBind(dial),
+		bind:      newBind(ctx, dial),
 		logger:    awgLogger,
 		ipcConfig: ipcConfig,
 	}, nil
@@ -86,8 +86,17 @@ func (d *Device) Start(stage adapter.StartStage) error {
 	return d.awgDevice.Up()
 }
 
+func (d *Device) IsUnderLoad() bool {
+	if d.awgDevice == nil {
+		return false
+	}
+	return d.awgDevice.IsUnderLoad()
+}
+
 func (d *Device) Close() error {
-	d.awgDevice.Close()
+	if d.awgDevice != nil {
+		d.awgDevice.Close()
+	}
 	return nil
 }
 

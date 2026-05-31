@@ -4,11 +4,9 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-TAGS="${TAGS:-with_gvisor,with_wireguard,with_awg,with_masque}"
-BIN="$ROOT/.cache/sing-box-examples-check"
+BIN="$ROOT/sing-box"
 
-mkdir -p "$ROOT/.cache"
-go build -tags "$TAGS" -o "$BIN" ./cmd/sing-box
+make
 
 passed=0
 failed=0

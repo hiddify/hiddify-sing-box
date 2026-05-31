@@ -13,14 +13,17 @@ import (
 	"github.com/sagernet/sing-box/common/dialer"
 	"github.com/sagernet/sing-box/common/monitoring"
 	"github.com/sagernet/sing-box/constant"
+	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-box/transport/awg"
+	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/bufio"
+	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/format"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
-
+	"github.com/sagernet/sing/service"
 	"go4.org/netipx"
 )
 
@@ -45,11 +48,16 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 	}
 
 	options.UDPFragmentDefault = true
+	// Check if any peer has a domain address
+	remoteIsDomain := common.Any(options.Peers, func(peer option.AwgPeerOptions) bool {
+		return !M.ParseAddr(peer.Address).IsValid()
+	})
 	dial, err := dialer.NewWithOptions(dialer.Options{
-		Context:        ctx,
-		Options:        options.DialerOptions,
-		RemoteIsDomain: false,
-		DirectOutbound: true,
+		Context:          ctx,
+		Options:          options.DialerOptions,
+		RemoteIsDomain:   remoteIsDomain,
+		ResolverOnDetour: true,
+		DirectOutbound:   true,
 	})
 	if err != nil {
 		return nil, err
@@ -75,10 +83,27 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 		return nil, err
 	}
 
-	ipc, err := genIpcConfig(options)
+	// Create peer resolver function for domain endpoints
+	// Always use system resolver for peer endpoints because:
+	// 1. VPN server must be resolved before VPN tunnel is established
+	// 2. dnsRouter may not be fully initialized at this stage
+	var resolvePeer func(domain string) (netip.Addr, error)
+	if remoteIsDomain {
+		resolvePeer = func(domain string) (netip.Addr, error) {
+			addrs, lookupErr := net.DefaultResolver.LookupNetIP(ctx, "ip", domain)
+			if lookupErr != nil {
+				return netip.Addr{}, lookupErr
+			}
+			return addrs[0], nil
+		}
+	}
+
+	ipc, err := genIpcConfig(options, resolvePeer)
 	if err != nil {
 		return nil, err
 	}
+
+	logger.Debug("AWG IPC config:\n", ipc)
 
 	dev, err := awg.NewDevice(ctx, logger, dial, ipc, awg.DeviceOpts{
 		UseIntegratedTun: options.UseIntegratedTun,
@@ -92,16 +117,17 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 	}
 
 	return &Endpoint{
-		Device:  dev,
-		Adapter: endpoint.NewAdapterWithDialerOptions("awg", tag, []string{N.NetworkTCP, N.NetworkUDP}, options.DialerOptions),
-		address: options.Address,
-		router:  router,
-		logger:  logger,
-		ctx:     ctx,
+		Device:    dev,
+		Adapter:   endpoint.NewAdapterWithDialerOptions("awg", tag, []string{N.NetworkTCP, N.NetworkUDP}, options.DialerOptions),
+		address:   options.Address,
+		router:    router,
+		logger:    logger,
+		dnsRouter: service.FromContext[adapter.DNSRouter](ctx),
+		ctx:       ctx,
 	}, nil
 }
 
-func genIpcConfig(opts option.AwgEndpointOptions) (string, error) {
+func genIpcConfig(opts option.AwgEndpointOptions, resolvePeer func(domain string) (netip.Addr, error)) (string, error) {
 	privateKeyBytes, err := base64.StdEncoding.DecodeString(opts.PrivateKey)
 	if err != nil {
 		return "", err
@@ -110,53 +136,54 @@ func genIpcConfig(opts option.AwgEndpointOptions) (string, error) {
 	if opts.ListenPort != 0 {
 		s += "\nlisten_port=" + format.ToString(opts.ListenPort)
 	}
-	if opts.Jc != 0 {
-		s += "\njc=" + format.ToString(opts.Jc)
+	awg := opts.Awg
+	if awg.Jc != 0 {
+		s += "\njc=" + format.ToString(awg.Jc)
 	}
-	if opts.Jmin != 0 {
-		s += "\njmin=" + format.ToString(opts.Jmin)
+	if awg.Jmin != 0 {
+		s += "\njmin=" + format.ToString(awg.Jmin)
 	}
-	if opts.Jmax != 0 {
-		s += "\njmax=" + format.ToString(opts.Jmax)
+	if awg.Jmax != 0 {
+		s += "\njmax=" + format.ToString(awg.Jmax)
 	}
-	if opts.S1 != 0 {
-		s += "\ns1=" + format.ToString(opts.S1)
+	if awg.S1 != 0 {
+		s += "\ns1=" + format.ToString(awg.S1)
 	}
-	if opts.S2 != 0 {
-		s += "\ns2=" + format.ToString(opts.S2)
+	if awg.S2 != 0 {
+		s += "\ns2=" + format.ToString(awg.S2)
 	}
-	if opts.S3 != 0 {
-		s += "\ns3=" + format.ToString(opts.S3)
+	if awg.S3 != 0 {
+		s += "\ns3=" + format.ToString(awg.S3)
 	}
-	if opts.S4 != 0 {
-		s += "\ns4=" + format.ToString(opts.S4)
+	if awg.S4 != 0 {
+		s += "\ns4=" + format.ToString(awg.S4)
 	}
-	if opts.H1 != "" {
-		s += "\nh1=" + opts.H1
+	if awg.H1 != "" {
+		s += "\nh1=" + awg.H1
 	}
-	if opts.H2 != "" {
-		s += "\nh2=" + opts.H2
+	if awg.H2 != "" {
+		s += "\nh2=" + awg.H2
 	}
-	if opts.H3 != "" {
-		s += "\nh3=" + opts.H3
+	if awg.H3 != "" {
+		s += "\nh3=" + awg.H3
 	}
-	if opts.H4 != "" {
-		s += "\nh4=" + opts.H4
+	if awg.H4 != "" {
+		s += "\nh4=" + awg.H4
 	}
-	if opts.I1 != "" {
-		s += "\ni1=" + opts.I1
+	if awg.I1 != "" {
+		s += "\ni1=" + awg.I1
 	}
-	if opts.I2 != "" {
-		s += "\ni2=" + opts.I2
+	if awg.I2 != "" {
+		s += "\ni2=" + awg.I2
 	}
-	if opts.I3 != "" {
-		s += "\ni3=" + opts.I3
+	if awg.I3 != "" {
+		s += "\ni3=" + awg.I3
 	}
-	if opts.I4 != "" {
-		s += "\ni4=" + opts.I4
+	if awg.I4 != "" {
+		s += "\ni4=" + awg.I4
 	}
-	if opts.I5 != "" {
-		s += "\ni5=" + opts.I5
+	if awg.I5 != "" {
+		s += "\ni5=" + awg.I5
 	}
 
 	for _, peer := range opts.Peers {
@@ -173,7 +200,20 @@ func genIpcConfig(opts option.AwgEndpointOptions) (string, error) {
 			s += "\npreshared_key=" + hex.EncodeToString(presharedKeyBytes)
 		}
 		if peer.Address != "" && peer.Port != 0 {
-			s += "\nendpoint=" + peer.Address + ":" + format.ToString(peer.Port)
+			// Resolve domain to IP if necessary
+			endpointAddr := peer.Address
+			if addr := M.ParseAddr(peer.Address); !addr.IsValid() {
+				// It's a domain, resolve it
+				if resolvePeer == nil {
+					return "", E.New("peer address is a domain but no resolver provided: ", peer.Address)
+				}
+				resolvedAddr, resolveErr := resolvePeer(peer.Address)
+				if resolveErr != nil {
+					return "", E.Cause(resolveErr, "resolve peer endpoint ", peer.Address)
+				}
+				endpointAddr = resolvedAddr.String()
+			}
+			s += "\nendpoint=" + endpointAddr + ":" + format.ToString(peer.Port)
 		}
 		if peer.PersistentKeepaliveInterval != 0 {
 			s += "\npersistent_keepalive_interval=" + format.ToString(peer.PersistentKeepaliveInterval)
@@ -207,6 +247,41 @@ func (e *Endpoint) NewPacketConnectionEx(ctx context.Context, conn N.PacketConn,
 	e.router.RoutePacketConnectionEx(ctx, conn, metadata, onClose)
 }
 
+func (e *Endpoint) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
+	switch network {
+	case N.NetworkTCP:
+		e.logger.InfoContext(ctx, "outbound connection to ", destination)
+	case N.NetworkUDP:
+		e.logger.InfoContext(ctx, "outbound packet connection to ", destination)
+	}
+	if destination.IsFqdn() {
+		destinationAddresses, err := e.dnsRouter.Lookup(ctx, destination.Fqdn, adapter.DNSQueryOptions{})
+		if err != nil {
+			return nil, err
+		}
+		return N.DialSerial(ctx, e.Device, network, destination, destinationAddresses)
+	} else if !destination.Addr.IsValid() {
+		return nil, E.New("invalid destination: ", destination)
+	}
+	return e.Device.DialContext(ctx, network, destination)
+}
+
+func (e *Endpoint) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
+	e.logger.InfoContext(ctx, "outbound packet connection to ", destination)
+	if destination.IsFqdn() {
+		destinationAddresses, err := e.dnsRouter.Lookup(ctx, destination.Fqdn, adapter.DNSQueryOptions{})
+		if err != nil {
+			return nil, err
+		}
+		packetConn, _, err := N.ListenSerial(ctx, e.Device, destination, destinationAddresses)
+		if err != nil {
+			return nil, err
+		}
+		return packetConn, nil
+	}
+	return e.Device.ListenPacket(ctx, destination)
+}
+
 func (w *Endpoint) NewConnectionEx(ctx context.Context, conn net.Conn, source M.Socksaddr, destination M.Socksaddr, onClose N.CloseHandlerFunc) {
 	var metadata adapter.InboundContext
 	metadata.Inbound = w.Tag()
@@ -230,23 +305,19 @@ func (w *Endpoint) NewConnectionEx(ctx context.Context, conn net.Conn, source M.
 }
 
 func (o *Endpoint) Start(stage adapter.StartStage) error {
-	if stage != adapter.StartStateStart {
-		// return o.endpoint.Start(false)
-	}
-	if stage == adapter.StartStatePostStart {
+	switch stage {
+	case adapter.StartStateStart:
+		return o.Device.Start(stage)
+	case adapter.StartStatePostStart:
 		go o.readyChecker()
 	}
 	return nil
 }
 
 func (w *Endpoint) readyChecker() {
-	defer func() {
-		w.started = true
-		monitoring.Get(w.ctx).TestNow(w.Tag())
-	}()
 	for i := 0; i < 10; i++ {
-		if w.IsReady() {
-			return
+		if w.deviceReady() {
+			break
 		}
 		select {
 		case <-w.ctx.Done():
@@ -254,7 +325,24 @@ func (w *Endpoint) readyChecker() {
 		case <-time.After(time.Second):
 		}
 	}
+	w.started = true
+	if m := monitoring.Get(w.ctx); m != nil {
+		m.TestNow(w.Tag())
+	}
 }
+
+func (w *Endpoint) deviceReady() bool {
+	return w.Device != nil && w.Device.IsUnderLoad()
+}
+
 func (w *Endpoint) IsReady() bool {
-	return w.started
+	return w.started || w.deviceReady()
+}
+
+func (w *Endpoint) DisplayType() string {
+	str := C.ProxyDisplayName(w.Type())
+	if !w.IsReady() {
+		str += " ⚠️ Connecting..."
+	}
+	return str
 }

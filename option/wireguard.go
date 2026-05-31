@@ -23,6 +23,7 @@ type WireGuardEndpointOptions struct {
 	DialerOptions
 
 	Noise hiddify.NoiseOptions `json:"noise,omitempty"`
+	AWG   *AwgOptions          `json:"awg,omitempty"`
 }
 
 type WireGuardPeer struct {
@@ -35,7 +36,7 @@ type WireGuardPeer struct {
 	Reserved                    []uint8                          `json:"reserved,omitempty"`
 }
 
-type WireGuardWARPEndpointOptions struct {
+type WARPEndpointOptions struct {
 	System                     bool               `json:"system,omitempty"`
 	Name                       string             `json:"name,omitempty"`
 	ListenPort                 uint16             `json:"listen_port,omitempty"`
@@ -49,6 +50,7 @@ type WireGuardWARPEndpointOptions struct {
 	UniqueIdentifier string               `json:"unique_identifier,omitempty"` //h
 	ServerOptions                         //H
 	Noise            hiddify.NoiseOptions `json:"noise,omitempty"` //H
+	AWG              *AwgOptions          `json:"awg,omitempty"`
 	*C.WARPConfig                         //H
 	MTU              uint32               `json:"mtu,omitempty"`
 }

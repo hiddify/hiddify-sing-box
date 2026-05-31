@@ -9,5 +9,4 @@ import (
 
 func registerWireGuardEndpoint(registry *endpoint.Registry) {
 	wireguard.RegisterEndpoint(registry)
-	wireguard.RegisterWARPEndpoint(registry)
 }

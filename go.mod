@@ -2,7 +2,7 @@ module github.com/sagernet/sing-box
 
 go 1.25.6
 
-require github.com/amnezia-vpn/amneziawg-go v0.2.16
+require github.com/amnezia-vpn/amneziawg-go v0.2.17-0.20251219021448-449d7cffd4ad
 
 require (
 	github.com/Diniboy1123/connect-ip-go v0.0.0-20260409225322-8d7bb0a858a2
@@ -103,7 +103,7 @@ require (
 	filippo.io/edwards25519 v1.1.0 // indirect
 	filippo.io/keygen v0.0.0-20230306160926-5201437acf8e // indirect
 	github.com/AndreasBriese/bbloom v0.0.0-20190825152654-46b345b51c96 // indirect
-	github.com/Jigsaw-Code/outline-sdk v0.0.16 // indirect
+	github.com/Jigsaw-Code/outline-sdk v0.0.20 // indirect
 	github.com/Psiphon-Labs/bolt v0.0.0-20200624191537-23cedaef7ad7 // indirect
 	github.com/Psiphon-Labs/consistent v0.0.0-20240322131436-20aaa4e05737 // indirect
 	github.com/Psiphon-Labs/goptlib v0.0.0-20200406165125-c0e32a7a3464 // indirect
