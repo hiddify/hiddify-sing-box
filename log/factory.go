@@ -23,6 +23,7 @@ type Factory interface {
 type ObservableFactory interface {
 	Factory
 	observable.Observable[Entry]
+	AttachPlatformWriter(writer PlatformWriter)
 }
 
 type Entry struct {

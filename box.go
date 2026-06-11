@@ -179,7 +179,7 @@ func New(options Options) (*Box, error) {
 	logFactory, err := log.New(log.Options{
 		Context:        ctx,
 		Options:        common.PtrValueOrDefault(options.Log),
-		Observable:     needClashAPI && experimentalOptions.ClashAPI.ExternalController != "",
+		Observable:     needClashAPI || needAPIService,
 		DefaultWriter:  defaultLogWriter,
 		BaseTime:       createdAt,
 		PlatformWriter: options.PlatformLogWriter,

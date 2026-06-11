@@ -15,8 +15,8 @@ import (
 
 func NewServer(startedService *StartedService, secret string) *grpc.Server {
 	server := grpc.NewServer(
-		grpc.ChainUnaryInterceptor(newUnaryAuthInterceptor(secret), UnaryLocaleInterceptor),
-		grpc.ChainStreamInterceptor(newStreamAuthInterceptor(secret), StreamLocaleInterceptor),
+		grpc.ChainUnaryInterceptor(newUnaryAuthInterceptor(secret), UnaryLocaleInterceptor, UnaryErrorInterceptor),
+		grpc.ChainStreamInterceptor(newStreamAuthInterceptor(secret), StreamLocaleInterceptor, StreamErrorInterceptor),
 	)
 	healthServer := health.NewServer()
 	RegisterStartedServiceServer(server, startedService)
