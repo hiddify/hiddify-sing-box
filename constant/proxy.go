@@ -50,6 +50,8 @@ const (
 	TypeBalancer       = "balancer" //H
 	TypeDNSTT          = "dnstt"    //H
   TypeGooseRelay     = "gooserelay" //H
+	TypeFirebaseTunnelClient = "firebasetunnel_client" //H
+	TypeFirebaseTunnelServer = "firebasetunnel_server" //H
 	TypeSmartDNSPool   = "smart_dns_pool" //H — local recursive-resolver pool with AIMD throttling + recovery probing (github.com/hiddify/hmrd_multi_resolver_dns)
 )
 
@@ -142,6 +144,10 @@ func ProxyDisplayName(proxyType string) string {
 		return "DNSTT"
 	case TypeGooseRelay:
 		return "GooseRelay"
+	case TypeFirebaseTunnelClient:
+		return "Firebase Tunnel Client"
+	case TypeFirebaseTunnelServer:
+		return "Firebase Tunnel Server"
 	default:
 		return "Unknown"
 	}
