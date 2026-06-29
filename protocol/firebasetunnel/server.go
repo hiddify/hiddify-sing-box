@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -21,11 +22,15 @@ import (
 )
 
 const (
-	defaultPollInterval               = 200 * time.Millisecond
-	defaultSessionTimeout             = 300 * time.Second
-	defaultMaxSessions                = 1000
-	defaultMaxSessionsPerUser         = 50
+	defaultPollInterval                = 200 * time.Millisecond
+	defaultSessionTimeout              = 300 * time.Second
+	defaultMaxSessions                 = 1000
+	defaultMaxSessionsPerUser          = 50
 	defaultMaxSessionsPerSecondPerUser = 5
+
+	// drainTimeout is how long Close() waits for active sessions to finish
+	// before hard-cancelling the server context.
+	drainTimeout = 5 * time.Second
 )
 
 func RegisterServerEndpoint(registry *endpoint.Registry) {
@@ -44,6 +49,7 @@ type ServerEndpoint struct {
 	router         adapter.Router
 	fb             *firebaseClient
 	users          map[string]firebaseTunnelUserConfig
+	hmacKey        []byte
 	pollInterval   time.Duration
 	sessionTimeout time.Duration
 	tracker        adapter.SSMTracker
@@ -57,7 +63,8 @@ type ServerEndpoint struct {
 	perUserActive  map[string]int
 	perUserBucket  map[string]*tokenBucket
 
-	stop context.CancelFunc
+	closing atomic.Bool
+	stop    context.CancelFunc
 }
 
 func NewServerEndpoint(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.FirebaseTunnelServerOptions) (adapter.Endpoint, error) {
@@ -91,6 +98,13 @@ func NewServerEndpoint(ctx context.Context, router adapter.Router, logger log.Co
 		users[u.Name] = cfg
 	}
 
+	// Derive HMAC key from firebase_secret for integrity on unencrypted path.
+	// Only used for users that have no per-user PSK.
+	var hmacKey []byte
+	if options.FirebaseSecret != "" {
+		hmacKey = deriveHMACKey(options.FirebaseSecret)
+	}
+
 	pollInterval := time.Duration(options.PollInterval)
 	if pollInterval <= 0 {
 		pollInterval = defaultPollInterval
@@ -119,6 +133,7 @@ func NewServerEndpoint(ctx context.Context, router adapter.Router, logger log.Co
 		router:             router,
 		fb:                 fb,
 		users:              users,
+		hmacKey:            hmacKey,
 		pollInterval:       pollInterval,
 		sessionTimeout:     sessionTimeout,
 		maxSessions:        maxSessions,
@@ -151,7 +166,20 @@ func (s *ServerEndpoint) Start(stage adapter.StartStage) error {
 	return nil
 }
 
+// Close signals no-new-sessions, waits up to drainTimeout for active sessions
+// to finish, then cancels the server context.
 func (s *ServerEndpoint) Close() error {
+	s.closing.Store(true)
+	deadline := time.Now().Add(drainTimeout)
+	for time.Now().Before(deadline) {
+		s.mu.Lock()
+		active := s.activeSessions
+		s.mu.Unlock()
+		if active == 0 {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 	if s.stop != nil {
 		s.stop()
 	}
@@ -253,6 +281,17 @@ func (s *ServerEndpoint) handleSession(ctx context.Context, meta sessionMetadata
 	}
 	defer s.releaseSessionSlot(meta.User)
 
+	// Collision defense: verify the metadata we see now matches what the poll
+	// originally observed (same CreatedAt). Protects against GC-lag collisions
+	// on session-ID reuse or a stale seen-map entry pointing at a recycled node.
+	var current sessionMetadata
+	found, _ := s.fb.Get(ctx, pathMetadata(sessionID), &current)
+	if !found || current.CreatedAt != meta.CreatedAt {
+		s.logger.WarnContext(ctx, "firebasetunnel: session collision detected for ", sessionID, ", rejecting")
+		_ = s.fb.Put(ctx, pathMetadata(sessionID), &sessionMetadata{SessionID: sessionID, State: sessionStateClosed})
+		return
+	}
+
 	destination := M.ParseSocksaddrHostPort(meta.TargetHost, meta.TargetPort)
 
 	metadata := adapter.InboundContext{
@@ -280,10 +319,18 @@ func (s *ServerEndpoint) handleSession(ctx context.Context, meta sessionMetadata
 		return
 	}
 
+	// Determine which key to use: per-user PSK takes precedence, else fall
+	// back to HMAC-only (hmacKey) for integrity on the unencrypted path.
+	sessionKey := userCfg.key
+	sessionHMACKey := s.hmacKey
+	if sessionKey != nil {
+		sessionHMACKey = nil // encrypted path handles integrity via AEAD
+	}
+
 	relayDone := make(chan struct{})
 	go func() {
 		defer close(relayDone)
-		s.runRelay(ctx, sessionID, remote, userCfg.key)
+		s.runRelay(ctx, sessionID, remote, sessionKey, sessionHMACKey)
 	}()
 
 	onClose := func(error) {}
@@ -301,7 +348,7 @@ func (s *ServerEndpoint) handleSession(ctx context.Context, meta sessionMetadata
 
 // runRelay pumps bytes between conn (the local-process side of the
 // net.Pipe routed through sing-box) and the Firebase c2s/s2c queues.
-func (s *ServerEndpoint) runRelay(ctx context.Context, sessionID string, conn net.Conn, key *[32]byte) {
+func (s *ServerEndpoint) runRelay(ctx context.Context, sessionID string, conn net.Conn, key *[32]byte, hmacKey []byte) {
 	defer conn.Close()
 	c2sPath := pathC2S(sessionID)
 	s2cPath := pathS2C(sessionID)
@@ -313,13 +360,13 @@ func (s *ServerEndpoint) runRelay(ctx context.Context, sessionID string, conn ne
 	c2sDone := make(chan struct{})
 	go func() {
 		defer close(c2sDone)
-		s.runC2S(relayCtx, sessionID, conn, c2sPath, ackC2SPath, key)
+		s.runC2S(relayCtx, sessionID, conn, c2sPath, ackC2SPath, key, hmacKey)
 	}()
 
 	s2cDone := make(chan struct{})
 	go func() {
 		defer close(s2cDone)
-		sender := newChunkSender(relayCtx, s2cPath, s.fb, 50*time.Millisecond, defaultReadBufSize, key, s.logger)
+		sender := newChunkSender(relayCtx, s2cPath, sessionID, "s2c", s.fb, 50*time.Millisecond, defaultReadBufSize, key, hmacKey, s.logger)
 		buf := make([]byte, defaultReadBufSize)
 		for {
 			n, err := conn.Read(buf)
@@ -342,8 +389,8 @@ func (s *ServerEndpoint) runRelay(ctx context.Context, sessionID string, conn ne
 	cancel()
 }
 
-func (s *ServerEndpoint) runC2S(ctx context.Context, sessionID string, conn net.Conn, c2sPath, ackC2SPath string, key *[32]byte) {
-	receiver, byteRx := newChunkReceiver(key)
+func (s *ServerEndpoint) runC2S(ctx context.Context, sessionID string, conn net.Conn, c2sPath, ackC2SPath string, key *[32]byte, hmacKey []byte) {
+	receiver, byteRx := newChunkReceiver(key, hmacKey, sessionID, "c2s")
 	var deliveredUpTo *uint64
 	lastActivity := time.Now()
 
@@ -441,8 +488,11 @@ func (s *ServerEndpoint) gcLoop(ctx context.Context) {
 
 // acquireSessionSlot enforces global/per-user session caps and per-user
 // session-creation rate limiting. Returns false if the session should be
-// rejected.
+// rejected (including during server shutdown drain).
 func (s *ServerEndpoint) acquireSessionSlot(user string) bool {
+	if s.closing.Load() {
+		return false
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

@@ -18,6 +18,10 @@ const compressMinBytes = 64
 // before backpressure kicks in.
 const maxPendingBytes = 8 * 1024 * 1024
 
+// maxChunkBytes is the maximum decoded payload size for a single chunk.
+// Rejects oversized chunks from malicious/buggy clients before allocating.
+const maxChunkBytes = 1 * 1024 * 1024 // 1 MiB
+
 // chunkSender accumulates outgoing bytes, batches/compresses/optionally
 // encrypts them, and writes them to Firebase as sequential chunk nodes.
 type chunkSender struct {
@@ -46,10 +50,14 @@ func (c *chanCounter) sub(n int) {
 	c.bytes -= n
 }
 
-func newChunkSender(ctx context.Context, queuePath string, fb *firebaseClient, batchInterval time.Duration, batchMaxBytes int, key *[32]byte, logger log.ContextLogger) *chunkSender {
+// newChunkSender creates a sender that flushes to queuePath on fb.
+// sessionID and direction ("c2s"/"s2c") are bound into AEAD additional data
+// when encrypting, so chunks cannot be replayed across sessions or directions.
+// hmacKey (non-nil) enables HMAC integrity tags on unencrypted chunks.
+func newChunkSender(ctx context.Context, queuePath, sessionID, direction string, fb *firebaseClient, batchInterval time.Duration, batchMaxBytes int, key *[32]byte, hmacKey []byte, logger log.ContextLogger) *chunkSender {
 	rawCh := make(chan []byte, 1024)
 	s := &chunkSender{rawCh: rawCh}
-	go s.flusherTask(ctx, queuePath, fb, batchInterval, batchMaxBytes, key, logger)
+	go s.flusherTask(ctx, queuePath, sessionID, direction, fb, batchInterval, batchMaxBytes, key, hmacKey, logger)
 	return s
 }
 
@@ -71,7 +79,7 @@ func (s *chunkSender) feed(ctx context.Context, data []byte) error {
 	}
 }
 
-func (s *chunkSender) flusherTask(ctx context.Context, queuePath string, fb *firebaseClient, batchInterval time.Duration, batchMaxBytes int, key *[32]byte, logger log.ContextLogger) {
+func (s *chunkSender) flusherTask(ctx context.Context, queuePath, sessionID, direction string, fb *firebaseClient, batchInterval time.Duration, batchMaxBytes int, key *[32]byte, hmacKey []byte, logger log.ContextLogger) {
 	buffer := make([]byte, 0, batchMaxBytes)
 	var seq uint64
 	ticker := time.NewTicker(batchInterval)
@@ -82,7 +90,7 @@ func (s *chunkSender) flusherTask(ctx context.Context, queuePath string, fb *fir
 			return
 		}
 		n := len(buffer)
-		if err := flushBuffer(flushCtx, queuePath, fb, &buffer, &seq, key); err != nil && logger != nil {
+		if err := flushBuffer(flushCtx, queuePath, sessionID, direction, fb, &buffer, &seq, key, hmacKey); err != nil && logger != nil {
 			logger.WarnContext(flushCtx, "firebasetunnel: flush error: ", err)
 		}
 		s.pending.sub(n)
@@ -110,7 +118,7 @@ func (s *chunkSender) flusherTask(ctx context.Context, queuePath string, fb *fir
 	}
 }
 
-func flushBuffer(ctx context.Context, queuePath string, fb *firebaseClient, buffer *[]byte, seq *uint64, key *[32]byte) error {
+func flushBuffer(ctx context.Context, queuePath, sessionID, direction string, fb *firebaseClient, buffer *[]byte, seq *uint64, key *[32]byte, hmacKey []byte) error {
 	raw := make([]byte, len(*buffer))
 	copy(raw, *buffer)
 	*buffer = (*buffer)[:0]
@@ -125,13 +133,18 @@ func flushBuffer(ctx context.Context, queuePath string, fb *firebaseClient, buff
 	}
 
 	encrypted := false
+	hasHMAC := false
 	if key != nil {
-		enc, err := encryptPayload(*key, payload)
+		aad := chunkAAD(sessionID, direction, *seq)
+		enc, err := encryptPayloadAAD(*key, payload, aad)
 		if err != nil {
 			return fmt.Errorf("firebasetunnel: encrypting chunk seq=%d: %w", *seq, err)
 		}
 		payload = enc
 		encrypted = true
+	} else if len(hmacKey) > 0 {
+		payload = appendHMACTag(hmacKey, payload)
+		hasHMAC = true
 	}
 
 	c := chunk{
@@ -139,6 +152,7 @@ func flushBuffer(ctx context.Context, queuePath string, fb *firebaseClient, buff
 		Timestamp:  nowMillis(),
 		Compressed: compressed,
 		Encrypted:  encrypted,
+		HasHMAC:    hasHMAC,
 		Data:       base64.StdEncoding.EncodeToString(payload),
 	}
 	if err := fb.Put(ctx, pathChunk(queuePath, *seq), &c); err != nil {
@@ -152,22 +166,34 @@ func flushBuffer(ctx context.Context, queuePath string, fb *firebaseClient, buff
 // arrive out of order, buffering until contiguous, then delivering on the
 // channel returned by newChunkReceiver.
 type chunkReceiver struct {
-	mu      sync.Mutex
-	pending map[uint64][]byte
-	nextSeq uint64
-	outCh   chan []byte
-	ackPtr  *uint64
-	key     *[32]byte
+	mu        sync.Mutex
+	pending   map[uint64][]byte
+	nextSeq   uint64
+	outCh     chan []byte
+	ackPtr    *uint64
+	key       *[32]byte
+	hmacKey   []byte
+	sessionID string
+	direction string
 }
 
-func newChunkReceiver(key *[32]byte) (*chunkReceiver, <-chan []byte) {
+// newChunkReceiver creates a receiver for chunks arriving on sessionID/direction.
+// hmacKey (non-nil) enables HMAC verification on unencrypted chunks.
+func newChunkReceiver(key *[32]byte, hmacKey []byte, sessionID, direction string) (*chunkReceiver, <-chan []byte) {
 	outCh := make(chan []byte, 1024)
-	r := &chunkReceiver{pending: make(map[uint64][]byte), outCh: outCh, key: key}
+	r := &chunkReceiver{
+		pending:   make(map[uint64][]byte),
+		outCh:     outCh,
+		key:       key,
+		hmacKey:   hmacKey,
+		sessionID: sessionID,
+		direction: direction,
+	}
 	return r, outCh
 }
 
 // ingest processes one chunk, returning the new ack pointer if it advanced.
-// Duplicate (already-delivered) chunks are silently ignored. Decrypt
+// Duplicate (already-delivered) chunks are silently ignored. Decrypt/HMAC
 // failures are returned as errors — callers should treat them as an
 // auth/abuse signal, not a transient fault.
 func (r *chunkReceiver) ingest(ctx context.Context, c chunk) (*uint64, error) {
@@ -178,7 +204,7 @@ func (r *chunkReceiver) ingest(ctx context.Context, c chunk) (*uint64, error) {
 		return nil, nil
 	}
 
-	payload, err := decodeChunkPayload(c, r.key)
+	payload, err := decodeChunkPayload(c, r.key, r.hmacKey, r.sessionID, r.direction)
 	if err != nil {
 		return nil, err
 	}
@@ -217,7 +243,12 @@ func ackEqual(a, b *uint64) bool {
 	return *a == *b
 }
 
-func decodeChunkPayload(c chunk, key *[32]byte) ([]byte, error) {
+func decodeChunkPayload(c chunk, key *[32]byte, hmacKey []byte, sessionID, direction string) ([]byte, error) {
+	// Reject oversized chunks before any allocation.
+	if len(c.Data) > base64.StdEncoding.EncodedLen(maxChunkBytes) {
+		return nil, fmt.Errorf("firebasetunnel: chunk seq=%d exceeds max size cap", c.Seq)
+	}
+
 	decoded, err := base64.StdEncoding.DecodeString(c.Data)
 	if err != nil {
 		return nil, fmt.Errorf("firebasetunnel: base64-decoding chunk seq=%d: %w", c.Seq, err)
@@ -226,9 +257,18 @@ func decodeChunkPayload(c chunk, key *[32]byte) ([]byte, error) {
 		if key == nil {
 			return nil, fmt.Errorf("firebasetunnel: chunk seq=%d is encrypted but no key configured", c.Seq)
 		}
-		decoded, err = decryptPayload(*key, decoded)
+		aad := chunkAAD(sessionID, direction, c.Seq)
+		decoded, err = decryptPayloadAAD(*key, decoded, aad)
 		if err != nil {
 			return nil, fmt.Errorf("firebasetunnel: decrypting chunk seq=%d: %w", c.Seq, err)
+		}
+	} else if c.HasHMAC {
+		if len(hmacKey) == 0 {
+			return nil, fmt.Errorf("firebasetunnel: chunk seq=%d has HMAC tag but no HMAC key configured", c.Seq)
+		}
+		decoded, err = verifyAndStripHMACTag(hmacKey, decoded)
+		if err != nil {
+			return nil, fmt.Errorf("firebasetunnel: chunk seq=%d: %w", c.Seq, err)
 		}
 	}
 	if c.Compressed {
