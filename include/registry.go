@@ -43,6 +43,7 @@ import (
 	"github.com/sagernet/sing-box/protocol/tor"
 	"github.com/sagernet/sing-box/protocol/trojan"
 	"github.com/sagernet/sing-box/protocol/tun"
+	"github.com/sagernet/sing-box/protocol/firebasetunnel"
 	"github.com/sagernet/sing-box/protocol/tunnel"
 	"github.com/sagernet/sing-box/protocol/vless"
 	"github.com/sagernet/sing-box/protocol/vmess"
@@ -129,6 +130,8 @@ func EndpointRegistry() *endpoint.Registry {
 
 	tunnel.RegisterServerEndpoint(registry)
 	tunnel.RegisterClientEndpoint(registry)
+	firebasetunnel.RegisterServerEndpoint(registry)
+	firebasetunnel.RegisterClientEndpoint(registry)
 
 	registerWireGuardEndpoint(registry)
 	registerWarpEndpoint(registry)
