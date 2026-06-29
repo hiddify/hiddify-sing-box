@@ -15,7 +15,6 @@ import (
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
-	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
@@ -29,6 +28,10 @@ const (
 	defaultActivationTimeout = 30 * time.Second
 	defaultS2CPollInterval   = 150 * time.Millisecond
 	defaultReadBufSize       = 32 * 1024
+
+	// warnActivationAfter is how long waitForActive waits before emitting a
+	// Warn log so operators know the server may be absent.
+	warnActivationAfter = 3 * time.Second
 )
 
 func RegisterClientEndpoint(registry *endpoint.Registry) {
@@ -41,6 +44,7 @@ type ClientEndpoint struct {
 	fb                *firebaseClient
 	user              string
 	key               *[32]byte
+	hmacKey           []byte
 	batchInterval     time.Duration
 	batchMaxBytes     int
 	activationTimeout time.Duration
@@ -70,6 +74,12 @@ func NewClientEndpoint(ctx context.Context, router adapter.Router, logger log.Co
 		key = &k
 	}
 
+	// Derive HMAC key from firebase_secret for integrity on unencrypted path.
+	var hmacKey []byte
+	if options.FirebaseSecret != "" && key == nil {
+		hmacKey = deriveHMACKey(options.FirebaseSecret)
+	}
+
 	batchInterval := time.Duration(options.BatchInterval)
 	if batchInterval <= 0 {
 		batchInterval = defaultBatchInterval
@@ -89,6 +99,7 @@ func NewClientEndpoint(ctx context.Context, router adapter.Router, logger log.Co
 		fb:                fb,
 		user:              options.User,
 		key:               key,
+		hmacKey:           hmacKey,
 		batchInterval:     batchInterval,
 		batchMaxBytes:     batchMaxBytes,
 		activationTimeout: activationTimeout,
@@ -139,12 +150,26 @@ func (c *ClientEndpoint) ListenPacket(ctx context.Context, destination M.Socksad
 
 func (c *ClientEndpoint) waitForActive(ctx context.Context, sessionID string) error {
 	path := pathMetadata(sessionID)
+	start := time.Now()
+	warned := false
+	consecutiveErrors := 0
+
 	for {
 		var meta sessionMetadata
 		found, err := c.fb.Get(ctx, path, &meta)
 		if err != nil {
-			return err
+			consecutiveErrors++
+			backoff := jitteredBackoff(consecutiveErrors)
+			c.logger.WarnContext(ctx, "firebasetunnel: poll error waiting for session ", sessionID, " to activate: ", err)
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(backoff):
+				continue
+			}
 		}
+		consecutiveErrors = 0
+
 		if found {
 			switch meta.State {
 			case sessionStateActive:
@@ -153,6 +178,12 @@ func (c *ClientEndpoint) waitForActive(ctx context.Context, sessionID string) er
 				return E.New("server rejected session")
 			}
 		}
+
+		if !warned && time.Since(start) > warnActivationAfter {
+			warned = true
+			c.logger.WarnContext(ctx, "firebasetunnel: session ", sessionID, " still pending after ", time.Since(start).Round(time.Second), " — server may be absent or overloaded")
+		}
+
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -166,7 +197,7 @@ func (c *ClientEndpoint) waitForActive(ctx context.Context, sessionID string) er
 // closes or the server marks the session Closed.
 func (c *ClientEndpoint) runSession(ctx context.Context, sessionID string, conn net.Conn) {
 	defer conn.Close()
-	sender := newChunkSender(ctx, pathC2S(sessionID), c.fb, c.batchInterval, c.batchMaxBytes, c.key, c.logger)
+	sender := newChunkSender(ctx, pathC2S(sessionID), sessionID, "c2s", c.fb, c.batchInterval, c.batchMaxBytes, c.key, c.hmacKey, c.logger)
 
 	relayCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -209,7 +240,7 @@ func (c *ClientEndpoint) runSession(ctx context.Context, sessionID string, conn 
 }
 
 func (c *ClientEndpoint) runS2C(ctx context.Context, sessionID string, conn net.Conn) {
-	receiver, byteRx := newChunkReceiver(c.key)
+	receiver, byteRx := newChunkReceiver(c.key, c.hmacKey, sessionID, "s2c")
 	var deliveredUpTo *uint64
 	s2cPath := pathS2C(sessionID)
 	ackPath := pathAcks(sessionID) + "/s2c_ack"
@@ -276,5 +307,4 @@ func (c *ClientEndpoint) setSessionState(ctx context.Context, sessionID string, 
 	return c.fb.Put(ctx, path, &meta)
 }
 
-var _ = common.Close
 var _ = io.EOF
