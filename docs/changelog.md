@@ -2,6 +2,24 @@
 icon: material/alert-decagram
 ---
 
+#### 1.14.0-alpha.27
+
+* Add Firebase Tunnel endpoint **1**
+* Fixes and improvements
+
+**1**:
+
+Adds `firebasetunnel_client` and `firebasetunnel_server` endpoints, which
+relay TCP connections through Firebase Realtime Database for use when
+direct connectivity is blocked but Firebase's REST API is reachable.
+Supports multi-user accounting (wired into the existing SSM traffic stats
+used for Shadowsocks usage), optional per-user PSK payload encryption, and
+an optional Firebase Auth token alternative to the legacy database secret.
+See [Firebase Tunnel docs](https://github.com/hiddify/hiddify-sing-box/tree/testing-merge-base/protocol/firebasetunnel/docs)
+for configuration, security considerations, and operational guidance.
+Adapted from [Hiddify2/Firebase-Tunnel](https://github.com/Hiddify2/Firebase-Tunnel);
+see the provenance doc for what was reused vs. rewritten.
+
 #### 1.14.0-alpha.26
 
 * Add gecko obfs for Hysteria2 **1**
