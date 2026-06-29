@@ -57,11 +57,15 @@ type chunk struct {
 	Seq        uint64 `json:"seq"`
 	Timestamp  uint64 `json:"timestamp"`
 	Compressed bool   `json:"compressed"`
-	// Encrypted indicates Data is AES-256-GCM ciphertext (nonce-prefixed)
-	// rather than a plain zstd/raw payload. Set only when the session's
-	// user has a PSK configured.
-	Encrypted bool   `json:"encrypted,omitempty"`
-	Data      string `json:"data"`
+	// Encrypted indicates Data is AES-256-GCM ciphertext (nonce-prefixed, with
+	// session-ID+direction+seq as AEAD additional data) rather than a plain
+	// zstd/raw payload. Set only when the session's user has a PSK configured.
+	Encrypted bool `json:"encrypted,omitempty"`
+	// HasHMAC indicates that the last hmacTagLen bytes of the decoded Data are
+	// an HMAC-SHA256 tag over the payload, present on unencrypted chunks when
+	// the firebase_secret is set. Provides integrity without confidentiality.
+	HasHMAC bool   `json:"has_hmac,omitempty"`
+	Data    string `json:"data"`
 }
 
 func pathMetadata(sessionID string) string {
