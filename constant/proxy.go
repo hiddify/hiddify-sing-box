@@ -43,13 +43,14 @@ const (
 	TypeACME               = "acme"
 	TypeCloudflareOriginCA = "cloudflare-origin-ca"
 
-	TypeHInvalidConfig = "hinvalid" //H
-	TypeXray           = "xray"     //H
-	TypeCustom         = "custom"   //H
-	TypeAwg            = "awg"      //H
-	TypeBalancer       = "balancer" //H
-	TypeDNSTT          = "dnstt"    //H
-  TypeGooseRelay     = "gooserelay" //H
+	TypeHInvalidConfig = "hinvalid"       //H
+	TypeXray           = "xray"           //H
+	TypeCustom         = "custom"         //H
+	TypeAwg            = "awg"            //H
+	TypeBalancer       = "balancer"       //H
+	TypeDNSTT          = "dnstt"          //H
+	TypeGooseRelay     = "gooserelay"     //H
+	TypeFirebaseTunnel = "firebasetunnel" //H
 	TypeSmartDNSPool   = "smart_dns_pool" //H — local recursive-resolver pool with AIMD throttling + recovery probing (github.com/hiddify/hmrd_multi_resolver_dns)
 )
 
@@ -142,6 +143,8 @@ func ProxyDisplayName(proxyType string) string {
 		return "DNSTT"
 	case TypeGooseRelay:
 		return "GooseRelay"
+	case TypeFirebaseTunnel:
+		return "Firebase Tunnel"
 	default:
 		return "Unknown"
 	}
