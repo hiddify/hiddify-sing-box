@@ -130,8 +130,7 @@ func EndpointRegistry() *endpoint.Registry {
 
 	tunnel.RegisterServerEndpoint(registry)
 	tunnel.RegisterClientEndpoint(registry)
-	firebasetunnel.RegisterServerEndpoint(registry)
-	firebasetunnel.RegisterClientEndpoint(registry)
+	firebasetunnel.RegisterEndpoint(registry)
 
 	registerWireGuardEndpoint(registry)
 	registerWarpEndpoint(registry)

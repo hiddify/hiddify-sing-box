@@ -29,12 +29,9 @@ func TestRelayRoundTrip(t *testing.T) {
 	serverDone := make(chan struct{})
 	go func() {
 		defer close(serverDone)
-		// runRelay reads c2s from Firebase, writes s2c to Firebase.
-		s := &ServerEndpoint{
-			fb:             fb,
-			pollInterval:   20 * time.Millisecond,
-			sessionTimeout: 10 * time.Second,
-			logger:         nil,
+		s := &Endpoint{
+			fb:  fb,
+			srv: &serverState{pollInterval: 20 * time.Millisecond, sessionTimeout: 10 * time.Second},
 		}
 		s.runRelay(ctx, sessionID, serverRemote, nil, hmacKey)
 	}()
@@ -45,13 +42,12 @@ func TestRelayRoundTrip(t *testing.T) {
 	clientDone := make(chan struct{})
 	go func() {
 		defer close(clientDone)
-		c := &ClientEndpoint{
+		c := &Endpoint{
 			fb:            fb,
-			key:           nil,
+			clientKey:     nil,
 			hmacKey:       hmacKey,
 			batchInterval: 20 * time.Millisecond,
 			batchMaxBytes: defaultBatchMaxBytes,
-			logger:        nil,
 		}
 		c.runSession(ctx, sessionID, clientRemote)
 	}()
@@ -65,12 +61,10 @@ func TestRelayRoundTrip(t *testing.T) {
 
 	payload := []byte("hello end-to-end relay")
 
-	// Write from client side.
 	if _, err := clientLocal.Write(payload); err != nil {
 		t.Fatalf("client write: %v", err)
 	}
 
-	// Read from client side (echo comes back via Firebase s2c).
 	buf := make([]byte, len(payload))
 	clientLocal.SetReadDeadline(time.Now().Add(8 * time.Second))
 	n, err := io.ReadFull(clientLocal, buf)
@@ -81,7 +75,6 @@ func TestRelayRoundTrip(t *testing.T) {
 		t.Fatalf("round-trip mismatch: got %q want %q", buf[:n], payload)
 	}
 
-	// Teardown.
 	clientLocal.Close()
 	serverLocal.Close()
 	<-clientDone
@@ -105,11 +98,9 @@ func TestRelayEncryptedRoundTrip(t *testing.T) {
 	serverDone := make(chan struct{})
 	go func() {
 		defer close(serverDone)
-		s := &ServerEndpoint{
-			fb:             fb,
-			pollInterval:   20 * time.Millisecond,
-			sessionTimeout: 10 * time.Second,
-			logger:         nil,
+		s := &Endpoint{
+			fb:  fb,
+			srv: &serverState{pollInterval: 20 * time.Millisecond, sessionTimeout: 10 * time.Second},
 		}
 		s.runRelay(ctx, sessionID, serverRemote, &key, nil)
 	}()
@@ -118,13 +109,12 @@ func TestRelayEncryptedRoundTrip(t *testing.T) {
 	clientDone := make(chan struct{})
 	go func() {
 		defer close(clientDone)
-		c := &ClientEndpoint{
+		c := &Endpoint{
 			fb:            fb,
-			key:           &key,
+			clientKey:     &key,
 			hmacKey:       nil,
 			batchInterval: 20 * time.Millisecond,
 			batchMaxBytes: defaultBatchMaxBytes,
-			logger:        nil,
 		}
 		c.runSession(ctx, sessionID, clientRemote)
 	}()
