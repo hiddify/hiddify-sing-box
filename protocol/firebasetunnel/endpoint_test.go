@@ -44,7 +44,7 @@ func TestRelayRoundTrip(t *testing.T) {
 		defer close(clientDone)
 		c := &Endpoint{
 			fb:            fb,
-			clientKey:     nil,
+			key:           nil,
 			hmacKey:       hmacKey,
 			batchInterval: 20 * time.Millisecond,
 			batchMaxBytes: defaultBatchMaxBytes,
@@ -111,7 +111,7 @@ func TestRelayEncryptedRoundTrip(t *testing.T) {
 		defer close(clientDone)
 		c := &Endpoint{
 			fb:            fb,
-			clientKey:     &key,
+			key:           &key,
 			hmacKey:       nil,
 			batchInterval: 20 * time.Millisecond,
 			batchMaxBytes: defaultBatchMaxBytes,
