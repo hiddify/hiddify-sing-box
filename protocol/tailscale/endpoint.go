@@ -357,56 +357,6 @@ func (t *Endpoint) postStart() error {
 	t.serverStarted = true
 	t.server.ExportLocalBackend().ExportEngine().(wgengine.ExportedUserspaceEngine).SetOnReconfigListener(t.onReconfig)
 
-	ipStack := t.server.ExportNetstack().ExportIPStack()
-	gErr := ipStack.SetSpoofing(tun.DefaultNIC, true)
-	if gErr != nil {
-		return gonet.TranslateNetstackError(gErr)
-	}
-	gErr = ipStack.SetPromiscuousMode(tun.DefaultNIC, true)
-	if gErr != nil {
-		return gonet.TranslateNetstackError(gErr)
-	}
-	icmpForwarder := tun.NewICMPForwarder(t.ctx, ipStack, t.logger, t, t.icmpTimeout)
-	ipStack.SetTransportProtocolHandler(icmp.ProtocolNumber4, icmpForwarder.HandlePacket)
-	ipStack.SetTransportProtocolHandler(icmp.ProtocolNumber6, icmpForwarder.HandlePacket)
-	t.stack = ipStack
-	t.icmpForwarder = icmpForwarder
-	netstack := t.server.ExportNetstack()
-	if netstack != nil {
-		previousTCP := netstack.GetTCPHandlerForFlow
-		netstack.GetTCPHandlerForFlow = func(src, dst netip.AddrPort) (handler func(net.Conn), intercept bool) {
-			if previousTCP != nil {
-				handler, intercept = previousTCP(src, dst)
-				if handler != nil || !intercept {
-					return handler, intercept
-				}
-			}
-			return func(conn net.Conn) {
-				ctx := log.ContextWithNewID(t.ctx)
-				source := M.SocksaddrFrom(src.Addr(), src.Port())
-				destination := M.SocksaddrFrom(dst.Addr(), dst.Port())
-				t.NewConnectionEx(ctx, conn, source, destination, nil)
-			}, true
-		}
-
-		previousUDP := netstack.GetUDPHandlerForFlow
-		netstack.GetUDPHandlerForFlow = func(src, dst netip.AddrPort) (handler func(nettype.ConnPacketConn), intercept bool) {
-			if previousUDP != nil {
-				handler, intercept = previousUDP(src, dst)
-				if handler != nil || !intercept {
-					return handler, intercept
-				}
-			}
-			return func(conn nettype.ConnPacketConn) {
-				ctx := log.ContextWithNewID(t.ctx)
-				source := M.SocksaddrFrom(src.Addr(), src.Port())
-				destination := M.SocksaddrFrom(dst.Addr(), dst.Port())
-				packetConn := bufio.NewUnbindPacketConnWithAddr(conn, destination)
-				t.NewPacketConnectionEx(ctx, packetConn, source, destination, nil)
-			}, true
-		}
-	}
-
 	localBackend := t.server.ExportLocalBackend()
 	t.localBackend.Store(localBackend)
 	if !version.IsAppleTV() {
