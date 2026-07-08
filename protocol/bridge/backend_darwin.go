@@ -11,6 +11,7 @@ import (
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-tun"
+	"github.com/sagernet/sing-tun/gtcpip/header"
 	"github.com/sagernet/sing/common/buf"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
@@ -236,7 +237,17 @@ func (b *backendDarwin) WritePackets(packets [][]byte) error {
 		packets = packets[len(chunk):]
 		batch := b.writeBatch[:0]
 		for _, packet := range chunk {
+			if len(packet) == 0 || len(packet) > maxPacketLength {
+				continue
+			}
+			ipVersion := header.IPVersion(packet)
+			if ipVersion != header.IPv4Version && ipVersion != header.IPv6Version {
+				continue
+			}
 			batch = append(batch, buf.As(packet))
+		}
+		if len(batch) == 0 {
+			continue
 		}
 		err := b.batchTUN.BatchWrite(batch)
 		if err != nil {
