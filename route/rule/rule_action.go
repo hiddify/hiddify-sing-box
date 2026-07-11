@@ -32,6 +32,7 @@ func newRuleActionRouteOptions(options option.RawRouteOptionsActionOptions) (Rul
 	return RuleActionRouteOptions{
 		OverrideAddress:           M.ParseSocksaddrHostPort(options.OverrideAddress, 0),
 		OverridePort:              options.OverridePort,
+		OverrideTunnelDestination: options.OverrideTunnelDestination,
 		NetworkStrategy:           (*C.NetworkStrategy)(options.NetworkStrategy),
 		FallbackDelay:             time.Duration(options.FallbackDelay),
 		UDPDisableDomainUnmapping: options.UDPDisableDomainUnmapping,
@@ -140,6 +141,7 @@ func NewDNSRuleAction(logger logger.ContextLogger, action option.DNSRuleAction) 
 				RewriteTTL:             action.RouteOptions.RewriteTTL,
 				ClientSubnet:           netip.Prefix(common.PtrValueOrDefault(action.RouteOptions.ClientSubnet)),
 				RemoveClientSubnet:     action.RouteOptions.RemoveClientSubnet,
+				BypassIfFailed:         action.RouteOptions.BypassIfFailed,
 			},
 		}
 	case C.RuleActionTypeEvaluate:
@@ -225,6 +227,7 @@ func (r *RuleActionBypass) String() string {
 type RuleActionRouteOptions struct {
 	OverrideAddress           M.Socksaddr
 	OverridePort              uint16
+	OverrideTunnelDestination string
 	NetworkStrategy           *C.NetworkStrategy
 	NetworkType               []C.InterfaceType
 	FallbackNetworkType       []C.InterfaceType
@@ -254,6 +257,9 @@ func (r *RuleActionRouteOptions) Descriptions() []string {
 	}
 	if r.OverridePort > 0 {
 		descriptions = append(descriptions, F.ToString("override-port=", r.OverridePort))
+	}
+	if r.OverrideTunnelDestination != "" {
+		descriptions = append(descriptions, F.ToString("override-tunnel-destination=", r.OverrideTunnelDestination))
 	}
 	if r.NetworkStrategy != nil {
 		descriptions = append(descriptions, F.ToString("network-strategy=", r.NetworkStrategy))
@@ -366,6 +372,7 @@ type RuleActionDNSRouteOptions struct {
 	RewriteTTL             *uint32
 	ClientSubnet           netip.Prefix
 	RemoveClientSubnet     bool
+	BypassIfFailed         bool
 }
 
 func (r *RuleActionDNSRouteOptions) Type() string {

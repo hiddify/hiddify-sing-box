@@ -1,7 +1,6 @@
 package rule
 
 import (
-	"slices"
 	"strings"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -17,11 +16,15 @@ type DomainItem struct {
 }
 
 func NewDomainItem(domains []string, domainSuffixes []string) (*DomainItem, error) {
-	if slices.Contains(domains, "") {
-		return nil, E.New("domain: empty item is not allowed")
+	for _, domainItem := range domains {
+		if domainItem == "" {
+			return nil, E.New("domain: empty item is not allowed")
+		}
 	}
-	if slices.Contains(domainSuffixes, "") {
-		return nil, E.New("domain_suffix: empty item is not allowed")
+	for _, domainSuffixItem := range domainSuffixes {
+		if domainSuffixItem == "" {
+			return nil, E.New("domain_suffix: empty item is not allowed")
+		}
 	}
 	var description string
 	if dLen := len(domains); dLen > 0 {

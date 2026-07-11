@@ -276,6 +276,16 @@ func NewDefaultDNSRule(ctx context.Context, logger log.ContextLogger, options op
 		rule.destinationPortItems = append(rule.destinationPortItems, item)
 		rule.allItems = append(rule.allItems, item)
 	}
+	if len(options.TunnelSource) > 0 {
+		item := NewTunnelSourceItem(options.TunnelSource)
+		rule.items = append(rule.items, item)
+		rule.allItems = append(rule.allItems, item)
+	}
+	if len(options.TunnelDestination) > 0 {
+		item := NewTunnelDestinationItem(options.TunnelDestination)
+		rule.items = append(rule.items, item)
+		rule.allItems = append(rule.allItems, item)
+	}
 	if len(options.ProcessName) > 0 {
 		item := NewProcessItem(options.ProcessName)
 		rule.items = append(rule.items, item)
@@ -374,11 +384,6 @@ func NewDefaultDNSRule(ctx context.Context, logger log.ContextLogger, options op
 	}
 	if len(options.SourceHostname) > 0 {
 		item := NewSourceHostnameItem(options.SourceHostname)
-		rule.items = append(rule.items, item)
-		rule.allItems = append(rule.allItems, item)
-	}
-	if len(options.PreferredBy) > 0 {
-		item := NewPreferredByDNSItem(ctx, options.PreferredBy)
 		rule.items = append(rule.items, item)
 		rule.allItems = append(rule.allItems, item)
 	}
@@ -564,4 +569,18 @@ func (r *LogicalDNSRule) MatchAddressLimit(metadata *adapter.InboundContext, res
 	matchMetadata.DNSResponse = response
 	matchMetadata.DestinationAddressMatchFromResponse = true
 	return r.abstractLogicalRule.Match(&matchMetadata)
+}
+func (r *LogicalDNSRule) BypassIfFailed() bool {
+
+	if act, ok := r.action.(*RuleActionDNSRoute); ok && act != nil {
+		return act.RuleActionDNSRouteOptions.BypassIfFailed
+	}
+	return false
+}
+
+func (r *DefaultDNSRule) BypassIfFailed() bool {
+	if act, ok := r.action.(*RuleActionDNSRoute); ok && act != nil {
+		return act.RuleActionDNSRouteOptions.BypassIfFailed
+	}
+	return false
 }
