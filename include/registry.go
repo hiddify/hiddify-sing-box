@@ -17,6 +17,7 @@ import (
 	"github.com/sagernet/sing-box/dns/transport/hosts"
 	"github.com/sagernet/sing-box/dns/transport/local"
 	"github.com/sagernet/sing-box/dns/transport/mdns"
+	"github.com/sagernet/sing-box/dns/transport/multi"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-box/protocol/anytls"
@@ -24,23 +25,32 @@ import (
 	"github.com/sagernet/sing-box/protocol/bridge"
 	"github.com/sagernet/sing-box/protocol/direct"
 	"github.com/sagernet/sing-box/protocol/group"
+	"github.com/sagernet/sing-box/protocol/group/balancer"
+	"github.com/sagernet/sing-box/protocol/hiddify/dnstt"
+	"github.com/sagernet/sing-box/protocol/hiddify/gooserelay"
+	"github.com/sagernet/sing-box/protocol/hiddify/hinvalid"
+	"github.com/sagernet/sing-box/protocol/hiddify/xray"
 	"github.com/sagernet/sing-box/protocol/http"
+	"github.com/sagernet/sing-box/protocol/mieru"
 	"github.com/sagernet/sing-box/protocol/mixed"
 	"github.com/sagernet/sing-box/protocol/naive"
+	"github.com/sagernet/sing-box/protocol/psiphon"
 	"github.com/sagernet/sing-box/protocol/redirect"
 	"github.com/sagernet/sing-box/protocol/shadowsocks"
 	"github.com/sagernet/sing-box/protocol/shadowtls"
-	"github.com/sagernet/sing-box/protocol/snell"
+	snellprotocol "github.com/sagernet/sing-box/protocol/snell"
 	"github.com/sagernet/sing-box/protocol/socks"
 	"github.com/sagernet/sing-box/protocol/ssh"
 	"github.com/sagernet/sing-box/protocol/tor"
 	"github.com/sagernet/sing-box/protocol/trojan"
 	"github.com/sagernet/sing-box/protocol/tun"
+	"github.com/sagernet/sing-box/protocol/tunnel"
 	"github.com/sagernet/sing-box/protocol/vless"
 	"github.com/sagernet/sing-box/protocol/vmess"
 	"github.com/sagernet/sing-box/service/api"
 	originca "github.com/sagernet/sing-box/service/origin_ca"
 	"github.com/sagernet/sing-box/service/resolved"
+	smartdnspool "github.com/sagernet/sing-box/service/smart_dns_pool"
 	"github.com/sagernet/sing-box/service/ssmapi"
 	E "github.com/sagernet/sing/common/exceptions"
 )
@@ -62,13 +72,15 @@ func InboundRegistry() *inbound.Registry {
 	mixed.RegisterInbound(registry)
 
 	shadowsocks.RegisterInbound(registry)
-	snell.RegisterInbound(registry)
+	snellprotocol.RegisterInbound(registry)
 	vmess.RegisterInbound(registry)
 	trojan.RegisterInbound(registry)
 	naive.RegisterInbound(registry)
 	shadowtls.RegisterInbound(registry)
 	vless.RegisterInbound(registry)
 	anytls.RegisterInbound(registry)
+	mieru.RegisterInbound(registry)
+	ssh.RegisterInbound(registry)
 
 	registerQUICInbounds(registry)
 	registerCloudflaredInbound(registry)
@@ -91,7 +103,7 @@ func OutboundRegistry() *outbound.Registry {
 	socks.RegisterOutbound(registry)
 	http.RegisterOutbound(registry)
 	shadowsocks.RegisterOutbound(registry)
-	snell.RegisterOutbound(registry)
+	snellprotocol.RegisterOutbound(registry)
 	vmess.RegisterOutbound(registry)
 	trojan.RegisterOutbound(registry)
 	registerNaiveOutbound(registry)
@@ -100,6 +112,14 @@ func OutboundRegistry() *outbound.Registry {
 	shadowtls.RegisterOutbound(registry)
 	vless.RegisterOutbound(registry)
 	anytls.RegisterOutbound(registry)
+	psiphon.RegisterOutbound(registry)
+	mieru.RegisterOutbound(registry)
+	hinvalid.RegisterOutbound(registry)
+	xray.RegisterOutbound(registry)
+	dnstt.RegisterOutbound(registry)
+	gooserelay.RegisterOutbound(registry)
+	balancer.RegisterLoadBalance(registry)
+	registerMASQUEOutbound(registry)
 
 	registerQUICOutbounds(registry)
 	registerStubForRemovedOutbounds(registry)
@@ -112,6 +132,10 @@ func EndpointRegistry() *endpoint.Registry {
 
 	registerWireGuardEndpoint(registry)
 	registerTailscaleEndpoint(registry)
+	tunnel.RegisterServerEndpoint(registry)
+	tunnel.RegisterClientEndpoint(registry)
+	registerWarpEndpoint(registry)
+	registerAwgEndpoint(registry)
 
 	return registry
 }
@@ -128,6 +152,8 @@ func DNSTransportRegistry() *dns.TransportRegistry {
 	mdns.RegisterTransport(registry)
 	fakeip.RegisterTransport(registry)
 	resolved.RegisterTransport(registry)
+	transport.RegisterSDNS(registry)
+	multi.RegisterTransport(registry) //H
 
 	registerQUICTransports(registry)
 	registerDHCPTransport(registry)
@@ -142,6 +168,7 @@ func ServiceRegistry() *service.Registry {
 	api.RegisterService(registry)
 	resolved.RegisterService(registry)
 	ssmapi.RegisterService(registry)
+	smartdnspool.RegisterService(registry) //H
 
 	registerQUICServices(registry)
 	registerDERPService(registry)
