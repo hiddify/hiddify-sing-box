@@ -26,7 +26,6 @@ import (
 	"github.com/sagernet/sing-box/dns"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
-	"github.com/sagernet/sing-box/protocol/tailscale/tailssh"
 	R "github.com/sagernet/sing-box/route/rule"
 	"github.com/sagernet/sing-box/service/oomkiller"
 	"github.com/sagernet/sing-tun"
@@ -40,7 +39,6 @@ import (
 	"github.com/sagernet/sing/common/ntp"
 	"github.com/sagernet/sing/service"
 	"github.com/sagernet/sing/service/filemanager"
-	tailscaleroot "github.com/sagernet/tailscale"
 	_ "github.com/sagernet/tailscale/feature/relayserver"
 	"github.com/sagernet/tailscale/ipn"
 	"github.com/sagernet/tailscale/ipn/ipnlocal"
@@ -65,11 +63,10 @@ var (
 	_ adapter.OutboundWithMultiplex       = (*Endpoint)(nil)
 	_ adapter.OnDemandEndpoint            = (*Endpoint)(nil)
 	_ dialer.PacketDialerWithDestination  = (*Endpoint)(nil)
-	_ tun.Port                            = (*Endpoint)(nil)
 )
 
 func init() {
-	version.SetVersion(strings.TrimSpace(tailscaleroot.VersionDotTxt) + "-0-(sing-box " + C.Version + ")")
+	version.SetVersion("sing-box " + C.Version)
 }
 
 func RegisterEndpoint(registry *endpoint.Registry) {
@@ -92,7 +89,6 @@ type Endpoint struct {
 	returnPath        tun.Return
 	wgEngine          wgengine.ExportedUserspaceEngine
 	onReconfigHook    wgengine.ReconfigListener
-	sshReconfigHook   wgengine.ReconfigListener
 
 	cfg       *wgcfg.Config
 	routerCfg *router.Config
@@ -112,6 +108,7 @@ type Endpoint struct {
 	sshServerOptions  *option.TailscaleSSHServerOptions
 	taildrop          *taildropManager
 	localBackend      atomic.Pointer[ipnlocal.LocalBackend]
+	keyAuth           bool
 	onDemand          bool
 	suspendAccess     sync.Mutex
 	idleRequested     atomic.Bool
@@ -132,11 +129,7 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 	if stateDirectory == "" {
 		stateDirectory = "tailscale"
 	}
-	platformInterface := service.FromContext[adapter.PlatformInterface](ctx)
 	hostname := options.Hostname
-	if hostname == "" && platformInterface != nil {
-		hostname = platformInterface.TailscaleHostname()
-	}
 	if hostname == "" {
 		osHostname, _ := os.Hostname()
 		osHostname = strings.TrimSpace(osHostname)
@@ -284,7 +277,6 @@ func (t *Endpoint) start(scope *adapter.Scope) error {
 		if mtu == 0 {
 			mtu = uint32(tsTUN.DefaultTUNMTU())
 		}
-		t.systemInterfaceMTU = mtu
 		tunName := t.systemInterfaceName
 		if tunName == "" {
 			tunName = tun.CalculateInterfaceName("tailscale")
@@ -350,10 +342,6 @@ func (t *Endpoint) postStart(scope *adapter.Scope) error {
 		})
 		go t.taildrop.start()
 	}
-	wgEngine := localBackend.ExportEngine().(wgengine.ExportedUserspaceEngine)
-	wgEngine.SetOnReconfigListener(t.onReconfig)
-	t.wgEngine = wgEngine
-
 	t.stack = t.server.ExportNetstack().ExportIPStack()
 
 	sshEnabled := t.sshServerOptions != nil && t.sshServerOptions.Enabled
@@ -368,7 +356,7 @@ func (t *Endpoint) postStart(scope *adapter.Scope) error {
 	}
 	err = t.editPrefs(sshEnabled)
 	if err != nil {
-		return err
+		return E.Cause(err, "update prefs")
 	}
 	if sshEnabled {
 		sshServer, err := tailssh.New(t.ctx, t.server, t.platformInterface, t.sshServerOptions, t.logger)
@@ -492,14 +480,19 @@ func (t *Endpoint) editPrefs(sshEnabled bool) error {
 	if len(t.relayServerStaticEndpoints) > 0 {
 		perfs.RelayServerStaticEndpoints = t.relayServerStaticEndpoints
 	}
-	_, err := t.server.ExportLocalBackend().EditPrefs(perfs)
+	localBackend := t.server.ExportLocalBackend()
+	_, err := localBackend.EditPrefs(perfs)
 	if err != nil {
-		return E.Cause(err, "update prefs")
+		return err
 	}
 	return nil
 }
 
 func (t *Endpoint) applyExitNode() error {
+	if t.exitNode == "" {
+		return nil
+	}
+	localBackend := t.server.ExportLocalBackend()
 	status, err := common.Must1(t.server.LocalClient()).Status(t.ctx)
 	if err != nil {
 		return err
@@ -515,8 +508,11 @@ func (t *Endpoint) applyExitNode() error {
 	if err != nil {
 		return err
 	}
-	_, err = t.server.ExportLocalBackend().EditPrefs(perfs)
-	return err
+	_, err = localBackend.EditPrefs(perfs)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (t *Endpoint) SetTailscaleExitNode(ctx context.Context, stableID string) error {
@@ -950,6 +946,15 @@ func (t *Endpoint) onReconfig(cfg *wgcfg.Config, routerCfg *router.Config, dnsCf
 		t.dnsCfg != nil && reflect.DeepEqual(t.dnsCfg, dnsCfg) {
 		return
 	}
+	var inet4Address, inet6Address netip.Addr
+	for _, address := range cfg.Addresses {
+		if address.Addr().Is4() {
+			inet4Address = address.Addr()
+		} else if address.Addr().Is6() {
+			inet6Address = address.Addr()
+		}
+	}
+	t.icmpForwarder.SetLocalAddresses(inet4Address, inet6Address)
 	t.cfg = cfg
 	t.routerCfg = routerCfg
 	t.dnsCfg = dnsCfg
