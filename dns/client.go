@@ -67,7 +67,10 @@ type ClientOptions struct {
 }
 
 func NewClient(options ClientOptions) *Client {
-	cacheCapacity := max(options.CacheCapacity, 1024)
+	cacheCapacity := options.CacheCapacity
+	if cacheCapacity < 1024 {
+		cacheCapacity = 1024
+	}
 	client := &Client{
 		ctx:               options.Context,
 		timeout:           options.Timeout,
@@ -465,10 +468,9 @@ func (c *Client) Lookup(ctx context.Context, transport adapter.DNSTransport, dom
 	if options.LookupStrategy != C.DomainStrategyAsIS {
 		lookupOptions.Strategy = strategy
 	}
-	switch strategy {
-	case C.DomainStrategyIPv4Only:
+	if strategy == C.DomainStrategyIPv4Only {
 		return c.lookupToExchange(ctx, transport, dnsName, dns.TypeA, lookupOptions, responseChecker)
-	case C.DomainStrategyIPv6Only:
+	} else if strategy == C.DomainStrategyIPv6Only {
 		return c.lookupToExchange(ctx, transport, dnsName, dns.TypeAAAA, lookupOptions, responseChecker)
 	}
 	var response4 []netip.Addr
@@ -622,7 +624,10 @@ func (c *Client) loadResponse(key dnsCacheKey) (*dns.Msg, int, bool) {
 		c.cache.Remove(key)
 		return nil, 0, false
 	}
-	nowTTL := max(int(expireAt.Sub(timeNow).Seconds()), 0)
+	nowTTL := int(expireAt.Sub(timeNow).Seconds())
+	if nowTTL < 0 {
+		nowTTL = 0
+	}
 	response = response.Copy()
 	normalizeTTL(response, uint32(nowTTL))
 	return response, nowTTL, false
@@ -649,7 +654,10 @@ func (c *Client) loadPersistentResponse(key dnsCacheKey) (*dns.Msg, int, bool) {
 		}
 		return nil, 0, false
 	}
-	nowTTL := max(int(expireAt.Sub(timeNow).Seconds()), 0)
+	nowTTL := int(expireAt.Sub(timeNow).Seconds())
+	if nowTTL < 0 {
+		nowTTL = 0
+	}
 	normalizeTTL(response, uint32(nowTTL))
 	return response, nowTTL, false
 }
