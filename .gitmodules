@@ -1,12 +1,12 @@
 [submodule "replace/tailscale"]
 	path = replace/tailscale
-	url = git@github.com:hiddify/tailscale
+	url = https://github.com/hiddify/tailscale.git
 [submodule "replace/psiphon-quic-go"]
 	path = replace/psiphon-quic-go
-	url = git@github.com:hiddify/psiphon-quic-go
+	url = https://github.com/hiddify/psiphon-quic-go.git
 [submodule "replace/psiphon-tls"]
 	path = replace/psiphon-tls
-	url = git@github.com:hiddify/psiphon-tls
+	url = https://github.com/hiddify/psiphon-tls.git
 [submodule "replace/wireguard-go"]
 	path = replace/wireguard-go
-	url = git@github.com:hiddify/wireguard-go
+	url = https://github.com/hiddify/wireguard-go.git
