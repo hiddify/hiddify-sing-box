@@ -61,7 +61,7 @@ func NewClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr, opt
 		requestURL.Host = host
 	}
 	if headers.Get("User-Agent") == "" {
-		headers.Set("User-Agent", "Go-http-client/1.1")
+		headers.Set("User-Agent", C.DefaultBrowserAgent) //H
 	}
 	return &Client{
 		dialer,

@@ -10,6 +10,7 @@ import (
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/tls"
+	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing/common/buf"
 	"github.com/sagernet/sing/common/bufio"
@@ -63,6 +64,9 @@ func NewClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr, opt
 	for key, value := range options.Headers {
 		headers[key] = value
 	}
+	if headers.Get("User-Agent") == "" { //H
+		headers.Set("User-Agent", C.DefaultBrowserAgent) //H
+	} //H
 	return &Client{
 		dialer:     dialer,
 		serverAddr: serverAddr,

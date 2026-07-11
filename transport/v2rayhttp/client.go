@@ -12,12 +12,12 @@ import (
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/tls"
+	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 	sHTTP "github.com/sagernet/sing/protocol/http"
-
 	"golang.org/x/net/http2"
 )
 
@@ -74,6 +74,15 @@ func NewClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr, opt
 	if !strings.HasPrefix(requestURL.Path, "/") {
 		requestURL.Path = "/" + requestURL.Path
 	}
+	headers := options.Headers.Build()
+
+	if host := headers.Get("Host"); host != "" { //H
+		headers.Del("Host")    //H
+		requestURL.Host = host //H
+	}
+	if headers.Get("User-Agent") == "" { //H
+		headers.Set("User-Agent", C.DefaultBrowserAgent) //H
+	} //H
 	return &Client{
 		ctx:        ctx,
 		dialer:     dialer,
@@ -81,7 +90,7 @@ func NewClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr, opt
 		requestURL: requestURL,
 		host:       options.Host,
 		method:     options.Method,
-		headers:    options.Headers.Build(),
+		headers:    headers, //H
 		transport:  transport,
 		http2:      tlsConfig != nil,
 	}, nil
