@@ -82,7 +82,6 @@ func NewNetworkManager(ctx context.Context, logger logger.ContextLogger, options
 		return nil, E.New("`default_mark` is only supported on linux")
 	}
 	nm := &NetworkManager{
-		ctx:                 ctx,
 		logger:              logger,
 		interfaceFinder:     control.NewDefaultInterfaceFinder(),
 		autoDetectInterface: options.AutoDetectInterface,
@@ -92,7 +91,6 @@ func NewNetworkManager(ctx context.Context, logger logger.ContextLogger, options
 			DomainResolver: defaultDomainResolver.Server,
 			DomainResolveOptions: adapter.DNSQueryOptions{
 				Strategy:               C.DomainStrategy(defaultDomainResolver.Strategy),
-				Timeout:                time.Duration(defaultDomainResolver.Timeout),
 				DisableCache:           defaultDomainResolver.DisableCache,
 				DisableOptimisticCache: defaultDomainResolver.DisableOptimisticCache,
 				RewriteTTL:             defaultDomainResolver.RewriteTTL,
