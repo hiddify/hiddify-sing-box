@@ -189,3 +189,15 @@ type MDNSDNSServerOptions struct {
 	LocalDNSServerOptions
 	Interface badoption.Listable[string] `json:"interface,omitempty"`
 }
+
+type SDNSDNSServerOptions struct { //H
+	RemoteDNSServerOptions
+	Stamp string `json:"stamp"`
+}
+
+type MultiDNSServerOptions struct { //H
+	RawLocalDNSServerOptions
+	Servers      []string           `json:"servers,omitempty"`
+	Parallel     bool               `json:"parallel,omitempty"`
+	IgnoreRanges []badoption.Prefix `json:"ignore_ranges,omitempty"`
+}

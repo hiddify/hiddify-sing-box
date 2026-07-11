@@ -112,6 +112,9 @@ type RawDefaultRule struct {
 
 	// Deprecated: renamed to rule_set_ip_cidr_match_source
 	Deprecated_RulesetIPCIDRMatchSource bool `json:"rule_set_ipcidr_match_source,omitempty"`
+
+	TunnelSource      badoption.Listable[string] `json:"tunnel_source,omitempty"`      //E
+	TunnelDestination badoption.Listable[string] `json:"tunnel_destination,omitempty"` //E
 }
 
 type DefaultRule struct {

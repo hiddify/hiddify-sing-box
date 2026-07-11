@@ -7,16 +7,25 @@ type ExperimentalOptions struct {
 	ClashAPI  *ClashAPIOptions  `json:"clash_api,omitempty"`
 	V2RayAPI  *V2RayAPIOptions  `json:"v2ray_api,omitempty"`
 	Debug     *DebugOptions     `json:"debug,omitempty"`
+
+	Monitoring   *MonitoringOptions   `json:"monitoring,omitempty"`    //H
+	UnifiedDelay *UnifiedDelayOptions `json:"unified_delay,omitempty"` //H
+}
+
+type UnifiedDelayOptions struct { //H
+	Enabled bool `json:"enabled,omitempty"`
 }
 
 type CacheFileOptions struct {
-	Enabled     bool               `json:"enabled,omitempty"`
-	Path        string             `json:"path,omitempty"`
-	CacheID     string             `json:"cache_id,omitempty"`
-	StoreFakeIP bool               `json:"store_fakeip,omitempty"`
-	StoreRDRC   bool               `json:"store_rdrc,omitempty"`
-	RDRCTimeout badoption.Duration `json:"rdrc_timeout,omitempty"`
-	StoreDNS    bool               `json:"store_dns,omitempty"`
+	Enabled           bool               `json:"enabled,omitempty"`
+	Path              string             `json:"path,omitempty"`
+	CacheID           string             `json:"cache_id,omitempty"`
+	StoreFakeIP       bool               `json:"store_fakeip,omitempty"`
+	StoreRDRC         bool               `json:"store_rdrc,omitempty"`
+	StoreWARPConfig   bool               `json:"store_warp_config,omitempty"`   //H
+	StoreMASQUEConfig bool               `json:"store_masque_config,omitempty"` //H
+	RDRCTimeout       badoption.Duration `json:"rdrc_timeout,omitempty"`
+	StoreDNS          bool               `json:"store_dns,omitempty"`
 }
 
 type ClashAPIOptions struct {
