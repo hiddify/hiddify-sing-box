@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/netip"
 	"os"
+	"regexp"
+	"strings"
 
 	"github.com/sagernet/sing-box/adapter"
 	C "github.com/sagernet/sing-box/constant"
@@ -94,6 +96,10 @@ func (t *Transport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg,
 				return dns.FixedResponse(message.Id, question, addresses, C.DefaultDNSTTL), nil
 			}
 		}
+		addresses := getIpOfSslip(domain)
+		if len(addresses) > 0 {
+			return dns.FixedResponse(message.Id, question, addresses, C.DefaultDNSTTL), nil
+		}
 	}
 	return &mDNS.Msg{
 		MsgHdr: mDNS.MsgHdr{
@@ -103,4 +109,37 @@ func (t *Transport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg,
 		},
 		Question: []mDNS.Question{question},
 	}, nil
+}
+
+const (
+	ipv4Pattern = `((25[0-5]|2[0-4][0-9]|[0-1]?[0-9]?[0-9])[\.-](25[0-5]|2[0-4][0-9]|[0-1]?[0-9]?[0-9])[\.-](25[0-5]|2[0-4][0-9]|[0-1]?[0-9]?[0-9])[\.-](25[0-5]|2[0-4][0-9]|[0-1]?[0-9]?[0-9])).sslip.io$`
+	ipv6Pattern = `((([0-9a-fA-F]{1,4}-){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}-){1,7}-|([0-9a-fA-F]{1,4}-){1,6}-[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}-){1,5}(-[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}-){1,4}(-[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}-){1,3}(-[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}-){1,2}(-[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}-((-[0-9a-fA-F]{1,4}){1,6})|-((-[0-9a-fA-F]{1,4}){1,7}|-)|fe80-(-[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|--(ffff(-0{1,4}){0,1}-){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}-){1,4}-((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))).sslip.io$`
+)
+
+var (
+	ipv4Regex, _ = regexp.Compile(ipv4Pattern)
+	ipv6Regex, _ = regexp.Compile(ipv6Pattern)
+)
+
+func getIpOfSslip(sni string) []netip.Addr {
+	if !strings.HasSuffix(sni, ".sslip.io") {
+		return nil
+	}
+	submatches := ipv4Regex.FindStringSubmatch(sni)
+	ipstr := ""
+	if len(submatches) > 1 {
+		ipstr = strings.ReplaceAll(submatches[1], "-", ".")
+
+	} else {
+		submatches := ipv6Regex.FindStringSubmatch(sni)
+		if len(submatches) > 1 {
+			ipstr = strings.ReplaceAll(submatches[1], "-", ":")
+		}
+	}
+	ip, err := netip.ParseAddr(ipstr)
+	if err != nil {
+		return nil
+	}
+	return []netip.Addr{ip}
+
 }
