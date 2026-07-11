@@ -1,6 +1,7 @@
 package outbound
 
 import (
+	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
 )
 
@@ -42,4 +43,12 @@ func (a *Adapter) Network() []string {
 
 func (a *Adapter) Dependencies() []string {
 	return a.dependencies
+}
+
+func (a *Adapter) DisplayType() string {
+	return C.ProxyDisplayName(a.Type())
+}
+
+func (a *Adapter) IsReady() bool {
+	return true
 }

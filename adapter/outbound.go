@@ -17,6 +17,7 @@ type Outbound interface {
 	Tag() string
 	Network() []string
 	Dependencies() []string
+	IsReady() bool //H
 	N.Dialer
 }
 

@@ -27,6 +27,7 @@ type DNSRule interface {
 	MatchResponseTags() []string
 	MatchResponseAnonymous() bool
 	Race() bool
+	BypassIfFailed() bool
 }
 
 type RuleAction interface {

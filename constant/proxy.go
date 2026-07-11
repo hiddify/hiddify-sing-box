@@ -46,6 +46,21 @@ const (
 	TypeHysteriaRealm      = "hysteria-realm"
 	TypeACME               = "acme"
 	TypeCloudflareOriginCA = "cloudflare-origin-ca"
+	TypeWARP               = "warp"
+	TypeMieru              = "mieru"
+	TypeMASQUE             = "masque"
+	TypePsiphon            = "psiphon"
+	TypeTunnelClient       = "tunnel_client"
+	TypeTunnelServer       = "tunnel_server"
+
+	TypeHInvalidConfig = "hinvalid"        //H
+	TypeXray           = "xray"            //H
+	TypeCustom         = "custom"          //H
+	TypeAwg            = "awg"             //H
+	TypeBalancer       = "balancer"        //H
+	TypeDNSTT          = "dnstt"           //H
+	TypeGooseRelay     = "gooserelay"      //H
+	TypeSmartDNSPool   = "smart_dns_pool"  //H — local recursive-resolver pool with AIMD throttling + recovery probing (github.com/hiddify/hmrd_multi_resolver_dns)
 )
 
 const (
@@ -121,6 +136,32 @@ func ProxyDisplayName(proxyType string) string {
 		return "Tailcat"
 	case TypeCloudflared:
 		return "Cloudflared"
+	case TypeWARP:
+		return "WARP"
+	case TypeMieru:
+		return "Mieru"
+	case TypeMASQUE:
+		return "MASQUE"
+	case TypePsiphon:
+		return "Psiphon"
+	case TypeHInvalidConfig:
+		return "Invalid"
+	case TypeXray:
+		return "xray"
+	case TypeCustom:
+		return "custom"
+	case TypeTunnelClient:
+		return "Tunnel Client"
+	case TypeTunnelServer:
+		return "Tunnel Server"
+	case TypeAwg:
+		return "Awg"
+	case TypeBalancer:
+		return "Balancer"
+	case TypeDNSTT:
+		return "DNSTT"
+	case TypeGooseRelay:
+		return "GooseRelay"
 	case TypeSelector:
 		return "Selector"
 	case TypeURLTest:
@@ -129,3 +170,5 @@ func ProxyDisplayName(proxyType string) string {
 		return "Unknown"
 	}
 }
+
+const DefaultBrowserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"
