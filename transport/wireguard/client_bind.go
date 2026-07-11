@@ -100,6 +100,8 @@ func (c *ClientBind) connect() (*wireConn, error) {
 
 func (c *ClientBind) Open(port uint16) (fns []conn.ReceiveFunc, actualPort uint16, err error) {
 	select {
+	case <-c.ctx.Done():
+		return nil, 0, c.ctx.Err()
 	case <-c.done:
 		c.done = make(chan struct{})
 	default:
@@ -162,6 +164,33 @@ func (c *ClientBind) SetMark(mark uint32) error {
 	return nil
 }
 
+func (c *ClientBind) SendWithoutModify(bufs [][]byte, ep conn.Endpoint, offset int) error {
+	udpConn, err := c.connect()
+	if err != nil {
+		c.pauseManager.WaitActive()
+		time.Sleep(time.Second)
+		return err
+	}
+	destination := netip.AddrPort(ep.(remoteEndpoint))
+	for _, buf := range bufs {
+		if offset > 0 {
+			buf = buf[offset:]
+		}
+		if false && len(buf) > 3 { //do not modify to reserved
+			reserved, loaded := c.reservedForEndpoint[destination]
+			if !loaded {
+				reserved = c.reserved
+			}
+			copy(buf[1:4], reserved[:])
+		}
+		_, err = udpConn.WriteToUDPAddrPort(buf, destination)
+		if err != nil {
+			udpConn.Close()
+			return err
+		}
+	}
+	return nil
+}
 func (c *ClientBind) Send(bufs [][]byte, ep conn.Endpoint, offset int) error {
 	udpConn, err := c.connect()
 	if err != nil {
