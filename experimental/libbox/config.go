@@ -138,6 +138,11 @@ func (s *platformInterfaceStub) ReadWIFIState(ctx context.Context) adapter.WIFIS
 	return adapter.WIFIState{}
 }
 
+// H
+func (s *platformInterfaceStub) SystemCertificates() []string {
+	return nil
+}
+
 func (s *platformInterfaceStub) UsePlatformConnectionOwnerFinder() bool {
 	return false
 }

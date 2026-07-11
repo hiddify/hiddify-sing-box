@@ -187,6 +187,11 @@ func (w *platformInterfaceWrapper) ReadWIFIState(ctx context.Context) adapter.WI
 	return adapter.WIFIState(*wifiState)
 }
 
+// H: gomobile PlatformInterface does not currently expose system certificates; fall back to Go's own trust store.
+func (w *platformInterfaceWrapper) SystemCertificates() []string {
+	return nil
+}
+
 func (w *platformInterfaceWrapper) UsePlatformConnectionOwnerFinder() bool {
 	return true
 }

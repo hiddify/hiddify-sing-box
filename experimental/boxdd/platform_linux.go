@@ -125,6 +125,11 @@ func (p *linuxPlatformInterface) ReadWIFIState(ctx context.Context) adapter.WIFI
 	return adapter.WIFIState{}
 }
 
+// H
+func (p *linuxPlatformInterface) SystemCertificates() []string {
+	return nil
+}
+
 func (p *linuxPlatformInterface) UsePlatformConnectionOwnerFinder() bool {
 	return false
 }

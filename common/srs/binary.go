@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"io"
 	"net/netip"
-	"unsafe"
 
 	"github.com/sagernet/sing-box/common/ipset"
 	C "github.com/sagernet/sing-box/constant"
@@ -558,20 +557,7 @@ func writeDefaultRule(writer varbin.Writer, rule option.DefaultHeadlessRule, gen
 }
 
 func readRuleItemString(reader varbin.Reader) ([]string, error) {
-	length, err := binary.ReadUvarint(reader)
-	if err != nil {
-		return nil, err
-	}
-	var result []string
-	for range length {
-		var value []byte
-		value, err = varbin.ReadSlice[byte](reader, binary.BigEndian)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, string(value))
-	}
-	return result, nil
+	return varbin.ReadValue[[]string](reader, binary.BigEndian)
 }
 
 func writeRuleItemString(writer varbin.Writer, itemType uint8, value []string) error {
@@ -579,21 +565,11 @@ func writeRuleItemString(writer varbin.Writer, itemType uint8, value []string) e
 	if err != nil {
 		return err
 	}
-	_, err = varbin.WriteUvarint(writer, uint64(len(value)))
-	if err != nil {
-		return err
-	}
-	for _, s := range value {
-		_, err = varbin.WriteUvarint(writer, uint64(len(s)))
-		if err != nil {
-			return err
-		}
-		_, err = writer.Write([]byte(s))
-		if err != nil {
-			return err
-		}
-	}
-	return nil
+	return varbin.Write(writer, binary.BigEndian, value)
+}
+
+func readRuleItemUint8[E ~uint8](reader varbin.Reader) ([]E, error) {
+	return varbin.ReadValue[[]E](reader, binary.BigEndian)
 }
 
 func writeRuleItemUint8[E ~uint8](writer varbin.Writer, itemType uint8, value []E) error {
@@ -601,12 +577,11 @@ func writeRuleItemUint8[E ~uint8](writer varbin.Writer, itemType uint8, value []
 	if err != nil {
 		return err
 	}
-	_, err = varbin.WriteUvarint(writer, uint64(len(value)))
-	if err != nil {
-		return err
-	}
-	_, err = writer.Write(*(*[]byte)(unsafe.Pointer(&value)))
-	return err
+	return varbin.Write(writer, binary.BigEndian, value)
+}
+
+func readRuleItemUint16(reader varbin.Reader) ([]uint16, error) {
+	return varbin.ReadValue[[]uint16](reader, binary.BigEndian)
 }
 
 func writeRuleItemUint16(writer varbin.Writer, itemType uint8, value []uint16) error {
@@ -614,11 +589,7 @@ func writeRuleItemUint16(writer varbin.Writer, itemType uint8, value []uint16) e
 	if err != nil {
 		return err
 	}
-	_, err = varbin.WriteUvarint(writer, uint64(len(value)))
-	if err != nil {
-		return err
-	}
-	return binary.Write(writer, binary.BigEndian, value)
+	return varbin.Write(writer, binary.BigEndian, value)
 }
 
 func writeRuleItemCIDR(writer varbin.Writer, itemType uint8, value []string, rawSet *ipset.Set, mmap *mmapWriter) error {

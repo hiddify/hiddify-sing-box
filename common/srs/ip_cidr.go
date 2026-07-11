@@ -41,7 +41,7 @@ func WritePrefix(writer varbin.Writer, prefix netip.Prefix) error {
 	if err != nil {
 		return err
 	}
-	err = writer.WriteByte(uint8(prefix.Bits()))
+	err = binary.Write(writer, binary.BigEndian, uint8(prefix.Bits()))
 	if err != nil {
 		return err
 	}

@@ -139,6 +139,11 @@ func (p *windowsPlatformInterface) ReadWIFIState(ctx context.Context) adapter.WI
 	return adapter.WIFIState{}
 }
 
+// H
+func (p *windowsPlatformInterface) SystemCertificates() []string {
+	return nil
+}
+
 func (p *windowsPlatformInterface) UsePlatformConnectionOwnerFinder() bool {
 	return false
 }

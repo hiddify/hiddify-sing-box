@@ -32,6 +32,9 @@ type PlatformInterface interface {
 	RequestPermissionForWIFIState() error
 	ReadWIFIState(ctx context.Context) WIFIState
 
+	//H: system trust anchors sourced from the host platform, used when no local certificate store is configured.
+	SystemCertificates() []string
+
 	UsePlatformConnectionOwnerFinder() bool
 	FindConnectionOwner(request *FindConnectionOwnerRequest) (*ConnectionOwner, error)
 

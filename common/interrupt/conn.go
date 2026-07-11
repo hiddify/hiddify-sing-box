@@ -18,7 +18,8 @@ func (c *Conn) Close() error {
 	c.group.access.Lock()
 	defer c.group.access.Unlock()
 	c.group.connections.Remove(c.element)
-	return c.Conn.Close()
+	go c.Conn.Close()
+	return nil
 }
 
 func (c *Conn) ReaderReplaceable() bool {
@@ -60,4 +61,29 @@ func (c *PacketConn) WriterReplaceable() bool {
 
 func (c *PacketConn) Upstream() any {
 	return c.NetPacketConn
+}
+
+type SingPacketConn struct {
+	N.PacketConn
+	group   *Group
+	element *list.Element[*groupConnItem]
+}
+
+func (c *SingPacketConn) Close() error {
+	c.group.access.Lock()
+	defer c.group.access.Unlock()
+	c.group.connections.Remove(c.element)
+	return c.PacketConn.Close()
+}
+
+func (c *SingPacketConn) ReaderReplaceable() bool {
+	return true
+}
+
+func (c *SingPacketConn) WriterReplaceable() bool {
+	return true
+}
+
+func (c *SingPacketConn) Upstream() any {
+	return c.PacketConn
 }
