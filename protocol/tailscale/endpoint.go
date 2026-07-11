@@ -26,7 +26,6 @@ import (
 	"github.com/sagernet/sing-box/experimental/deprecated"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
-	"github.com/sagernet/sing-box/protocol/tailscale/tailssh"
 	R "github.com/sagernet/sing-box/route/rule"
 	"github.com/sagernet/sing-box/service/oomkiller"
 	"github.com/sagernet/sing-tun"
@@ -40,7 +39,6 @@ import (
 	"github.com/sagernet/sing/common/ntp"
 	"github.com/sagernet/sing/service"
 	"github.com/sagernet/sing/service/filemanager"
-	tailscaleroot "github.com/sagernet/tailscale"
 	_ "github.com/sagernet/tailscale/feature/relayserver"
 	"github.com/sagernet/tailscale/ipn"
 	"github.com/sagernet/tailscale/ipn/ipnlocal"
@@ -63,11 +61,10 @@ var (
 	_ adapter.Referrer                    = (*Endpoint)(nil)
 	_ adapter.OnDemandEndpoint            = (*Endpoint)(nil)
 	_ dialer.PacketDialerWithDestination  = (*Endpoint)(nil)
-	_ tun.Port                            = (*Endpoint)(nil)
 )
 
 func init() {
-	version.SetVersion(strings.TrimSpace(tailscaleroot.VersionDotTxt) + "-0-(sing-box " + C.Version + ")")
+	version.SetVersion("sing-box " + C.Version)
 }
 
 func RegisterEndpoint(registry *endpoint.Registry) {
@@ -90,7 +87,6 @@ type Endpoint struct {
 	returnPath        tun.Return
 	wgEngine          wgengine.ExportedUserspaceEngine
 	onReconfigHook    wgengine.ReconfigListener
-	sshReconfigHook   wgengine.ReconfigListener
 
 	cfg           *wgcfg.Config
 	routerCfg     *router.Config
@@ -114,6 +110,7 @@ type Endpoint struct {
 	udpTimeout        time.Duration
 	icmpTimeout       time.Duration
 	localBackend      atomic.Pointer[ipnlocal.LocalBackend]
+	keyAuth           bool
 	onDemand          bool
 	suspendAccess     sync.Mutex
 	idleRequested     atomic.Bool
@@ -124,7 +121,6 @@ type Endpoint struct {
 	systemInterface     bool
 	systemInterfaceName string
 	systemInterfaceMTU  uint32
-	keyAuth             bool
 	serverStarted       bool
 	started             atomic.Bool
 	systemTun           tun.Tun
@@ -136,11 +132,7 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 	if stateDirectory == "" {
 		stateDirectory = "tailscale"
 	}
-	platformInterface := service.FromContext[adapter.PlatformInterface](ctx)
 	hostname := options.Hostname
-	if hostname == "" && platformInterface != nil {
-		hostname = platformInterface.TailscaleHostname()
-	}
 	if hostname == "" {
 		osHostname, _ := os.Hostname()
 		osHostname = strings.TrimSpace(osHostname)
@@ -206,6 +198,7 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 		return nil, E.Cause(err, "create control HTTP client")
 	}
 	controlHTTPClient := &http.Client{Transport: controlTransport}
+	platformInterface := service.FromContext[adapter.PlatformInterface](ctx)
 	tailscaleEndpoint := &Endpoint{
 		Adapter:           endpoint.NewAdapter(C.TypeTailscale, tag, []string{N.NetworkTCP, N.NetworkUDP, N.NetworkICMP}, nil),
 		ctx:               ctx,
@@ -248,7 +241,6 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 		sshServerOptions:           options.SSHServer,
 		taildrop:                   newTaildropManager(ctx, logger, tag, taildropDirectory, platformInterface),
 		udpTimeout:                 udpTimeout,
-		icmpTimeout:                C.ICMPTimeout,
 		systemInterface:            options.SystemInterface,
 		systemInterfaceName:        options.SystemInterfaceName,
 		systemInterfaceMTU:         options.SystemInterfaceMTU,
@@ -301,7 +293,6 @@ func (t *Endpoint) start() error {
 		if mtu == 0 {
 			mtu = uint32(tsTUN.DefaultTUNMTU())
 		}
-		t.systemInterfaceMTU = mtu
 		tunName := t.systemInterfaceName
 		if tunName == "" {
 			tunName = tun.CalculateInterfaceName("tailscale")
@@ -363,10 +354,6 @@ func (t *Endpoint) postStart() error {
 		registerTaildropEndpoint(localBackend, t)
 		go t.taildrop.start()
 	}
-	wgEngine := localBackend.ExportEngine().(wgengine.ExportedUserspaceEngine)
-	wgEngine.SetOnReconfigListener(t.onReconfig)
-	t.wgEngine = wgEngine
-
 	t.stack = t.server.ExportNetstack().ExportIPStack()
 
 	sshEnabled := t.sshServerOptions != nil && t.sshServerOptions.Enabled
@@ -381,7 +368,7 @@ func (t *Endpoint) postStart() error {
 	}
 	err = t.editPrefs(sshEnabled)
 	if err != nil {
-		return err
+		return E.Cause(err, "update prefs")
 	}
 	if sshEnabled {
 		sshServer, err := tailssh.New(t.ctx, t.server, t.platformInterface, t.sshServerOptions, t.logger)
@@ -500,14 +487,19 @@ func (t *Endpoint) editPrefs(sshEnabled bool) error {
 	if len(t.relayServerStaticEndpoints) > 0 {
 		perfs.RelayServerStaticEndpoints = t.relayServerStaticEndpoints
 	}
-	_, err := t.server.ExportLocalBackend().EditPrefs(perfs)
+	localBackend := t.server.ExportLocalBackend()
+	_, err := localBackend.EditPrefs(perfs)
 	if err != nil {
-		return E.Cause(err, "update prefs")
+		return err
 	}
 	return nil
 }
 
 func (t *Endpoint) applyExitNode() error {
+	if t.exitNode == "" {
+		return nil
+	}
+	localBackend := t.server.ExportLocalBackend()
 	status, err := common.Must1(t.server.LocalClient()).Status(t.ctx)
 	if err != nil {
 		return err
@@ -523,8 +515,11 @@ func (t *Endpoint) applyExitNode() error {
 	if err != nil {
 		return err
 	}
-	_, err = t.server.ExportLocalBackend().EditPrefs(perfs)
-	return err
+	_, err = localBackend.EditPrefs(perfs)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (t *Endpoint) SetTailscaleExitNode(ctx context.Context, stableID string) error {
@@ -566,38 +561,6 @@ func (t *Endpoint) SetTailscaleExitNode(ctx context.Context, stableID string) er
 	_, err := t.server.ExportLocalBackend().EditPrefs(perfs)
 	if err != nil {
 		return E.Cause(err, "update prefs")
-	}
-	return nil
-}
-
-func (t *Endpoint) Logout(ctx context.Context) error {
-	if !t.started.Load() {
-		return E.New("Tailscale is not ready yet")
-	}
-	err := common.Must1(t.server.LocalClient()).Logout(ctx)
-	if err != nil {
-		return E.Cause(err, "tailscale logout")
-	}
-	// LocalBackend.Logout deletes the profile and restarts the backend with
-	// empty preferences, and only tsnet.Server.Start performs the login
-	// bootstrap, so redo it here to obtain a new auth URL.
-	localBackend := t.server.ExportLocalBackend()
-	prefs := ipn.NewPrefs()
-	prefs.Hostname = t.server.Hostname
-	prefs.WantRunning = true
-	prefs.ControlURL = t.server.ControlURL
-	prefs.AdvertiseTags = t.server.AdvertiseTags
-	err = localBackend.Start(ipn.Options{UpdatePrefs: prefs})
-	if err != nil {
-		return E.Cause(err, "restart backend")
-	}
-	err = t.editPrefs(t.sshServerInstance != nil)
-	if err != nil {
-		return err
-	}
-	err = localBackend.StartLoginInteractive(ctx)
-	if err != nil {
-		return E.Cause(err, "start interactive login")
 	}
 	return nil
 }
@@ -926,7 +889,7 @@ func (t *Endpoint) NewPacketConnectionEx(_ context.Context, conn N.PacketConn, s
 	t.router.RoutePacketConnectionEx(ctx, conn, metadata, onClose)
 }
 
-func (t *Endpoint) PreferredDomain(metadata *adapter.InboundContext, domain string) bool {
+func (t *Endpoint) PreferredDomain(domain string) bool {
 	routeDomains := t.routeDomains.Load()
 	if routeDomains == nil {
 		return false
@@ -976,6 +939,15 @@ func (t *Endpoint) onReconfig(cfg *wgcfg.Config, routerCfg *router.Config, dnsCf
 		t.dnsCfg != nil && reflect.DeepEqual(t.dnsCfg, dnsCfg) {
 		return
 	}
+	var inet4Address, inet6Address netip.Addr
+	for _, address := range cfg.Addresses {
+		if address.Addr().Is4() {
+			inet4Address = address.Addr()
+		} else if address.Addr().Is6() {
+			inet6Address = address.Addr()
+		}
+	}
+	t.icmpForwarder.SetLocalAddresses(inet4Address, inet6Address)
 	t.cfg = cfg
 	t.routerCfg = routerCfg
 	t.dnsCfg = dnsCfg
@@ -997,9 +969,6 @@ func (t *Endpoint) onReconfig(cfg *wgcfg.Config, routerCfg *router.Config, dnsCf
 
 	if t.onReconfigHook != nil {
 		t.onReconfigHook(cfg, routerCfg, dnsCfg)
-	}
-	if t.sshReconfigHook != nil {
-		t.sshReconfigHook(cfg, routerCfg, dnsCfg)
 	}
 }
 
