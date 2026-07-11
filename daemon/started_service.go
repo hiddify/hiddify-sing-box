@@ -203,7 +203,7 @@ func (s *StartedService) StartOrReloadService(profileContent string, options *Ov
 	s.instance = instance
 	instance.urlTestHistoryStorage.AddUpdateHook(s.urlTestSubscriber)
 	if instance.clashServer != nil {
-		instance.clashServer.AddModeUpdateHook(s.clashModeSubscriber)
+		instance.clashServer.SetModeUpdateHook(s.clashModeSubscriber)
 	}
 	s.serviceAccess.Unlock()
 	err = instance.Start()
