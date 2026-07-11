@@ -43,6 +43,7 @@ import (
 	"github.com/sagernet/sing-box/protocol/tor"
 	"github.com/sagernet/sing-box/protocol/trojan"
 	"github.com/sagernet/sing-box/protocol/tun"
+	"github.com/sagernet/sing-box/protocol/firebasetunnel"
 	"github.com/sagernet/sing-box/protocol/tunnel"
 	"github.com/sagernet/sing-box/protocol/vless"
 	"github.com/sagernet/sing-box/protocol/vmess"
@@ -79,6 +80,7 @@ func InboundRegistry() *inbound.Registry {
 	mieru.RegisterInbound(registry)
 	ssh.RegisterInbound(registry)
 	snellprotocol.RegisterInbound(registry)
+	firebasetunnel.RegisterInbound(registry)
 
 	registerQUICInbounds(registry)
 	registerCloudflaredInbound(registry)
@@ -114,6 +116,7 @@ func OutboundRegistry() *outbound.Registry {
 	xray.RegisterOutbound(registry)
 	dnstt.RegisterOutbound(registry)
 	gooserelay.RegisterOutbound(registry)
+	firebasetunnel.RegisterOutbound(registry)
 	balancer.RegisterLoadBalance(registry)
 	snellprotocol.RegisterOutbound(registry)
 
@@ -129,7 +132,6 @@ func EndpointRegistry() *endpoint.Registry {
 
 	tunnel.RegisterServerEndpoint(registry)
 	tunnel.RegisterClientEndpoint(registry)
-
 	registerWireGuardEndpoint(registry)
 	registerWarpEndpoint(registry)
 	registerTailscaleEndpoint(registry)
