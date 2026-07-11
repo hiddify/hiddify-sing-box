@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 
 	E "github.com/sagernet/sing/common/exceptions"
+	"github.com/sagernet/sing/common/varbin"
 )
 
 type Reader struct {
@@ -71,7 +72,7 @@ func (r *Reader) readMetadata() error {
 			codeIndex  uint64
 			codeLength uint64
 		)
-		code, err = readString(reader)
+		code, err = varbin.ReadValue[string](reader, binary.BigEndian)
 		if err != nil {
 			return err
 		}

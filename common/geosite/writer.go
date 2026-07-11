@@ -2,6 +2,7 @@ package geosite
 
 import (
 	"bytes"
+	"encoding/binary"
 	"sort"
 
 	"github.com/sagernet/sing/common/varbin"
@@ -41,7 +42,7 @@ func Write(writer varbin.Writer, domains map[string][]Item) error {
 	}
 
 	for _, code := range keys {
-		err = writeString(writer, code)
+		err = varbin.Write(writer, binary.BigEndian, code)
 		if err != nil {
 			return err
 		}

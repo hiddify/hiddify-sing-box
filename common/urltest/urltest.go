@@ -3,6 +3,7 @@ package urltest
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"net"
 	"net/http"
 	"net/url"
@@ -39,6 +40,10 @@ func (s *HistoryStorage) AddUpdateHook(hook *observable.Subscriber[struct{}]) {
 	s.updateHooks = append(s.updateHooks, hook)
 }
 
+func (s *HistoryStorage) SetHook(hook *observable.Subscriber[struct{}]) {
+	s.AddUpdateHook(hook)
+}
+
 func (s *HistoryStorage) NotifyUpdated() {
 	s.access.RLock()
 	defer s.access.RUnlock()
@@ -55,17 +60,39 @@ func (s *HistoryStorage) LoadURLTestHistory(tag string) *adapter.URLTestHistory 
 }
 
 func (s *HistoryStorage) DeleteURLTestHistory(tag string) {
-	s.access.Lock()
-	delete(s.delayHistory, tag)
-	s.notifyUpdated()
-	s.access.Unlock()
+	s.StoreURLTestHistory(tag, &adapter.URLTestHistory{
+		Delay: 65535,
+		Time:  time.Now(),
+	})
+	// s.access.Lock()
+	// // delete(s.delayHistory, tag)
+	// s.access.Unlock()
+	// s.notifyUpdated()
 }
 
-func (s *HistoryStorage) StoreURLTestHistory(tag string, history *adapter.URLTestHistory) {
+func (s *HistoryStorage) StoreURLTestHistory(tag string, history *adapter.URLTestHistory) *adapter.URLTestHistory {
 	s.access.Lock()
-	s.delayHistory[tag] = history
-	s.notifyUpdated()
+	if old, ok := s.delayHistory[tag]; ok && history != nil {
+		old.Delay = history.Delay
+		old.Time = history.Time
+	} else {
+		s.delayHistory[tag] = history
+	}
+	history = s.delayHistory[tag]
 	s.access.Unlock()
+	s.notifyUpdated()
+	return history
+}
+
+// AddOnlyIpToHistory is a placeholder until per-history IP info (hiddify/ipinfo) lands;
+// it currently just ensures a history entry exists without overwriting the delay/time.
+func (s *HistoryStorage) AddOnlyIpToHistory(tag string, history *adapter.URLTestHistory) {
+	s.access.Lock()
+	if _, ok := s.delayHistory[tag]; !ok && history != nil {
+		s.delayHistory[tag] = history
+	}
+	s.access.Unlock()
+	s.notifyUpdated()
 }
 
 func (s *HistoryStorage) notifyUpdated() {
@@ -82,6 +109,9 @@ func (s *HistoryStorage) Close() error {
 }
 
 func URLTest(ctx context.Context, link string, detour N.Dialer) (uint16, error) {
+	if detour == nil {
+		return 0, fmt.Errorf("urltest dialer is nil")
+	}
 	multiplexOutbound, isMultiplexOutbound := common.Cast[adapter.OutboundWithMultiplex](detour)
 	if isMultiplexOutbound && multiplexOutbound.MultiplexEnabled() {
 		warmContext := adapter.ContextWithKeepSession(ctx)
@@ -129,6 +159,11 @@ func urlTest(ctx context.Context, link string, detour N.Dialer) (t uint16, err e
 	if err != nil {
 		return
 	}
+	select {
+	case <-ctx.Done():
+		return
+	default:
+	}
 	client := http.Client{
 		Transport: &http.Transport{
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -145,11 +180,32 @@ func urlTest(ctx context.Context, link string, detour N.Dialer) (t uint16, err e
 		Timeout: C.TCPTimeout,
 	}
 	defer client.CloseIdleConnections()
+	select {
+	case <-ctx.Done():
+		return
+	default:
+	}
 	resp, err := client.Do(req.WithContext(ctx))
 	if err != nil {
 		return
 	}
 	resp.Body.Close()
+
 	t = uint16(time.Since(start) / time.Millisecond)
+
+	if IsUnifiedDelayFromContext(ctx) {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		second := time.Now()
+		resp, err = client.Do(req)
+		if err != nil {
+			return
+		}
+		resp.Body.Close()
+		t = uint16(time.Since(second) / time.Millisecond) //to avid timeout in the second call
+	}
 	return
 }
