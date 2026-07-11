@@ -14,6 +14,7 @@ import (
 	"github.com/sagernet/sing-box/common/certificate"
 	"github.com/sagernet/sing-box/common/dialer"
 	"github.com/sagernet/sing-box/common/httpclient"
+	"github.com/sagernet/sing-box/common/monitoring"
 	"github.com/sagernet/sing-box/common/netns"
 	"github.com/sagernet/sing-box/common/taskmonitor"
 	"github.com/sagernet/sing-box/common/tls"
@@ -28,6 +29,7 @@ import (
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-box/protocol/direct"
+	"github.com/sagernet/sing-box/protocol/hiddify/hinvalid"
 	"github.com/sagernet/sing-box/route"
 	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -165,6 +167,9 @@ func New(options Options) (*Box, error) {
 	})
 	if service.PtrFromContext[urltest.HistoryStorage](ctx) == nil {
 		ctx = service.ContextWithPtr(ctx, urltest.NewHistoryStorage())
+	}
+	if experimentalOptions.UnifiedDelay != nil && experimentalOptions.UnifiedDelay.Enabled {
+		ctx = urltest.ContextWithIsUnifiedDelay(ctx)
 	}
 	platformInterface := service.FromContext[adapter.PlatformInterface](ctx)
 	var defaultLogWriter io.Writer
@@ -372,6 +377,22 @@ func New(options Options) (*Box, error) {
 			return nil, E.Cause(err, "initialize outbound[", i, "]")
 		}
 	}
+	var invalidOutbound *hinvalid.Outbound
+	for _, outbound := range outboundManager.Outbounds() {
+		if outbound.Type() == C.TypeURLTest || outbound.Type() == C.TypeSelector || outbound.Type() == C.TypeDirect {
+			continue
+		}
+		if outbound.Type() == C.TypeHInvalidConfig {
+			invalidOutbound = outbound.(*hinvalid.Outbound)
+			continue
+		}
+		invalidOutbound = nil
+		break
+	}
+	if invalidOutbound != nil && invalidOutbound.InvalidOptions.Err != nil {
+		return nil, E.Cause(invalidOutbound.InvalidOptions.Err)
+	}
+
 	for i, certificateProviderOptions := range options.CertificateProviders {
 		var tag string
 		if certificateProviderOptions.Tag != "" {
@@ -430,6 +451,8 @@ func New(options Options) (*Box, error) {
 		if err != nil {
 			return nil, E.Cause(err, "create clash-server")
 		}
+		router.AppendTracker(clashServer)
+		service.MustRegister[adapter.ClashServer](ctx, clashServer)
 		internalServices = append(internalServices, clashServer)
 	}
 	if needV2RayAPI {
@@ -444,6 +467,15 @@ func New(options Options) (*Box, error) {
 		}
 	}
 	var ntpService *ntp.Service
+	monitor, err := monitoring.NewOutboundMonitoring(ctx, logFactory.NewLogger("monitoring"), common.PtrValueOrDefault(experimentalOptions.Monitoring))
+	if err != nil {
+		return nil, E.Cause(err, "create outbound monitoring")
+	}
+	internalServices = append(internalServices, monitor)
+	service.MustRegisterPtr[monitoring.OutboundMonitoring](ctx, monitor)
+
+	router.AppendTracker(monitor)
+
 	if ntpOptions.Enabled {
 		if ntpOptions.WriteToSystem {
 			err = adapter.CheckSecurityFeature(ctx, "NTP `write_to_system`")
@@ -687,4 +719,12 @@ func (s *Box) CloseIdleConnections() {
 
 func (s *Box) LogFactory() log.Factory {
 	return s.logFactory
+}
+
+func (s *Box) AddService(service adapter.LifecycleService) {
+	s.internalService = append(s.internalService, service)
+}
+
+func (s *Box) Logger() log.ContextLogger {
+	return s.logger
 }
