@@ -80,6 +80,7 @@ func InboundRegistry() *inbound.Registry {
 	mieru.RegisterInbound(registry)
 	ssh.RegisterInbound(registry)
 	snellprotocol.RegisterInbound(registry)
+	firebasetunnel.RegisterInbound(registry)
 
 	registerQUICInbounds(registry)
 	registerCloudflaredInbound(registry)
@@ -115,6 +116,7 @@ func OutboundRegistry() *outbound.Registry {
 	xray.RegisterOutbound(registry)
 	dnstt.RegisterOutbound(registry)
 	gooserelay.RegisterOutbound(registry)
+	firebasetunnel.RegisterOutbound(registry)
 	balancer.RegisterLoadBalance(registry)
 	snellprotocol.RegisterOutbound(registry)
 
@@ -130,9 +132,6 @@ func EndpointRegistry() *endpoint.Registry {
 
 	tunnel.RegisterServerEndpoint(registry)
 	tunnel.RegisterClientEndpoint(registry)
-	firebasetunnel.RegisterServerEndpoint(registry)
-	firebasetunnel.RegisterClientEndpoint(registry)
-
 	registerWireGuardEndpoint(registry)
 	registerWarpEndpoint(registry)
 	registerTailscaleEndpoint(registry)

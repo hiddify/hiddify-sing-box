@@ -8,10 +8,9 @@ import (
 	"time"
 )
 
-// TestRelayRoundTrip exercises the full chunk relay pipeline end-to-end using
-// the fakeFirebaseServer (with SSE). It simulates what handleSession does:
-// one side runs runRelay (server), the other side runs runSession (client),
-// and bytes must flow both directions correctly.
+// TestRelayRoundTrip exercises the full chunk relay pipeline end-to-end.
+// It uses the relay (server) and session (client) helpers directly against
+// the fakeFirebaseServer with SSE support.
 func TestRelayRoundTrip(t *testing.T) {
 	srv := newFakeFirebaseServer()
 	defer srv.Close()
@@ -23,36 +22,39 @@ func TestRelayRoundTrip(t *testing.T) {
 	sessionID := "e2e-relay-test"
 	hmacKey := deriveHMACKey("relay-secret")
 
-	// server side: local↔remote pipe; runRelay on remote end
+	// server side: local↔remote pipe; inbound runRelay on remote end
 	serverLocal, serverRemote := net.Pipe()
+
+	inb := &Inbound{
+		fb:           fb,
+		pollInterval: 20 * time.Millisecond,
+		sessionTimeout: 10 * time.Second,
+	}
 
 	serverDone := make(chan struct{})
 	go func() {
 		defer close(serverDone)
-		s := &Endpoint{
-			fb:  fb,
-			srv: &serverState{pollInterval: 20 * time.Millisecond, sessionTimeout: 10 * time.Second},
-		}
-		s.runRelay(ctx, sessionID, serverRemote, nil, hmacKey)
+		inb.runRelay(ctx, sessionID, serverRemote, nil, hmacKey)
 	}()
 
-	// client side: runSession writes c2s to Firebase, reads s2c from Firebase.
+	// client side: outbound runSession writes c2s, reads s2c
 	clientLocal, clientRemote := net.Pipe()
+
+	out := &Outbound{
+		fb:            fb,
+		key:           nil,
+		hmacKey:       hmacKey,
+		batchInterval: 20 * time.Millisecond,
+		batchMaxBytes: defaultBatchMaxBytes,
+	}
 
 	clientDone := make(chan struct{})
 	go func() {
 		defer close(clientDone)
-		c := &Endpoint{
-			fb:            fb,
-			key:           nil,
-			hmacKey:       hmacKey,
-			batchInterval: 20 * time.Millisecond,
-			batchMaxBytes: defaultBatchMaxBytes,
-		}
-		c.runSession(ctx, sessionID, clientRemote)
+		out.runSession(ctx, sessionID, clientRemote)
 	}()
 
-	// Echo goroutine on server's local end: read what server delivers, write it back.
+	// Echo goroutine on server's local end.
 	echoDone := make(chan struct{})
 	go func() {
 		defer close(echoDone)
@@ -95,28 +97,33 @@ func TestRelayEncryptedRoundTrip(t *testing.T) {
 	key := deriveKey(psk)
 
 	serverLocal, serverRemote := net.Pipe()
+
+	inb := &Inbound{
+		fb:             fb,
+		pollInterval:   20 * time.Millisecond,
+		sessionTimeout: 10 * time.Second,
+	}
+
 	serverDone := make(chan struct{})
 	go func() {
 		defer close(serverDone)
-		s := &Endpoint{
-			fb:  fb,
-			srv: &serverState{pollInterval: 20 * time.Millisecond, sessionTimeout: 10 * time.Second},
-		}
-		s.runRelay(ctx, sessionID, serverRemote, &key, nil)
+		inb.runRelay(ctx, sessionID, serverRemote, &key, nil)
 	}()
 
 	clientLocal, clientRemote := net.Pipe()
+
+	out := &Outbound{
+		fb:            fb,
+		key:           &key,
+		hmacKey:       nil,
+		batchInterval: 20 * time.Millisecond,
+		batchMaxBytes: defaultBatchMaxBytes,
+	}
+
 	clientDone := make(chan struct{})
 	go func() {
 		defer close(clientDone)
-		c := &Endpoint{
-			fb:            fb,
-			key:           &key,
-			hmacKey:       nil,
-			batchInterval: 20 * time.Millisecond,
-			batchMaxBytes: defaultBatchMaxBytes,
-		}
-		c.runSession(ctx, sessionID, clientRemote)
+		out.runSession(ctx, sessionID, clientRemote)
 	}()
 
 	go io.Copy(serverLocal, serverLocal) //nolint:errcheck
