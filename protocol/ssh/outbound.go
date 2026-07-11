@@ -15,6 +15,7 @@ import (
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/outbound"
 	"github.com/sagernet/sing-box/common/dialer"
+	"github.com/sagernet/sing-box/common/monitoring"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
@@ -23,6 +24,7 @@ import (
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
+	"github.com/sagernet/sing/common/uot"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -50,6 +52,8 @@ type Outbound struct {
 	clientAccess      sync.Mutex
 	clientConn        net.Conn
 	client            *ssh.Client
+	uotClient         *uot.Client
+	connectionErr     string
 }
 
 func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.SSHOutboundOptions) (adapter.Outbound, error) {
@@ -57,8 +61,9 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 	if err != nil {
 		return nil, err
 	}
+
 	outbound := &Outbound{
-		Adapter:           outbound.NewAdapterWithDialerOptions(C.TypeSSH, tag, []string{N.NetworkTCP}, options.DialerOptions),
+		Adapter:           outbound.NewAdapterWithDialerOptions(C.TypeSSH, tag, options.Network.Build(), options.DialerOptions),
 		ctx:               ctx,
 		logger:            logger,
 		dialer:            outboundDialer,
@@ -114,6 +119,13 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 			outbound.hostKey = append(outbound.hostKey, key)
 		}
 	}
+	uotOptions := common.PtrValueOrDefault(options.UDPOverTCP)
+	if uotOptions.Enabled {
+		outbound.uotClient = &uot.Client{
+			Dialer:  outbound,
+			Version: uotOptions.Version,
+		}
+	}
 	return outbound, nil
 }
 
@@ -158,6 +170,7 @@ func (s *Outbound) connect() (*ssh.Client, error) {
 					return nil
 				}
 			}
+
 			return E.New("host key mismatch, server send ", key.Type(), " ", base64.StdEncoding.EncodeToString(serverKey))
 		},
 	}
@@ -193,6 +206,14 @@ func (s *Outbound) connect() (*ssh.Client, error) {
 	return client, nil
 }
 
+func (s *Outbound) PostStart() error {
+	s.connect()
+	if s.IsReady() {
+		monitoring.Get(s.ctx).TestNow(s.Tag())
+	}
+	return nil
+}
+
 func (s *Outbound) InterfaceUpdated() {
 	common.Close(s.clientConn)
 }
@@ -202,9 +223,27 @@ func (s *Outbound) Close() error {
 }
 
 func (s *Outbound) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
+	ctx, metadata := adapter.ExtendContext(ctx)
+	metadata.Outbound = s.Tag()
+	metadata.Destination = destination
 	client, err := s.connect()
 	if err != nil {
+		s.connectionErr = err.Error()
 		return nil, err
+	}
+	s.connectionErr = ""
+
+	switch N.NetworkName(network) {
+
+	case N.NetworkTCP:
+		s.logger.InfoContext(ctx, "outbound connection to ", destination)
+	case N.NetworkUDP:
+		if s.uotClient != nil {
+			s.logger.InfoContext(ctx, "outbound UoT connect packet connection to ", destination)
+			return s.uotClient.DialContext(ctx, network, destination)
+		} else {
+			s.logger.InfoContext(ctx, "outbound packet connection to ", destination)
+		}
 	}
 	conn, err := client.Dial(network, destination.String())
 	if err != nil {
@@ -214,6 +253,16 @@ func (s *Outbound) DialContext(ctx context.Context, network string, destination 
 }
 
 func (s *Outbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
+	ctx, metadata := adapter.ExtendContext(ctx)
+	metadata.Outbound = s.Tag()
+	metadata.Destination = destination
+	if s.uotClient != nil {
+		s.logger.InfoContext(ctx, "outbound UoT packet connection to ", destination)
+		return s.uotClient.ListenPacket(ctx, destination)
+	} else {
+		s.logger.InfoContext(ctx, "outbound packet connection to ", destination)
+	}
+
 	return nil, os.ErrInvalid
 }
 
@@ -231,4 +280,20 @@ func (c *chanConnWrapper) SetReadDeadline(t time.Time) error {
 
 func (c *chanConnWrapper) SetWriteDeadline(t time.Time) error {
 	return os.ErrInvalid
+}
+
+func (s *Outbound) IsReady() bool {
+	return s.client != nil
+}
+func (s *Outbound) ProxyDisplayName() string {
+	str := C.ProxyDisplayName(s.Type())
+	if !s.IsReady() {
+		if s.connectionErr != "" {
+			str += " ❌ "
+			str += s.connectionErr
+		} else {
+			str += " ⚠️ Connecting..."
+		}
+	}
+	return s.connectionErr
 }
