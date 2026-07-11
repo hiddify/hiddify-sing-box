@@ -14,16 +14,20 @@ import (
 
 	"github.com/sagernet/cors"
 	"github.com/sagernet/sing-box/adapter"
-	"github.com/sagernet/sing-box/common/trafficcontrol"
 	"github.com/sagernet/sing-box/common/urltest"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/experimental"
+	"github.com/sagernet/sing-box/experimental/clashapi/trafficontrol"
 	"github.com/sagernet/sing-box/experimental/clashmode"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
+	tun "github.com/sagernet/sing-tun"
 	"github.com/sagernet/sing/common"
+	"github.com/sagernet/sing/common/cleanup"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/json"
+	N "github.com/sagernet/sing/common/network"
+	"github.com/sagernet/sing/common/observable"
 	"github.com/sagernet/sing/service"
 	"github.com/sagernet/sing/service/filemanager"
 	"github.com/sagernet/ws"
@@ -48,10 +52,11 @@ type Server struct {
 	endpoint       adapter.EndpointManager
 	logger         log.Logger
 	httpServer     *http.Server
-	trafficManager *trafficcontrol.Manager
+	trafficManager *trafficontrol.Manager
 	urlTestHistory *urltest.HistoryStorage
 	clashMode      *clashmode.Manager
 	logDebug       bool
+	cleaner        *cleanup.Cleaner
 
 	externalController       bool
 	externalUI               string
@@ -59,14 +64,10 @@ type Server struct {
 	externalUIDownloadDetour string
 }
 
-func NewServer(ctx context.Context, logFactory log.ObservableFactory, options option.ClashAPIOptions) (adapter.LifecycleService, error) {
-	trafficManager := service.PtrFromContext[trafficcontrol.Manager](ctx)
+func NewServer(ctx context.Context, logFactory log.ObservableFactory, options option.ClashAPIOptions) (adapter.ClashServer, error) {
+	trafficManager := service.PtrFromContext[trafficontrol.Manager](ctx)
 	if trafficManager == nil {
 		return nil, E.New("missing traffic manager")
-	}
-	urlTestHistory := service.PtrFromContext[urltest.HistoryStorage](ctx)
-	if urlTestHistory == nil {
-		return nil, E.New("missing URL test history storage")
 	}
 	clashMode := service.PtrFromContext[clashmode.Manager](ctx)
 	if clashMode == nil {
@@ -86,12 +87,16 @@ func NewServer(ctx context.Context, logFactory log.ObservableFactory, options op
 			Handler: chiRouter,
 		},
 		trafficManager:           trafficManager,
-		urlTestHistory:           urlTestHistory,
 		clashMode:                clashMode,
 		logDebug:                 logFactory.Level() >= log.LevelDebug,
 		externalController:       options.ExternalController != "",
 		externalUIDownloadURL:    options.ExternalUIDownloadURL,
 		externalUIDownloadDetour: options.ExternalUIDownloadDetour,
+		cleaner:                  cleanup.Add(trafficManager.Clear),
+	}
+	s.urlTestHistory = service.PtrFromContext[urltest.HistoryStorage](ctx)
+	if s.urlTestHistory == nil {
+		s.urlTestHistory = urltest.NewHistoryStorage()
 	}
 	//goland:noinspection GoDeprecation
 	//nolint:staticcheck
@@ -182,9 +187,55 @@ func (s *Server) Start(stage adapter.StartStage) error {
 func (s *Server) Close() error {
 	return common.Close(
 		common.PtrOrNil(s.httpServer),
+		s.trafficManager,
+		s.urlTestHistory,
+		common.PtrOrNil(s.cleaner),
 	)
 }
 
+func (s *Server) Mode() string {
+	return s.clashMode.Mode()
+}
+
+func (s *Server) ModeList() []string {
+	return s.clashMode.ModeList()
+}
+
+func (s *Server) SetMode(newMode string) {
+	s.clashMode.SetMode(newMode)
+}
+
+func (s *Server) SetModeUpdateHook(hook *observable.Subscriber[struct{}]) {
+	s.clashMode.AddUpdateHook(hook)
+}
+
+func (s *Server) HistoryStorage() adapter.URLTestHistoryStorage {
+	return s.urlTestHistory
+}
+
+func (s *Server) TrafficManager() *trafficontrol.Manager {
+	return s.trafficManager
+}
+
+func (s *Server) RoutedConnection(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, matchedRule adapter.Rule, matchOutbound adapter.Outbound) net.Conn {
+	return trafficontrol.NewTCPTracker(conn, s.trafficManager, metadata, s.outbound, matchedRule, matchOutbound)
+}
+
+func (s *Server) RoutedPacketConnection(ctx context.Context, conn N.PacketConn, metadata adapter.InboundContext, matchedRule adapter.Rule, matchOutbound adapter.Outbound) N.PacketConn {
+	return trafficontrol.NewUDPTracker(conn, s.trafficManager, metadata, s.outbound, matchedRule, matchOutbound)
+}
+
+type noopFlowTracker struct{}
+
+func (noopFlowTracker) AttachFlow(tun.FlowHandle)     {}
+func (noopFlowTracker) CountForward(int)              {}
+func (noopFlowTracker) CountReverse(int)              {}
+func (noopFlowTracker) FlowEstablished()              {}
+func (noopFlowTracker) CloseFlow(tun.FlowCloseReason) {}
+
+func (s *Server) RoutedFlow(ctx context.Context, metadata adapter.InboundContext, matchedRule adapter.Rule, matchOutbound adapter.Outbound) tun.FlowTracker {
+	return noopFlowTracker{}
+}
 func authentication(serverSecret string) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		fn := func(w http.ResponseWriter, r *http.Request) {
@@ -237,7 +288,7 @@ type Traffic struct {
 	Down int64 `json:"down"`
 }
 
-func traffic(ctx context.Context, trafficManager *trafficcontrol.Manager) func(w http.ResponseWriter, r *http.Request) {
+func traffic(ctx context.Context, trafficManager *trafficontrol.Manager) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var conn net.Conn
 		if r.Header.Get("Upgrade") == "websocket" {

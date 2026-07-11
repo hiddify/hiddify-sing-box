@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net"
 	"net/netip"
+	"os"
 	"runtime"
 	"strconv"
 	"sync"
@@ -187,9 +188,8 @@ func (w *platformInterfaceWrapper) ReadWIFIState(ctx context.Context) adapter.WI
 	return adapter.WIFIState(*wifiState)
 }
 
-// H: gomobile PlatformInterface does not currently expose system certificates; fall back to Go's own trust store.
 func (w *platformInterfaceWrapper) SystemCertificates() []string {
-	return nil
+	return iteratorToArray[string](w.iif.SystemCertificates())
 }
 
 func (w *platformInterfaceWrapper) UsePlatformConnectionOwnerFinder() bool {
@@ -269,11 +269,11 @@ func (w *platformInterfaceWrapper) CloseNeighborMonitor(listener adapter.Neighbo
 }
 
 func (w *platformInterfaceWrapper) UsePlatformShell() bool {
-	return w.iif.UsePlatformShell()
+	return false
 }
 
 func (w *platformInterfaceWrapper) CheckPlatformShell() error {
-	return w.iif.CheckPlatformShell()
+	return os.ErrInvalid
 }
 
 func (w *platformInterfaceWrapper) OpenShellSession(user *adapter.PlatformUser, command string, environ []string, term string, rows int32, cols int32) (adapter.ShellSession, error) {
@@ -437,18 +437,7 @@ func (w *autoRedirectHandlerWrapper) WriteLog(level int32, message string) {
 }
 
 func (w *platformInterfaceWrapper) LookupUser(username string) (*adapter.PlatformUser, error) {
-	platformUser, err := w.iif.LookupUser(username)
-	if err != nil {
-		return nil, err
-	}
-	return &adapter.PlatformUser{
-		Username: platformUser.Username,
-		Uid:      int(platformUser.Uid),
-		Gid:      int(platformUser.Gid),
-		HomeDir:  platformUser.HomeDir,
-		Shell:    platformUser.Shell,
-		Groups:   common.Map(iteratorToArray[int32](platformUser.Groups()), func(g int32) int { return int(g) }),
-	}, nil
+	return nil, os.ErrInvalid
 }
 
 type neighborUpdateListenerWrapper struct {

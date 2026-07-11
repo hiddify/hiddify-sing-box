@@ -52,6 +52,8 @@ type CacheFile struct {
 	cacheIDText       string
 	storeFakeIP       bool
 	storeRDRC         bool
+	storeWARPConfig   bool
+	storeMASQUEConfig bool
 	storeDNS          bool
 	disableExpire     bool
 	rdrcTimeout       time.Duration
@@ -110,21 +112,23 @@ func New(ctx context.Context, logger logger.Logger, options option.CacheFileOpti
 	flushTimer := time.NewTimer(time.Hour)
 	flushTimer.Stop()
 	return &CacheFile{
-		ctx:           ctx,
-		logger:        logger,
-		path:          filemanager.BasePath(ctx, path),
-		cacheID:       cacheIDBytes,
-		cacheIDText:   options.CacheID,
-		storeFakeIP:   options.StoreFakeIP,
-		storeRDRC:     storeRDRC,
-		storeDNS:      options.StoreDNS,
-		rdrcTimeout:   rdrcTimeout,
-		bufferSize:    bufferSize,
-		flushInterval: time.Duration(options.FlushInterval),
-		pending:       newPendingWrites(),
-		flushTimer:    flushTimer,
-		flushSignal:   make(chan struct{}, 1),
-		done:          make(chan struct{}),
+		ctx:               ctx,
+		logger:            logger,
+		path:              filemanager.BasePath(ctx, path),
+		cacheID:           cacheIDBytes,
+		cacheIDText:       options.CacheID,
+		storeFakeIP:       options.StoreFakeIP,
+		storeRDRC:         storeRDRC,
+		storeWARPConfig:   options.StoreWARPConfig,
+		storeMASQUEConfig: options.StoreMASQUEConfig,
+		storeDNS:          options.StoreDNS,
+		rdrcTimeout:       rdrcTimeout,
+		bufferSize:        bufferSize,
+		flushInterval:     time.Duration(options.FlushInterval),
+		pending:           newPendingWrites(),
+		flushTimer:        flushTimer,
+		flushSignal:       make(chan struct{}, 1),
+		done:              make(chan struct{}),
 	}
 }
 
@@ -484,4 +488,20 @@ func (c *CacheFile) SaveRuleSet(tag string, set *adapter.SavedBinary) error {
 		}
 		return bucket.Put([]byte(tag), setBinary)
 	})
+}
+
+func (c *CacheFile) StoreWARPConfig() bool {
+	return c.storeWARPConfig
+}
+
+func (c *CacheFile) StoreMASQUEConfig() bool {
+	return c.storeMASQUEConfig
+}
+
+func (c *CacheFile) LoadBinary(tag string) *adapter.SavedBinary {
+	return c.LoadRuleSet(tag)
+}
+
+func (c *CacheFile) SaveBinary(tag string, set *adapter.SavedBinary) error {
+	return c.SaveRuleSet(tag, set)
 }
