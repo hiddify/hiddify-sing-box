@@ -138,9 +138,8 @@ func create(options option.Options) (*box.Box, context.CancelFunc, error) {
 	}
 	ctx, cancel := context.WithCancel(globalCtx)
 	instance, err := box.New(box.Options{
-		Context:                    ctx,
-		Options:                    options,
-		NetworkNamespaceHolderArgs: []string{"/proc/self/exe", commandNetnsHolder.Use},
+		Context: ctx,
+		Options: options,
 	})
 	if err != nil {
 		cancel()
