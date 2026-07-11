@@ -1,0 +1,76 @@
+package badoption
+
+import (
+	"encoding/json"
+	"fmt"
+	"strconv"
+	"strings"
+
+	"github.com/sagernet/sing-box/common/xray/crypto"
+	E "github.com/sagernet/sing/common/exceptions"
+)
+
+type Range struct {
+	From int32 `json:"from"`
+	To   int32 `json:"to"`
+}
+
+func (c *Range) Build() *Range {
+	return (*Range)(c)
+}
+
+func (c *Range) MarshalJSON() ([]byte, error) {
+	if c.From == 0 && c.To == 0 {
+		return json.Marshal("")
+	}
+	return json.Marshal(fmt.Sprintf("%d-%d", c.From, c.To))
+}
+
+func (c *Range) UnmarshalJSON(content []byte) error {
+	var rangeValue struct {
+		From int32 `json:"from"`
+		To   int32 `json:"to"`
+	}
+	var stringValue string
+
+	if err := json.Unmarshal(content, &stringValue); err == nil {
+
+		parts := strings.Split(stringValue, "-")
+		if stringValue == "" {
+			rangeValue.From, rangeValue.To = 0, 0
+		} else if len(parts) != 2 {
+			from, err := strconv.ParseInt(parts[0], 10, 32)
+			if err != nil {
+				return err
+			}
+			rangeValue.From, rangeValue.To = int32(from), int32(from)
+		} else {
+			from, err := strconv.ParseInt(parts[0], 10, 32)
+			if err != nil {
+				return err
+			}
+			to, err := strconv.ParseInt(parts[1], 10, 32)
+			if err != nil {
+				return err
+			}
+			rangeValue.From, rangeValue.To = int32(from), int32(to)
+		}
+	} else {
+		var intValue int
+		if err := json.Unmarshal(content, &intValue); err == nil {
+			rangeValue.From, rangeValue.To = int32(intValue), int32(intValue)
+		} else if err := json.Unmarshal(content, &rangeValue); err != nil {
+			return err
+		}
+
+	}
+	if rangeValue.From > rangeValue.To {
+		return E.New("invalid range")
+	}
+	*c = Range{rangeValue.From, rangeValue.To}
+	return nil
+}
+
+func (c Range) Rand() int32 {
+	return int32(crypto.RandBetween(int64(c.From), int64(c.To)))
+}
