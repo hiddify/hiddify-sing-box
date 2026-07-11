@@ -83,7 +83,6 @@ func NewRouter(ctx context.Context, logFactory log.Factory, options option.DNSOp
 	}
 	router.client = NewClient(ClientOptions{
 		Context:           ctx,
-		Timeout:           time.Duration(options.DNSClientOptions.Timeout),
 		DisableCache:      options.DNSClientOptions.DisableCache,
 		DisableExpire:     options.DNSClientOptions.DisableExpire,
 		OptimisticTimeout: optimisticTimeout,
@@ -324,9 +323,6 @@ func (r *Router) matchDNS(ctx context.Context, rules []adapter.DNSRule, allowFak
 				if action.RewriteTTL != nil {
 					options.RewriteTTL = action.RewriteTTL
 				}
-				if action.Timeout > 0 {
-					options.Timeout = action.Timeout
-				}
 				if action.ClientSubnet.IsValid() {
 					options.ClientSubnet = action.ClientSubnet
 					options.RemoveClientSubnet = false
@@ -345,9 +341,6 @@ func (r *Router) matchDNS(ctx context.Context, rules []adapter.DNSRule, allowFak
 				}
 				if action.RewriteTTL != nil {
 					options.RewriteTTL = action.RewriteTTL
-				}
-				if action.Timeout > 0 {
-					options.Timeout = action.Timeout
 				}
 				if action.ClientSubnet.IsValid() {
 					options.ClientSubnet = action.ClientSubnet
@@ -380,9 +373,6 @@ func (r *Router) applyDNSRouteOptions(options *adapter.DNSQueryOptions, routeOpt
 	}
 	if routeOptions.RewriteTTL != nil {
 		options.RewriteTTL = routeOptions.RewriteTTL
-	}
-	if routeOptions.Timeout > 0 {
-		options.Timeout = routeOptions.Timeout
 	}
 	if routeOptions.ClientSubnet.IsValid() {
 		options.ClientSubnet = routeOptions.ClientSubnet
@@ -1172,6 +1162,7 @@ func (r *Router) exchangeLegacy(ctx context.Context, exchangeCtx *dnsExchangeCon
 		responseCheck := addressLimitResponseCheck(rule, exchangeCtx.metadata)
 		response, err := r.client.Exchange(dnsCtx, transport, message, r.finalizeExchangeOptions(dnsOptions), responseCheck)
 		var rejected bool
+		var bypass bool
 		if err != nil {
 			if errors.Is(err, ErrResponseRejectedCached) {
 				rejected = true
@@ -1184,8 +1175,18 @@ func (r *Router) exchangeLegacy(ctx context.Context, exchangeCtx *dnsExchangeCon
 			} else {
 				r.logger.ErrorContext(ctx, E.Cause(err, "exchange failed for <empty query>"))
 			}
+			if rule != nil && rule.BypassIfFailed() && ruleIndex != -1 {
+				select {
+				case <-ctx.Done():
+				default:
+					bypass = true
+				}
+			}
 		}
 		if responseCheck != nil && rejected {
+			continue
+		}
+		if bypass {
 			continue
 		}
 		return response, transport, err
@@ -1275,8 +1276,6 @@ func (r *Router) Lookup(ctx context.Context, domain string, options adapter.DNSQ
 				r.logger.DebugContext(ctx, "response rejected for ", domain)
 			} else if R.IsRejected(err) {
 				r.logger.DebugContext(ctx, "lookup rejected for ", domain)
-			} else if errors.Is(err, ErrNotCached) {
-				r.logger.DebugContext(ctx, "cache-only lookup missed for ", domain)
 			} else {
 				r.logger.ErrorContext(ctx, E.Cause(err, "lookup failed for ", domain))
 			}
@@ -1329,6 +1328,8 @@ func (r *Router) Lookup(ctx context.Context, domain string, options adapter.DNSQ
 								responseAddrs = append(responseAddrs, M.AddrFromIP(record.AAAA))
 							}
 						}
+						responseAddrs = FilterBlocked(responseAddrs)
+
 					}
 					goto response
 				}
@@ -1338,6 +1339,9 @@ func (r *Router) Lookup(ctx context.Context, domain string, options adapter.DNSQ
 				dnsOptions.Strategy = r.defaultDomainStrategy
 			}
 			responseAddrs, err = r.client.Lookup(dnsCtx, transport, domain, dnsOptions, responseCheck)
+			if rule != nil && len(responseAddrs) == 0 && rule.BypassIfFailed() && ruleIndex != -1 {
+				continue
+			}
 			if responseCheck == nil || err == nil {
 				break
 			}
@@ -1380,9 +1384,6 @@ func (r *Router) ClearCache() {
 	r.client.ClearCache()
 	if r.platformInterface != nil {
 		r.platformInterface.ClearDNSCache()
-	}
-	if r.dnsReverseMapping != nil {
-		r.dnsReverseMapping.Purge()
 	}
 }
 
