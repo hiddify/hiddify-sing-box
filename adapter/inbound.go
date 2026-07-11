@@ -45,14 +45,16 @@ type InboundManager interface {
 }
 
 type InboundContext struct {
-	Inbound     string
-	InboundType string
-	IPVersion   uint8
-	Network     string
-	Source      M.Socksaddr
-	Destination M.Socksaddr
-	User        string
-	Outbound    string
+	Inbound           string
+	InboundType       string
+	IPVersion         uint8
+	Network           string
+	Source            M.Socksaddr
+	Destination       M.Socksaddr
+	TunnelSource      string
+	TunnelDestination string
+	User              string
+	Outbound          string
 
 	// sniffer
 
@@ -66,10 +68,13 @@ type InboundContext struct {
 	// cache
 
 	// Deprecated: implement in rule action
-	InboundDetour             string
-	LastInbound               string
-	OriginDestination         M.Socksaddr
-	RouteOriginalDestination  M.Socksaddr
+	InboundDetour            string
+	LastInbound              string
+	OriginDestination        M.Socksaddr
+	RouteOriginalDestination M.Socksaddr
+	// Deprecated: to be removed
+	//nolint:staticcheck
+	InboundOptions            option.InboundOptions
 	UDPDisableDomainUnmapping bool
 	UDPConnect                bool
 	UDPTimeout                time.Duration
@@ -107,8 +112,16 @@ type InboundContext struct {
 	DestinationPortMatch         bool
 	DidMatch                     bool
 	IgnoreDestinationIPCIDRMatch bool
+
+	RealOutbound string //H
 }
 
+func (c *InboundContext) SetRealOutbound(tag string) {
+	c.RealOutbound = tag
+}
+func (c *InboundContext) GetRealOutbound() string {
+	return c.RealOutbound
+}
 func (c *InboundContext) ResetRuleCache() {
 	c.IPCIDRMatchSource = false
 	c.IPCIDRAcceptEmpty = false

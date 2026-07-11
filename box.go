@@ -17,10 +17,9 @@ import (
 	"github.com/sagernet/sing-box/common/certificate"
 	"github.com/sagernet/sing-box/common/dialer"
 	"github.com/sagernet/sing-box/common/httpclient"
-	"github.com/sagernet/sing-box/common/netns"
+	"github.com/sagernet/sing-box/common/monitoring"
 	"github.com/sagernet/sing-box/common/taskmonitor"
 	"github.com/sagernet/sing-box/common/tls"
-	"github.com/sagernet/sing-box/common/trafficcontrol"
 	"github.com/sagernet/sing-box/common/urltest"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/dns"
@@ -30,6 +29,7 @@ import (
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-box/protocol/direct"
+	"github.com/sagernet/sing-box/protocol/hiddify/hinvalid"
 	"github.com/sagernet/sing-box/route"
 	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -62,9 +62,8 @@ type Box struct {
 
 type Options struct {
 	option.Options
-	Context                    context.Context
-	PlatformLogWriter          log.PlatformWriter
-	NetworkNamespaceHolderArgs []string
+	Context           context.Context
+	PlatformLogWriter log.PlatformWriter
 }
 
 func Context(
@@ -158,11 +157,8 @@ func New(options Options) (*Box, error) {
 	if experimentalOptions.V2RayAPI != nil && experimentalOptions.V2RayAPI.Listen != "" {
 		needV2RayAPI = true
 	}
-	needAPIService := common.Any(options.Services, func(it option.Service) bool {
-		return it.Type == C.TypeAPI
-	})
-	if service.PtrFromContext[urltest.HistoryStorage](ctx) == nil {
-		ctx = service.ContextWithPtr(ctx, urltest.NewHistoryStorage())
+	if experimentalOptions.UnifiedDelay != nil && experimentalOptions.UnifiedDelay.Enabled {
+		ctx = urltest.ContextWithIsUnifiedDelay(ctx)
 	}
 	platformInterface := service.FromContext[adapter.PlatformInterface](ctx)
 	var defaultLogWriter io.Writer
@@ -172,7 +168,7 @@ func New(options Options) (*Box, error) {
 	logFactory, err := log.New(log.Options{
 		Context:        ctx,
 		Options:        common.PtrValueOrDefault(options.Log),
-		Observable:     needClashAPI || needAPIService,
+		Observable:     needClashAPI,
 		DefaultWriter:  defaultLogWriter,
 		BaseTime:       createdAt,
 		PlatformWriter: options.PlatformLogWriter,
@@ -180,7 +176,6 @@ func New(options Options) (*Box, error) {
 	if err != nil {
 		return nil, E.Cause(err, "create log factory")
 	}
-	service.MustRegister[log.Factory](ctx, logFactory)
 
 	var internalServices []adapter.LifecycleService
 	routeOptions := common.PtrValueOrDefault(options.Route)
@@ -189,19 +184,13 @@ func New(options Options) (*Box, error) {
 		len(certificateOptions.Certificate) > 0 ||
 		len(certificateOptions.CertificatePath) > 0 ||
 		len(certificateOptions.CertificateDirectoryPath) > 0 {
-		certificateStore, err := certificate.NewStore(logFactory.NewLogger("certificate"), certificateOptions)
+		certificateStore, err := certificate.NewStore(ctx, logFactory.NewLogger("certificate"), certificateOptions)
 		if err != nil {
 			return nil, err
 		}
 		service.MustRegister[adapter.CertificateStore](ctx, certificateStore)
 		internalServices = append(internalServices, certificateStore)
 	}
-	netnsManager, err := netns.NewManager(logFactory.NewLogger("netns"), options.NetworkNamespaces, options.NetworkNamespaceHolderArgs)
-	if err != nil {
-		return nil, err
-	}
-	service.MustRegister[adapter.NetworkNamespaceManager](ctx, netnsManager)
-	internalServices = append(internalServices, netnsManager)
 	dnsOptions := common.PtrValueOrDefault(options.DNS)
 	endpointManager := endpoint.NewManager(logFactory.NewLogger("endpoint"), endpointRegistry)
 	inboundManager := inbound.NewManager(logFactory.NewLogger("inbound"), inboundRegistry, endpointManager)
@@ -237,12 +226,6 @@ func New(options Options) (*Box, error) {
 	err = router.Initialize(routeOptions.Rules, routeOptions.RuleSet)
 	if err != nil {
 		return nil, E.Cause(err, "initialize router")
-	}
-	if needClashAPI || needAPIService {
-		trafficManager := trafficcontrol.NewManager(outboundManager)
-		service.MustRegisterPtr(ctx, trafficManager)
-		router.AppendTracker(trafficManager)
-		internalServices = append(internalServices, trafficManager)
 	}
 	ntpOptions := common.PtrValueOrDefault(options.NTP)
 	var timeService *tls.TimeServiceWrapper
@@ -361,6 +344,22 @@ func New(options Options) (*Box, error) {
 			return nil, E.Cause(err, "initialize outbound[", i, "]")
 		}
 	}
+	var invalidOutbound *hinvalid.Outbound
+	for _, outbound := range outboundManager.Outbounds() {
+		if outbound.Type() == C.TypeURLTest || outbound.Type() == C.TypeSelector || outbound.Type() == C.TypeDirect {
+			continue
+		}
+		if outbound.Type() == C.TypeHInvalidConfig {
+			invalidOutbound = outbound.(*hinvalid.Outbound)
+			continue
+		}
+		invalidOutbound = nil
+		break
+	}
+	if invalidOutbound != nil && invalidOutbound.InvalidOptions.Err != nil {
+		return nil, E.Cause(invalidOutbound.InvalidOptions.Err)
+	}
+
 	for i, certificateProviderOptions := range options.CertificateProviders {
 		var tag string
 		if certificateProviderOptions.Tag != "" {
@@ -421,6 +420,7 @@ func New(options Options) (*Box, error) {
 		if err != nil {
 			return nil, E.Cause(err, "create clash-server")
 		}
+		router.AppendTracker(clashServer)
 		service.MustRegister[adapter.ClashServer](ctx, clashServer)
 		internalServices = append(internalServices, clashServer)
 	}
@@ -435,6 +435,15 @@ func New(options Options) (*Box, error) {
 			service.MustRegister[adapter.V2RayServer](ctx, v2rayServer)
 		}
 	}
+	monitor, err := monitoring.NewOutboundMonitoring(ctx, logFactory.NewLogger("monitoring"), common.PtrValueOrDefault(experimentalOptions.Monitoring))
+	if err != nil {
+		return nil, E.Cause(err, "create outbound monitoring")
+	}
+	internalServices = append(internalServices, monitor)
+	service.MustRegisterPtr[monitoring.OutboundMonitoring](ctx, monitor)
+
+	router.AppendTracker(monitor)
+
 	if ntpOptions.Enabled {
 		ntpDialer, err := dialer.New(ctx, ntpOptions.DialerOptions, ntpOptions.ServerIsDomain())
 		if err != nil {
@@ -587,6 +596,7 @@ func (s *Box) Close() error {
 	default:
 		close(s.done)
 	}
+	closeTimeout := time.Second * 10
 	var err error
 	for _, closeItem := range []struct {
 		name    string
@@ -603,11 +613,10 @@ func (s *Box) Close() error {
 		{"dns-transport", s.dnsTransport},
 		{"network", s.network},
 	} {
-		done := adapter.LogElapsed(s.logger, "close ", closeItem.name)
-		err = E.Append(err, closeItem.service.Close(), func(err error) error {
+		cerr := s.closeWithTimeout(closeItem.name, closeTimeout, closeItem.service.Close)
+		err = E.Append(err, cerr, func(err error) error {
 			return E.Cause(err, "close ", closeItem.name)
 		})
-		done()
 	}
 	if s.httpClientService != nil {
 		s.logger.Trace("close ", s.httpClientService.Name())
@@ -618,20 +627,41 @@ func (s *Box) Close() error {
 		s.logger.Trace("close ", s.httpClientService.Name(), " completed (", F.Seconds(time.Since(startTime).Seconds()), "s)")
 	}
 	for _, lifecycleService := range s.internalService {
-		done := adapter.LogElapsed(s.logger, "close ", lifecycleService.Name())
-		err = E.Append(err, lifecycleService.Close(), func(err error) error {
+		cerr := s.closeWithTimeout(lifecycleService.Name(), closeTimeout, lifecycleService.Close)
+		err = E.Append(err, cerr, func(err error) error {
 			return E.Cause(err, "close ", lifecycleService.Name())
 		})
-		done()
 	}
-	done := adapter.LogElapsed(s.logger, "close logger")
-	err = E.Append(err, s.logFactory.Close(), func(err error) error {
+	cerr := s.closeWithTimeout("logger", closeTimeout, s.logFactory.Close)
+	err = E.Append(err, cerr, func(err error) error {
 		return E.Cause(err, "close logger")
 	})
-	done()
 	return err
 }
+func (s *Box) closeWithTimeout(name string, timeout time.Duration, closeFn func() error) (err error) {
+	s.logger.Trace("closeing ", name)
+	startTime := time.Now()
+	defer func() {
+		if err != nil {
+			s.logger.Error("close ", name, " error (", F.Seconds(time.Since(startTime).Seconds()), "s)"+": "+err.Error())
+		} else {
+			s.logger.Trace("close ", name, " completed (", F.Seconds(time.Since(startTime).Seconds()), "s)")
+		}
+	}()
+	done := make(chan error, 1)
 
+	go func() {
+		done <- closeFn()
+	}()
+
+	select {
+	case err = <-done:
+		return err
+	case <-time.After(timeout):
+		return fmt.Errorf("close %s timed out after %s", name, timeout)
+	}
+
+}
 func (s *Box) Network() adapter.NetworkManager {
 	return s.network
 }
@@ -647,11 +677,18 @@ func (s *Box) Inbound() adapter.InboundManager {
 func (s *Box) Outbound() adapter.OutboundManager {
 	return s.outbound
 }
-
 func (s *Box) Endpoint() adapter.EndpointManager {
 	return s.endpoint
 }
 
 func (s *Box) LogFactory() log.Factory {
 	return s.logFactory
+}
+
+func (s *Box) AddService(service adapter.LifecycleService) {
+	s.internalService = append(s.internalService, service)
+}
+
+func (s *Box) Logger() log.ContextLogger {
+	return s.logger
 }

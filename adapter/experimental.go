@@ -4,24 +4,37 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"io"
 	"time"
 
+	"github.com/sagernet/sing-box/hiddify/ipinfo"
 	"github.com/sagernet/sing/common/observable"
 	"github.com/sagernet/sing/common/varbin"
 )
 
 type ClashServer interface {
 	LifecycleService
+	ConnectionTracker
 	Mode() string
 	ModeList() []string
-	SetMode(mode string)
-	AddModeUpdateHook(hook *observable.Subscriber[struct{}])
+	SetMode(mode string) //H
+	SetModeUpdateHook(hook *observable.Subscriber[struct{}])
+	HistoryStorage() URLTestHistoryStorage
 }
 
 type URLTestHistory struct {
-	Time  time.Time `json:"time"`
-	Delay uint16    `json:"delay"`
+	Time        time.Time      `json:"time"`
+	Delay       uint16         `json:"delay"`
+	IpInfo      *ipinfo.IpInfo `json:"ipinfo"`
+	IsFromCache bool           `json:"from_cache"`
+}
+
+type URLTestHistoryStorage interface {
+	SetHook(hook *observable.Subscriber[struct{}])
+	LoadURLTestHistory(tag string) *URLTestHistory
+	DeleteURLTestHistory(tag string)
+	StoreURLTestHistory(tag string, history *URLTestHistory) *URLTestHistory
+	AddOnlyIpToHistory(tag string, history *URLTestHistory)
+	Close() error
 }
 
 type V2RayServer interface {
@@ -38,6 +51,9 @@ type CacheFile interface {
 	StoreRDRC() bool
 	RDRCStore
 
+	StoreWARPConfig() bool
+	StoreMASQUEConfig() bool
+
 	StoreDNS() bool
 	DNSCacheStore
 
@@ -52,6 +68,8 @@ type CacheFile interface {
 	StoreGroupExpand(group string, expand bool) error
 	LoadRuleSet(tag string) *SavedBinary
 	SaveRuleSet(tag string, set *SavedBinary) error
+	LoadBinary(tag string) *SavedBinary
+	SaveBinary(tag string, set *SavedBinary) error
 }
 
 type SavedBinary struct {
@@ -66,11 +84,7 @@ func (s *SavedBinary) MarshalBinary() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	_, err = varbin.WriteUvarint(&buffer, uint64(len(s.Content)))
-	if err != nil {
-		return nil, err
-	}
-	_, err = buffer.Write(s.Content)
+	err = varbin.Write(&buffer, binary.BigEndian, s.Content)
 	if err != nil {
 		return nil, err
 	}
@@ -78,11 +92,7 @@ func (s *SavedBinary) MarshalBinary() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	_, err = varbin.WriteUvarint(&buffer, uint64(len(s.LastEtag)))
-	if err != nil {
-		return nil, err
-	}
-	_, err = buffer.WriteString(s.LastEtag)
+	err = varbin.Write(&buffer, binary.BigEndian, s.LastEtag)
 	if err != nil {
 		return nil, err
 	}
@@ -96,12 +106,7 @@ func (s *SavedBinary) UnmarshalBinary(data []byte) error {
 	if err != nil {
 		return err
 	}
-	contentLength, err := binary.ReadUvarint(reader)
-	if err != nil {
-		return err
-	}
-	s.Content = make([]byte, contentLength)
-	_, err = io.ReadFull(reader, s.Content)
+	err = varbin.Read(reader, binary.BigEndian, &s.Content)
 	if err != nil {
 		return err
 	}
@@ -111,16 +116,10 @@ func (s *SavedBinary) UnmarshalBinary(data []byte) error {
 		return err
 	}
 	s.LastUpdated = time.Unix(lastUpdated, 0)
-	etagLength, err := binary.ReadUvarint(reader)
+	err = varbin.Read(reader, binary.BigEndian, &s.LastEtag)
 	if err != nil {
 		return err
 	}
-	etagBytes := make([]byte, etagLength)
-	_, err = io.ReadFull(reader, etagBytes)
-	if err != nil {
-		return err
-	}
-	s.LastEtag = string(etagBytes)
 	return nil
 }
 
