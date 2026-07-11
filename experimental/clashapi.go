@@ -9,7 +9,7 @@ import (
 	"github.com/sagernet/sing-box/option"
 )
 
-type ClashServerConstructor = func(ctx context.Context, logFactory log.ObservableFactory, options option.ClashAPIOptions) (adapter.LifecycleService, error)
+type ClashServerConstructor = func(ctx context.Context, logFactory log.ObservableFactory, options option.ClashAPIOptions) (adapter.ClashServer, error)
 
 var clashServerConstructor ClashServerConstructor
 
@@ -17,7 +17,7 @@ func RegisterClashServerConstructor(constructor ClashServerConstructor) {
 	clashServerConstructor = constructor
 }
 
-func NewClashServer(ctx context.Context, logFactory log.ObservableFactory, options option.ClashAPIOptions) (adapter.LifecycleService, error) {
+func NewClashServer(ctx context.Context, logFactory log.ObservableFactory, options option.ClashAPIOptions) (adapter.ClashServer, error) {
 	if clashServerConstructor == nil {
 		return nil, os.ErrInvalid
 	}
