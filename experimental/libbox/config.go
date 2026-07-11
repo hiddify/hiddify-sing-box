@@ -13,6 +13,7 @@ import (
 	"github.com/sagernet/sing-box/include"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
+	"github.com/sagernet/sing-box/service/oomkiller"
 	tun "github.com/sagernet/sing-tun"
 	"github.com/sagernet/sing/common/control"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -23,7 +24,17 @@ import (
 	"github.com/sagernet/sing/service/filemanager"
 )
 
+var sOOMReporter oomkiller.OOMReporter
+
+func BaseContext(platformInterface PlatformInterface) context.Context {
+	return baseContext(platformInterface)
+}
+
 func baseContext(platformInterface PlatformInterface) context.Context {
+	return baseContextWithParent(context.Background(), platformInterface)
+}
+
+func baseContextWithParent(ctx context.Context, platformInterface PlatformInterface) context.Context {
 	dnsRegistry := include.DNSTransportRegistry()
 	if platformInterface != nil {
 		if localTransport := platformInterface.LocalDNSTransport(); localTransport != nil {
@@ -32,8 +43,10 @@ func baseContext(platformInterface PlatformInterface) context.Context {
 			})
 		}
 	}
-	ctx := context.Background()
 	ctx = filemanager.WithDefault(ctx, sWorkingPath, sTempPath, sUserID, sGroupID)
+	if sOOMReporter != nil {
+		ctx = service.ContextWith[oomkiller.OOMReporter](ctx, sOOMReporter)
+	}
 	return box.Context(ctx, include.InboundRegistry(), include.OutboundRegistry(), include.EndpointRegistry(), dnsRegistry, include.ServiceRegistry(), include.CertificateProviderRegistry())
 }
 
@@ -51,12 +64,20 @@ func CheckConfig(configContent string) error {
 	if err != nil {
 		return err
 	}
+	return CheckConfigOptions(&options)
+}
+
+func CheckConfigOptions(options *option.Options) error {
+	if options == nil {
+		return os.ErrInvalid
+	}
+	ctx := baseContext(nil)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	ctx = service.ContextWith[adapter.PlatformInterface](ctx, (*platformInterfaceStub)(nil))
 	instance, err := box.New(box.Options{
 		Context: ctx,
-		Options: options,
+		Options: *options,
 	})
 	if err == nil {
 		instance.Close()
@@ -125,6 +146,10 @@ func (s *platformInterfaceStub) ReadWIFIState() adapter.WIFIState {
 	return adapter.WIFIState{}
 }
 
+func (s *platformInterfaceStub) SystemCertificates() []string {
+	return nil
+}
+
 func (s *platformInterfaceStub) UsePlatformConnectionOwnerFinder() bool {
 	return false
 }
@@ -157,15 +182,27 @@ func (s *platformInterfaceStub) CloseNeighborMonitor(listener adapter.NeighborUp
 	return nil
 }
 
+func (s *platformInterfaceStub) UsePlatformLocalDNSTransport() bool {
+	return false
+}
+
+func (s *platformInterfaceStub) LocalDNSTransport() dns.TransportConstructorFunc[option.LocalDNSServerOptions] {
+	return nil
+}
+
 func (s *platformInterfaceStub) UsePlatformShell() bool {
 	return false
 }
 
 func (s *platformInterfaceStub) CheckPlatformShell() error {
-	return nil
+	return os.ErrInvalid
 }
 
 func (s *platformInterfaceStub) OpenShellSession(user *adapter.PlatformUser, command string, env []string, term string, rows int32, cols int32) (adapter.ShellSession, error) {
+	return nil, os.ErrInvalid
+}
+
+func (s *platformInterfaceStub) LookupUser(username string) (*adapter.PlatformUser, error) {
 	return nil, os.ErrInvalid
 }
 
@@ -189,19 +226,11 @@ func (s *platformInterfaceStub) CreateBridge(options adapter.BridgeOptions) (ada
 	return nil, os.ErrInvalid
 }
 
-func (s *platformInterfaceStub) LookupUser(username string) (*adapter.PlatformUser, error) {
-	return nil, os.ErrInvalid
-}
+type interfaceMonitorStub struct{}
 
-func (s *platformInterfaceStub) UsePlatformLocalDNSTransport() bool {
-	return false
-}
-
-func (s *platformInterfaceStub) LocalDNSTransport() dns.TransportConstructorFunc[option.LocalDNSServerOptions] {
+func (s *interfaceMonitorStub) MyInterfaces() []string {
 	return nil
 }
-
-type interfaceMonitorStub struct{}
 
 func (s *interfaceMonitorStub) Start() error {
 	return os.ErrInvalid
@@ -233,8 +262,8 @@ func (s *interfaceMonitorStub) UnregisterCallback(element *list.Element[tun.Defa
 func (s *interfaceMonitorStub) RegisterMyInterface(interfaceName string) {
 }
 
-func (s *interfaceMonitorStub) MyInterfaces() []string {
-	return nil
+func (s *interfaceMonitorStub) MyInterface() string {
+	return ""
 }
 
 func FormatConfig(configContent string) (*StringBox, error) {

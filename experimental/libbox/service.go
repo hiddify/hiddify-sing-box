@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net"
 	"net/netip"
+	"os"
 	"runtime"
 	"strconv"
 	"sync"
@@ -175,6 +176,10 @@ func (w *platformInterfaceWrapper) ReadWIFIState() adapter.WIFIState {
 	return (adapter.WIFIState)(*wifiState)
 }
 
+func (w *platformInterfaceWrapper) SystemCertificates() []string {
+	return iteratorToArray[string](w.iif.SystemCertificates())
+}
+
 func (w *platformInterfaceWrapper) UsePlatformConnectionOwnerFinder() bool {
 	return true
 }
@@ -244,109 +249,39 @@ func (w *platformInterfaceWrapper) CloseNeighborMonitor(listener adapter.Neighbo
 }
 
 func (w *platformInterfaceWrapper) UsePlatformShell() bool {
-	return w.iif.UsePlatformShell()
+	return false
 }
 
 func (w *platformInterfaceWrapper) CheckPlatformShell() error {
-	return w.iif.CheckPlatformShell()
+	return os.ErrInvalid
 }
 
-func (w *platformInterfaceWrapper) OpenShellSession(user *adapter.PlatformUser, command string, environ []string, term string, rows int32, cols int32) (adapter.ShellSession, error) {
-	libboxUser := &PlatformUser{
-		Username: user.Username,
-		Uid:      int32(user.Uid),
-		Gid:      int32(user.Gid),
-		HomeDir:  user.HomeDir,
-		Shell:    user.Shell,
-	}
-	if len(user.Groups) > 0 {
-		libboxUser.SetGroups(newIterator(common.Map(user.Groups, func(g int) int32 { return int32(g) })))
-	}
-	session, err := w.iif.OpenShellSession(libboxUser, command, newIterator(environ), term, rows, cols)
-	if err != nil {
-		return nil, err
-	}
-	return session, nil
-}
-
-func (w *platformInterfaceWrapper) LookupSFTPServer() (string, error) {
-	return w.iif.LookupSFTPServer()
-}
-
-func (w *platformInterfaceWrapper) ReadSystemSSHHostKey() ([]byte, error) {
-	result, err := w.iif.ReadSystemSSHHostKey()
-	if err != nil {
-		return nil, err
-	}
-	return []byte(result), nil
-}
-
-func (w *platformInterfaceWrapper) TailscaleHostname() string {
-	return w.iif.TailscaleHostname()
-}
-
-func (w *platformInterfaceWrapper) UsePlatformBridge() bool {
-	return w.iif.UsePlatformBridge()
-}
-
-func (w *platformInterfaceWrapper) CreateBridge(options adapter.BridgeOptions) (adapter.BridgeSession, error) {
-	bridgeOptions := &BridgeOptions{
-		BridgeName: options.BridgeName,
-		MTU:        int32(options.MTU),
-		Interface:  options.Interface,
-		RuleIndex:  int32(options.RuleIndex),
-		RouteTable: int32(options.RouteTable),
-	}
-	if options.Inet4Port.IsValid() {
-		bridgeOptions.Inet4Port = options.Inet4Port.String()
-	}
-	if options.Inet6Port.IsValid() {
-		bridgeOptions.Inet6Port = options.Inet6Port.String()
-	}
-	session, err := w.iif.CreateBridge(bridgeOptions)
-	if err != nil {
-		return nil, err
-	}
-	return &bridgeSessionWrapper{session}, nil
-}
-
-type bridgeSessionWrapper struct {
-	session BridgeSession
-}
-
-func (w *bridgeSessionWrapper) FileDescriptor() int {
-	return int(w.session.FileDescriptor())
-}
-
-func (w *bridgeSessionWrapper) Name() string {
-	return w.session.Name()
-}
-
-func (w *bridgeSessionWrapper) Inet6Active() bool {
-	return w.session.Inet6Active()
-}
-
-func (w *bridgeSessionWrapper) SetEgress(interfaceName string) error {
-	return w.session.SetEgress(interfaceName)
-}
-
-func (w *bridgeSessionWrapper) Close() error {
-	return w.session.Close()
+func (w *platformInterfaceWrapper) OpenShellSession(user *adapter.PlatformUser, command string, env []string, term string, rows int32, cols int32) (adapter.ShellSession, error) {
+	return nil, os.ErrInvalid
 }
 
 func (w *platformInterfaceWrapper) LookupUser(username string) (*adapter.PlatformUser, error) {
-	platformUser, err := w.iif.LookupUser(username)
-	if err != nil {
-		return nil, err
-	}
-	return &adapter.PlatformUser{
-		Username: platformUser.Username,
-		Uid:      int(platformUser.Uid),
-		Gid:      int(platformUser.Gid),
-		HomeDir:  platformUser.HomeDir,
-		Shell:    platformUser.Shell,
-		Groups:   common.Map(iteratorToArray[int32](platformUser.Groups()), func(g int32) int { return int(g) }),
-	}, nil
+	return nil, os.ErrInvalid
+}
+
+func (w *platformInterfaceWrapper) LookupSFTPServer() (string, error) {
+	return "", os.ErrInvalid
+}
+
+func (w *platformInterfaceWrapper) ReadSystemSSHHostKey() ([]byte, error) {
+	return nil, os.ErrInvalid
+}
+
+func (w *platformInterfaceWrapper) TailscaleHostname() string {
+	return ""
+}
+
+func (w *platformInterfaceWrapper) UsePlatformBridge() bool {
+	return false
+}
+
+func (w *platformInterfaceWrapper) CreateBridge(options adapter.BridgeOptions) (adapter.BridgeSession, error) {
+	return nil, os.ErrInvalid
 }
 
 type neighborUpdateListenerWrapper struct {
