@@ -22,6 +22,7 @@
 | `socks`       | [SOCKS](./socks/)             | TCP              |
 | `http`        | [HTTP](./http/)               | TCP              |
 | `shadowsocks` | [Shadowsocks](./shadowsocks/) | TCP              |
+| `snell`       | [Snell](./snell/)             | TCP              |
 | `vmess`       | [VMess](./vmess/)             | TCP              |
 | `trojan`      | [Trojan](./trojan/)           | TCP              |
 | `naive`       | [Naive](./naive/)             | :material-close: |

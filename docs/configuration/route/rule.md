@@ -491,6 +491,26 @@ Match source device MAC address.
 
 Match source device hostname from DHCP leases.
 
+#### source_mac_address
+
+!!! question "Since sing-box 1.14.0"
+
+!!! quote ""
+
+    Only supported on Linux, macOS, or in graphical clients on Android and macOS. See [Neighbor Resolution](/configuration/shared/neighbor/) for setup.
+
+Match source device MAC address.
+
+#### source_hostname
+
+!!! question "Since sing-box 1.14.0"
+
+!!! quote ""
+
+    Only supported on Linux, macOS, or in graphical clients on Android and macOS. See [Neighbor Resolution](/configuration/shared/neighbor/) for setup.
+
+Match source device hostname from DHCP leases.
+
 #### rule_set
 
 !!! question "Since sing-box 1.8.0"

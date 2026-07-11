@@ -256,9 +256,7 @@ Fragment TLS handshake into multiple TLS records to bypass firewalls.
 
 !!! question "Since sing-box 1.14.0"
 
-!!! quote ""
-
-    Only supported on Linux, macOS, and Windows, and requires elevated privileges.
+==Linux/macOS/Windows only, requires elevated privileges==
 
 Inject a forged TLS ClientHello carrying this SNI before the real one,
 to fool SNI-filtering middleboxes that permit specific hostnames.

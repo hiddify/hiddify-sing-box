@@ -1,9 +1,3 @@
----
-icon: material/new-box
----
-
-!!! question "自 sing-box 1.14.0 起"
-
 ### 结构
 
 ```json
@@ -13,19 +7,14 @@ icon: material/new-box
 
   ... // 监听字段
 
-  "version": 5,
-  "psk": "password",
-  "users": [
-    {
-      "name": "sekai",
-      "userkey": "user-password"
-    }
-  ],
-  "obfs_mode": ""
+  "psk": "my-pre-shared-key",
+  "version": 4,
+  "obfs_mode": "",
+  "obfs_host": ""
 }
 ```
 
-### 版本 6 结构
+### 多用户结构
 
 ```json
 {
@@ -34,15 +23,19 @@ icon: material/new-box
 
   ... // 监听字段
 
-  "version": 6,
-  "psk": "password",
   "users": [
     {
-      "name": "sekai",
-      "userkey": "user-password"
+      "name": "alice",
+      "psk": "alice-pre-shared-key"
+    },
+    {
+      "name": "bob",
+      "psk": "bob-pre-shared-key"
     }
   ],
-  "mode": ""
+  "version": 4,
+  "obfs_mode": "",
+  "obfs_host": ""
 }
 ```
 
@@ -52,45 +45,42 @@ icon: material/new-box
 
 ### 字段
 
-#### version
-
-==必填==
-
-Snell 协议版本，`5` `6` 之一。
-
-版本 `5` 支持 HTTP 混淆（`obfs_mode`）；版本 `6` 以流量整形（`mode`）取而代之，并要求
-`psk` 长度为 12 到 255 字节。
-
-!!! note
-
-    由于我们有意不支持 Snell v5 的 QUIC 代理模式，v5 的线路协议实际上与 v4 没有区别，
-    因此不提供独立的 v4 服务器和 v5 客户端。
-
 #### psk
 
-==必填==
+==未设置 `users` 时必填==
 
-预共享密钥。
+单用户模式的预共享密钥，与 `users` 互斥。
 
 #### users
 
-Snell 用户。
+==未设置 `psk` 时必填==
 
-设置后，服务器运行于多用户模式：每一项包含 `name`（可选，用于日志）和 `userkey`
-（用户密钥）。顶层的 `psk` 仍作为服务器密钥。
+多用户模式的用户列表，每项包含 `name` 和 `psk`，与 `psk` 互斥。
+
+匹配到的用户名可在路由规则中通过 `auth_user` 使用。
+
+#### version
+
+Snell 协议版本，必须为 `4` 或 `5`。
+
+默认为 `4`。
+
+!!! note "QUIC 代理模式（v5）"
+    当 `version` 为 `5` 时，服务端自动在同一端口接收 QUIC 流量。
+    目标地址和首个 QUIC Initial 包经 Snell 加密传输，后续包直接转发（QUIC 本身已加密）。
+    无需额外配置。
 
 #### obfs_mode
 
-==仅版本 5==
+simple-obfs 混淆模式。
 
-HTTP 混淆模式，`none` `http` 之一。
+可选 `http` `tls`，留空则禁用混淆。
 
-默认为 `none`。
+!!! warning
+    v4/v5 不支持 TLS 混淆，请改用 [ShadowTLS](/zh/configuration/inbound/shadowtls/)。
 
-#### mode
+#### obfs_host
 
-==仅版本 6==
+用于 HTTP/TLS 混淆的主机名。
 
-流量整形模式，`default` `unshaped` `unsafe-raw` 之一。
-
-默认为 `default`。
+未设置时默认为 `bing.com`。
