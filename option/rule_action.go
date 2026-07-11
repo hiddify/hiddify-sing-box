@@ -177,8 +177,9 @@ type RouteActionOptions struct {
 }
 
 type RawRouteOptionsActionOptions struct {
-	OverrideAddress string `json:"override_address,omitempty"`
-	OverridePort    uint16 `json:"override_port,omitempty"`
+	OverrideAddress           string `json:"override_address,omitempty"`
+	OverridePort              uint16 `json:"override_port,omitempty"`
+	OverrideTunnelDestination string `json:"override_tunnel_destination,omitempty"`
 
 	NetworkStrategy *NetworkStrategy `json:"network_strategy,omitempty"`
 	FallbackDelay   uint32           `json:"fallback_delay,omitempty"`
@@ -231,6 +232,8 @@ type AbstractDNSRouteActionOptions struct {
 	RewriteTTL             *uint32               `json:"rewrite_ttl,omitempty"`
 	ClientSubnet           *badoption.Prefixable `json:"client_subnet,omitempty"`
 	RemoveClientSubnet     bool                  `json:"remove_client_subnet,omitempty"`
+
+	BypassIfFailed bool `json:"bypass_if_failed,omitempty"` //H
 }
 
 type DNSRouteOptionsActionOptions AbstractDNSRouteActionOptions

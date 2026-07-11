@@ -193,6 +193,9 @@ type RawDefaultDNSRule struct {
 	RuleSetIPCIDRAcceptEmpty bool `json:"rule_set_ip_cidr_accept_empty,omitempty" schema:"omit"`
 	// Deprecated: renamed to rule_set_ip_cidr_match_source
 	Deprecated_RulesetIPCIDRMatchSource bool `json:"rule_set_ipcidr_match_source,omitempty" schema:"omit"`
+
+	TunnelSource      badoption.Listable[string] `json:"tunnel_source,omitempty"`      //E
+	TunnelDestination badoption.Listable[string] `json:"tunnel_destination,omitempty"` //E
 }
 
 type DefaultDNSRule struct {
