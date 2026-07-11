@@ -5,6 +5,7 @@ go 1.25.5
 require (
 	filippo.io/age v1.3.1
 	github.com/Diniboy1123/connect-ip-go v0.0.0-20260613064811-66cba32d7d33
+	github.com/ameshkov/dnscrypt/v2 v2.4.0
 	github.com/amnezia-vpn/amneziawg-go v1.0.4
 	github.com/anthropics/anthropic-sdk-go v1.26.0
 	github.com/anytls/sing-anytls v0.0.11
@@ -91,10 +92,12 @@ require (
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
 	filippo.io/hpke v0.4.0 // indirect
+	github.com/AdguardTeam/golibs v0.32.7 // indirect
 	github.com/RyuaNerin/go-krypto v1.3.0 // indirect
 	github.com/ajg/form v1.5.1 // indirect
 	github.com/akutz/memconn v0.1.0 // indirect
 	github.com/alexbrainman/sspi v0.0.0-20231016080023-1a75b4708caa // indirect
+	github.com/ameshkov/dnsstamps v1.0.3 // indirect
 	github.com/anchore/go-lzo v0.1.0 // indirect
 	github.com/andybalholm/brotli v1.1.0 // indirect
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be // indirect
