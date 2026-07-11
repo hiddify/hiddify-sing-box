@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -42,6 +43,8 @@ type RemoteRuleSet struct {
 	metadata       adapter.RuleSetMetadata
 	lastUpdated    time.Time
 	lastEtag       string
+	updateTicker   *time.Ticker
+	startupTicker  *time.Ticker //H
 	cacheFile      adapter.CacheFile
 	pauseManager   pause.Manager
 	callbacks      list.List[adapter.RuleSetUpdateCallback]
@@ -87,19 +90,24 @@ func (s *RemoteRuleSet) StartContext(ctx context.Context, startContext *adapter.
 		if savedSet := s.cacheFile.LoadRuleSet(s.options.Tag); savedSet != nil {
 			err = s.loadBytes(savedSet.Content)
 			if err != nil {
-				s.logger.Warn(E.Cause(err, "restore cached rule-set, will refetch"))
-			} else {
-				s.lastUpdated = savedSet.LastUpdated
-				s.lastEtag = savedSet.LastEtag
+				return E.Cause(err, "restore cached rule-set")
 			}
+			s.lastUpdated = savedSet.LastUpdated
+			s.lastEtag = savedSet.LastEtag
 		}
 	}
 	if s.lastUpdated.IsZero() {
 		err = s.fetch(ctx, true)
 		if err != nil {
-			return E.Cause(err, "initial rule-set: ", s.options.Tag)
+			s.logger.Error(E.Cause(err, "initial rule-set: ", s.options.Tag))
 		}
 	}
+	s.updateTicker = time.NewTicker(s.updateInterval)
+	return nil
+}
+
+func (s *RemoteRuleSet) PostStart() error {
+	go s.loopUpdate()
 	return nil
 }
 
@@ -187,6 +195,31 @@ func (s *RemoteRuleSet) loadBytes(content []byte) error {
 		callback(s)
 	}
 	return nil
+}
+
+func (s *RemoteRuleSet) loopUpdate() {
+	if time.Since(s.lastUpdated) > s.updateInterval {
+		s.updateOnce()
+	}
+	for s.lastUpdated.IsZero() {
+		select {
+		case <-s.ctx.Done():
+			return
+		case <-s.startupTicker.C:
+			s.updateOnce()
+		}
+
+	}
+
+	for {
+		runtime.GC()
+		select {
+		case <-s.ctx.Done():
+			return
+		case <-s.updateTicker.C:
+			s.updateOnce()
+		}
+	}
 }
 
 func (s *RemoteRuleSet) updateOnce() {
@@ -289,6 +322,12 @@ func (s *RemoteRuleSet) resolveTransport() (adapter.HTTPTransport, error) {
 func (s *RemoteRuleSet) Close() error {
 	s.rules = nil
 	s.cancel()
+	if s.startupTicker != nil {
+		s.startupTicker.Stop()
+	}
+	if s.updateTicker != nil {
+		s.updateTicker.Stop()
+	}
 	return nil
 }
 
