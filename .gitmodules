@@ -1,6 +1,12 @@
-[submodule "clients/apple"]
-	path = clients/apple
-	url = https://github.com/SagerNet/sing-box-for-apple.git
-[submodule "clients/android"]
-	path = clients/android
-	url = https://github.com/SagerNet/sing-box-for-android.git
+[submodule "replace/tailscale"]
+	path = replace/tailscale
+	url = git@github.com:hiddify/tailscale
+[submodule "replace/psiphon-quic-go"]
+	path = replace/psiphon-quic-go
+	url = git@github.com:hiddify/psiphon-quic-go
+[submodule "replace/psiphon-tls"]
+	path = replace/psiphon-tls
+	url = git@github.com:hiddify/psiphon-tls
+[submodule "replace/wireguard-go"]
+	path = replace/wireguard-go
+	url = git@github.com:hiddify/wireguard-go

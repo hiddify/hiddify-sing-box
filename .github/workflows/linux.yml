@@ -29,7 +29,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: ~1.25.11
+          go-version: ~1.25.10
       - name: Check input version
         if: github.event_name == 'workflow_dispatch'
         run: |-
@@ -72,7 +72,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: ~1.25.11
+          go-version: ~1.25.10
       - name: Clone cronet-go
         if: matrix.naive
         run: |
@@ -216,6 +216,7 @@ jobs:
         with:
           name: binary-${{ matrix.os }}_${{ matrix.arch }}${{ matrix.goarm && format('v{0}', matrix.goarm) }}${{ matrix.legacy_go && '-legacy' || '' }}
           path: "dist"
+          retention-days: 1
   upload:
     name: Upload builds
     runs-on: ubuntu-latest

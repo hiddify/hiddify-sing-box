@@ -1,3 +1,7 @@
+_htest/
+/data/*
+*.log
+*.db
 /.idea/
 /vendor/
 /*.json

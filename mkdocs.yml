@@ -139,10 +139,6 @@ nav:
           - TCP Brutal: configuration/shared/tcp-brutal.md
           - Wi-Fi State: configuration/shared/wifi-state.md
           - Neighbor Resolution: configuration/shared/neighbor.md
-      - Network Namespace:
-          - configuration/network-namespace/index.md
-          - Default: configuration/network-namespace/default.md
-          - Unshare: configuration/network-namespace/unshare.md
       - Endpoint:
           - configuration/endpoint/index.md
           - WireGuard: configuration/endpoint/wireguard.md
@@ -154,6 +150,7 @@ nav:
           - SOCKS: configuration/inbound/socks.md
           - HTTP: configuration/inbound/http.md
           - Shadowsocks: configuration/inbound/shadowsocks.md
+          - Snell: configuration/inbound/snell.md
           - VMess: configuration/inbound/vmess.md
           - Trojan: configuration/inbound/trojan.md
           - Naive: configuration/inbound/naive.md
@@ -163,7 +160,6 @@ nav:
           - TUIC: configuration/inbound/tuic.md
           - Hysteria2: configuration/inbound/hysteria2.md
           - AnyTLS: configuration/inbound/anytls.md
-          - Snell: configuration/inbound/snell.md
           - Tun: configuration/inbound/tun.md
           - Redirect: configuration/inbound/redirect.md
           - TProxy: configuration/inbound/tproxy.md
@@ -171,11 +167,11 @@ nav:
       - Outbound:
           - configuration/outbound/index.md
           - Direct: configuration/outbound/direct.md
-          - Bridge: configuration/outbound/bridge.md
           - Block: configuration/outbound/block.md
           - SOCKS: configuration/outbound/socks.md
           - HTTP: configuration/outbound/http.md
           - Shadowsocks: configuration/outbound/shadowsocks.md
+          - Snell: configuration/outbound/snell.md
           - VMess: configuration/outbound/vmess.md
           - Trojan: configuration/outbound/trojan.md
           - Naive: configuration/outbound/naive.md
@@ -186,7 +182,6 @@ nav:
           - TUIC: configuration/outbound/tuic.md
           - Hysteria2: configuration/outbound/hysteria2.md
           - AnyTLS: configuration/outbound/anytls.md
-          - Snell: configuration/outbound/snell.md
           - Tor: configuration/outbound/tor.md
           - SSH: configuration/outbound/ssh.md
           - DNS: configuration/outbound/dns.md
@@ -194,15 +189,12 @@ nav:
           - URLTest: configuration/outbound/urltest.md
       - Service:
           - configuration/service/index.md
-          - sing-box API: configuration/service/api.md
           - DERP: configuration/service/derp.md
           - Resolved: configuration/service/resolved.md
           - SSM API: configuration/service/ssm-api.md
           - CCM: configuration/service/ccm.md
           - OCM: configuration/service/ocm.md
           - Hysteria Realm: configuration/service/hysteria-realm.md
-          - USB/IP Server: configuration/service/usbip-server.md
-          - USB/IP Client: configuration/service/usbip-client.md
 markdown_extensions:
   - toc:
       slugify: !!python/object/apply:pymdownx.slugs.slugify
@@ -300,7 +292,6 @@ plugins:
             V2Ray Transport: V2Ray 传输层
             Wi-Fi State: Wi-Fi 状态
 
-            Network Namespace: 网络命名空间
             Endpoint: 端点
             Inbound: 入站
             Outbound: 出站
