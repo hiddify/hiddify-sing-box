@@ -215,7 +215,11 @@ func (e *Endpoint) Start(postStart bool) error {
 		},
 	}
 	wgDevice := device.NewDevice(e.options.Context, e.returnDevice, bind, logger, e.options.Workers)
-	wgDevice.HNoise = e.options.Noise
+	wgDevice.FakePackets = e.options.Noise.FakePackets           //H
+	wgDevice.FakePacketsDelays = e.options.Noise.FakePacketsDelays //H
+	wgDevice.FakePacketsSize = e.options.Noise.FakePacketsSize     //H
+	wgDevice.FakePacketsHeader = e.options.Noise.FakePacketsHeader //H
+	wgDevice.FakePacketsNoModify = e.options.Noise.FakePacketsNoModify //H
 	e.tunDevice.SetDevice(wgDevice)
 	domainPeers := make(map[device.NoisePublicKey]*peerConfig)
 	for peerIndex, peer := range e.peers {
