@@ -10,6 +10,7 @@ import (
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
+	hiddify "github.com/sagernet/wireguard-go/hiddify"
 )
 
 type EndpointOptions struct {
@@ -36,6 +37,7 @@ type EndpointOptions struct {
 	ResolvePeer       func(domain string) ([]netip.Addr, error)
 	Peers             []PeerOptions
 	Workers           int
+	Noise             hiddify.NoiseOptions //H
 }
 
 type PeerOptions struct {

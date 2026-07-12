@@ -76,7 +76,7 @@ require (
 	github.com/sagernet/ws v0.0.0-20231204124109-acfe8907c854
 	github.com/songgao/water v0.0.0-20200317203138-2b4b6d7c09d8
 	github.com/spf13/cobra v1.10.2
-	github.com/stretchr/testify v1.12.0
+	github.com/stretchr/testify v1.12.1
 	github.com/tailscale/go-winio v0.0.0-20231025203758-c4f33415bf55
 	github.com/tidwall/gjson v1.18.0
 	github.com/vishvananda/netns v0.0.5
@@ -282,12 +282,7 @@ replace github.com/sagernet/sing-dns => github.com/shtorm-7/sing-dns v0.4.6-exte
 
 replace github.com/ameshkov/dnscrypt/v2 => github.com/shtorm-7/dnscrypt/v2 v2.4.0-extended-1.0.0
 
-// FIXME: hiddify's wireguard-go fork (replace/wireguard-go) predates upstream
-// sagernet/wireguard-go's InputPacketRef/SetSinglePeerMode APIs. Dropped this
-// replace to unblock the v5 merge build; re-verify fork-specific patches
-// (pause support, custom worker size, noise options, windows fix) are either
-// already upstreamed or need porting back before shipping.
-// replace github.com/sagernet/wireguard-go => ./replace/wireguard-go
+replace github.com/sagernet/wireguard-go => ./replace/wireguard-go
 
 replace github.com/sagernet/tailscale => ./replace/tailscale
 
