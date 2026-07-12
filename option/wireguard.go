@@ -5,8 +5,15 @@ import (
 
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing/common/json/badoption"
-	hiddify "github.com/sagernet/wireguard-go/hiddify"
 )
+
+type WireGuardNoiseOptions struct { //H
+	FakePackets         []int  `json:"fake_packets,omitempty"`
+	FakePacketsDelays   []int  `json:"fake_packets_delays,omitempty"`
+	FakePacketsSize     []int  `json:"fake_packets_size,omitempty"`
+	FakePacketsHeader   []byte `json:"fake_packets_header,omitempty"`
+	FakePacketsNoModify bool   `json:"fake_packets_no_modify,omitempty"`
+}
 
 type WireGuardEndpointOptions struct {
 	System     bool                             `json:"system,omitempty"`
@@ -20,8 +27,8 @@ type WireGuardEndpointOptions struct {
 	Workers    int                              `json:"workers,omitempty"`
 	DialerOptions
 
-	Noise hiddify.NoiseOptions `json:"noise,omitempty"` //H
-	AWG   *AwgOptions          `json:"awg,omitempty"`   //H
+	Noise WireGuardNoiseOptions `json:"noise,omitempty"` //H
+	AWG   *AwgOptions           `json:"awg,omitempty"`   //H
 }
 
 type WireGuardPeer struct {
@@ -45,8 +52,8 @@ type WARPEndpointOptions struct { //H
 
 	UniqueIdentifier string `json:"unique_identifier,omitempty"`
 	ServerOptions
-	Noise hiddify.NoiseOptions `json:"noise,omitempty"`
-	AWG   *AwgOptions          `json:"awg,omitempty"`
+	Noise WireGuardNoiseOptions `json:"noise,omitempty"`
+	AWG   *AwgOptions           `json:"awg,omitempty"`
 	*C.WARPConfig
 	MTU uint32 `json:"mtu,omitempty"`
 }
