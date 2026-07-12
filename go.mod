@@ -285,12 +285,7 @@ replace github.com/sagernet/sing-dns => github.com/shtorm-7/sing-dns v0.4.6-exte
 
 replace github.com/ameshkov/dnscrypt/v2 => github.com/shtorm-7/dnscrypt/v2 v2.4.0-extended-1.0.0
 
-// FIXME: hiddify's wireguard-go fork (replace/wireguard-go) predates upstream
-// sagernet/wireguard-go's InputPacketRef/SetSinglePeerMode APIs. Dropped this
-// replace to unblock the v5 merge build; re-verify fork-specific patches
-// (pause support, custom worker size, noise options, windows fix) are either
-// already upstreamed or need porting back before shipping.
-// replace github.com/sagernet/wireguard-go => ./replace/wireguard-go
+replace github.com/sagernet/wireguard-go => ./replace/wireguard-go
 
 replace github.com/sagernet/tailscale => ./replace/tailscale
 
