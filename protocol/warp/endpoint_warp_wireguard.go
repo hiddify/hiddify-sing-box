@@ -29,6 +29,7 @@ func createWARPWireGuardEndpoint(
 		ListenPort:                 options.ListenPort,
 		UDPTimeout:                 options.UDPTimeout,
 		Workers:       options.Workers,
+		Noise:         options.Noise,
 		AWG:           options.AWG,
 		DialerOptions: options.DialerOptions,
 		Address: badoption.Listable[netip.Prefix]{

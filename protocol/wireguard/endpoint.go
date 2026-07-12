@@ -130,6 +130,7 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 			}
 		}),
 		Workers: options.Workers,
+		Noise:   options.Noise,
 	})
 	if err != nil {
 		return nil, err
