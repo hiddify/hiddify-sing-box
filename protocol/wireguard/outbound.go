@@ -23,7 +23,7 @@ import (
 var _ adapter.OutboundWithPreferredRoutes = (*Outbound)(nil)
 
 func RegisterOutbound(registry *outbound.Registry) {
-	outbound.Register[option.LegacyWireGuardOutboundOptions](registry, C.TypeWireGuard, NewOutbound)
+	outbound.Register[option.LegacyWireGuardOutboundOptions](registry, C.TypeLegacyWireGuard, NewOutbound)
 }
 
 type Outbound struct {
