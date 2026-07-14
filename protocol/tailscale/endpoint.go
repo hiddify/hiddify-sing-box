@@ -9,9 +9,11 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -125,6 +127,7 @@ type Endpoint struct {
 	started             atomic.Bool
 	systemTun           tun.Tun
 	systemDialer        *dialer.DefaultDialer
+	fallbackTCPCloser   func()
 }
 
 func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.TailscaleEndpointOptions) (adapter.Endpoint, error) {
@@ -332,8 +335,18 @@ func (t *Endpoint) start() error {
 		}
 		t.systemTun = systemTun
 		t.systemDialer = systemDialer
-		t.server.Tun = wgTunDevice
+		t.server.TunDevice = wgTunDevice
 	}
+	if runtime.GOOS == "android" && t.platformInterface != nil {
+		setAndroidProtectFunc(func(fd int) error {
+			return t.platformInterface.AutoDetectInterfaceControl(fd)
+		})
+	}
+	// Auto-redirect output-mark control (t.network.AutoRedirectOutputMark/
+	// AutoRedirectOutputMarkFunc/AutoDetectInterfaceFunc) has no equivalent
+	// hook in the current netns package (netns.SetControlFunc was removed);
+	// non-Android auto-detect-interface binding for Tailscale's own sockets
+	// is not currently applied.
 	return nil
 }
 
@@ -578,6 +591,13 @@ func (t *Endpoint) Close() error {
 	if t.serverStarted {
 		err = common.Close(common.PtrOrNil(t.server))
 		t.serverStarted = false
+	}
+	if runtime.GOOS == "android" {
+		setAndroidProtectFunc(nil)
+	}
+	if t.fallbackTCPCloser != nil {
+		t.fallbackTCPCloser()
+		t.fallbackTCPCloser = nil
 	}
 	if t.systemTun != nil {
 		t.systemTun.Close()
@@ -889,7 +909,7 @@ func (t *Endpoint) NewPacketConnectionEx(_ context.Context, conn N.PacketConn, s
 	t.router.RoutePacketConnectionEx(ctx, conn, metadata, onClose)
 }
 
-func (t *Endpoint) PreferredDomain(domain string) bool {
+func (t *Endpoint) PreferredDomain(metadata *adapter.InboundContext, domain string) bool {
 	routeDomains := t.routeDomains.Load()
 	if routeDomains == nil {
 		return false
@@ -939,15 +959,6 @@ func (t *Endpoint) onReconfig(cfg *wgcfg.Config, routerCfg *router.Config, dnsCf
 		t.dnsCfg != nil && reflect.DeepEqual(t.dnsCfg, dnsCfg) {
 		return
 	}
-	var inet4Address, inet6Address netip.Addr
-	for _, address := range cfg.Addresses {
-		if address.Addr().Is4() {
-			inet4Address = address.Addr()
-		} else if address.Addr().Is6() {
-			inet6Address = address.Addr()
-		}
-	}
-	t.icmpForwarder.SetLocalAddresses(inet4Address, inet6Address)
 	t.cfg = cfg
 	t.routerCfg = routerCfg
 	t.dnsCfg = dnsCfg

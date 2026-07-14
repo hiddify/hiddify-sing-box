@@ -217,8 +217,9 @@ func (s *Server) Start() error {
 	maps.Copy(sshServer.SubsystemHandlers, gliderssh.DefaultSubsystemHandlers)
 	sshServer.AddHostKey(s.hostSigner)
 	s.server = sshServer
-	hostKeyPublic := strings.TrimSpace(string(gossh.MarshalAuthorizedKey(s.hostSigner.PublicKey())))
-	s.tsnetServer.ExportLocalBackend().SetExternalSSHHostKeys([]string{hostKeyPublic})
+	// LocalBackend.SetExternalSSHHostKeys was removed upstream; peer status
+	// (SSH_HostKeys) now only reflects the system/auto-generated host keys,
+	// not this custom SSH server's key.
 	go func() {
 		err := sshServer.Serve(listener)
 		if err != nil && !errors.Is(err, gliderssh.ErrServerClosed) {
