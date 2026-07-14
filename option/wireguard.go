@@ -5,6 +5,7 @@ import (
 
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing/common/json/badoption"
+	hiddify "github.com/sagernet/wireguard-go/hiddify"
 )
 
 type WireGuardEndpointOptions struct {
@@ -19,7 +20,8 @@ type WireGuardEndpointOptions struct {
 	Workers    int                              `json:"workers,omitempty"`
 	DialerOptions
 
-	AWG *AwgOptions `json:"awg,omitempty"` //H
+	Noise hiddify.NoiseOptions `json:"noise,omitempty"` //H
+	AWG   *AwgOptions          `json:"awg,omitempty"`   //H
 }
 
 type WireGuardPeer struct {
@@ -43,7 +45,8 @@ type WARPEndpointOptions struct { //H
 
 	UniqueIdentifier string `json:"unique_identifier,omitempty"`
 	ServerOptions
-	AWG           *AwgOptions `json:"awg,omitempty"`
+	Noise hiddify.NoiseOptions `json:"noise,omitempty"`
+	AWG   *AwgOptions          `json:"awg,omitempty"`
 	*C.WARPConfig
 	MTU uint32 `json:"mtu,omitempty"`
 }
