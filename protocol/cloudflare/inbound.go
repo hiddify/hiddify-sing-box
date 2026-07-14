@@ -217,44 +217,36 @@ type icmpRouterHandler struct {
 }
 
 func (h *icmpRouterHandler) RouteICMPFlow(source netip.Addr, destination netip.Addr) (tun.Port, error) {
+	var ipVersion uint8
+	if destination.Is4() {
+		ipVersion = 4
+	} else {
+		ipVersion = 6
+	}
+	destinationAddr := M.SocksaddrFrom(destination, 0)
 	result := h.router.PreMatch(adapter.InboundContext{
-		Inbound:     h.tag,
-		InboundType: C.TypeCloudflared,
-		Network:     N.NetworkICMP,
-		Source:      M.SocksaddrFrom(source, 0),
-		Destination: M.SocksaddrFrom(destination, 0),
+		Inbound:           h.tag,
+		InboundType:       C.TypeCloudflared,
+		IPVersion:         ipVersion,
+		Network:           N.NetworkICMP,
+		Source:            M.SocksaddrFrom(source, 0),
+		Destination:       destinationAddr,
+		OriginDestination: destinationAddr,
 	}, nil)
 	switch result.Action {
 	case adapter.PreMatchFlow:
-		flowOutbound, isFlowOutbound := result.Outbound.(adapter.FlowOutbound)
-		if !isFlowOutbound {
-			return nil, E.New("outbound is not a flow outbound")
+		port, isPort := result.Outbound.(tun.Port)
+		if !isPort {
+			return nil, E.New("outbound does not support ICMP flow routing")
 		}
-		if result.Destination.IsValid() && result.Destination.Addr() != destination {
-			h.logger.Trace("drop ICMP flow from ", source, " to ", destination, ": destination override is not supported from cloudflared")
-			return nil, E.New("destination override is not supported")
-		}
-		inet4Address, inet6Address := flowOutbound.PortAddresses()
-		var portAddress netip.Addr
-		if destination.Is4() {
-			portAddress = inet4Address
-		} else {
-			portAddress = inet6Address
-		}
-		if !portAddress.IsValid() || !portAddress.IsUnspecified() {
-			h.logger.Trace("drop ICMP flow from ", source, " to ", destination, ": forwarding ICMP to outbound/", result.Outbound.Type(), "[", result.Outbound.Tag(), "] is not supported from cloudflared")
-			return nil, E.New("unsupported flow outbound")
-		}
-		h.logger.Debug("link ICMP flow from ", source, " to ", destination, " via outbound/", result.Outbound.Type(), "[", result.Outbound.Tag(), "]")
-		return flowOutbound, nil
+		return port, nil
 	case adapter.PreMatchReject:
-		h.logger.Trace("reject ICMP flow from ", source, " to ", destination)
+		h.logger.Trace("reject ICMP connection from ", source, " to ", destination)
 		return nil, E.New("rejected")
-	case adapter.PreMatchDrop:
-		return nil, E.New("dropped")
+	case adapter.PreMatchBypass:
+		return nil, E.New("bypassed")
 	default:
-		h.logger.Trace("drop ICMP flow from ", source, " to ", destination, ": no direct route")
-		return nil, E.New("no direct route")
+		return nil, E.New("no route for ICMP connection from ", source, " to ", destination)
 	}
 }
 
