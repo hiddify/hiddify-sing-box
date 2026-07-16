@@ -47,6 +47,7 @@ import (
 	"github.com/sagernet/sing-box/protocol/tunnel"
 	"github.com/sagernet/sing-box/protocol/vless"
 	"github.com/sagernet/sing-box/protocol/vmess"
+	legacyWireguard "github.com/sagernet/sing-box/protocol/wireguard"
 	"github.com/sagernet/sing-box/service/api"
 	originca "github.com/sagernet/sing-box/service/origin_ca"
 	"github.com/sagernet/sing-box/service/resolved"
@@ -120,6 +121,7 @@ func OutboundRegistry() *outbound.Registry {
 	gooserelay.RegisterOutbound(registry)
 	balancer.RegisterLoadBalance(registry)
 	registerMASQUEOutbound(registry)
+	legacyWireguard.RegisterOutbound(registry) //H
 
 	registerQUICOutbounds(registry)
 	registerStubForRemovedOutbounds(registry)

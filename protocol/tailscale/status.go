@@ -7,11 +7,20 @@ import (
 	"slices"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing/common"
+	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/tailscale/ipn"
 	"github.com/sagernet/tailscale/ipn/ipnstate"
 )
 
 var _ adapter.TailscaleEndpoint = (*Endpoint)(nil)
+
+func (t *Endpoint) Logout(ctx context.Context) error {
+	if !t.started.Load() {
+		return E.New("Tailscale is not ready yet")
+	}
+	return common.Must1(t.server.LocalClient()).Logout(ctx)
+}
 
 func (t *Endpoint) SubscribeTailscaleStatus(ctx context.Context, fn func(*adapter.TailscaleEndpointStatus)) error {
 	localBackend := t.server.ExportLocalBackend()

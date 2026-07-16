@@ -16,7 +16,6 @@ import (
 	"runtime"
 	"strings"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/sagernet/gvisor/pkg/tcpip"
@@ -49,7 +48,6 @@ import (
 	"github.com/sagernet/tailscale/ipn"
 	tsDNS "github.com/sagernet/tailscale/net/dns"
 	"github.com/sagernet/tailscale/net/netmon"
-	"github.com/sagernet/tailscale/net/netns"
 	"github.com/sagernet/tailscale/net/tsaddr"
 	tsTUN "github.com/sagernet/tailscale/net/tstun"
 	"github.com/sagernet/tailscale/tailcfg"
@@ -68,7 +66,7 @@ import (
 
 var (
 	_ adapter.OutboundWithPreferredRoutes = (*Endpoint)(nil)
-	_ adapter.DirectRouteOutbound         = (*Endpoint)(nil)
+	_ adapter.FlowOutbound                = (*Endpoint)(nil)
 	_ dialer.PacketDialerWithDestination  = (*Endpoint)(nil)
 )
 
@@ -119,6 +117,7 @@ type Endpoint struct {
 	systemTun           tun.Tun
 	systemDialer        *dialer.DefaultDialer
 	fallbackTCPCloser   func()
+	icmpPort            *ping.Port
 }
 
 func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.TailscaleEndpointOptions) (adapter.Endpoint, error) {
@@ -232,7 +231,9 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 func (t *Endpoint) Start(stage adapter.StartStage) error {
 	switch stage {
 	case adapter.StartStateInitialize:
-		t.server.PeerDNSQueryHandler = (*peerDNSQueryHandler)(t)
+		// PeerDNSQueryHandler hook was removed from tsnet.Server upstream;
+		// peer DNS queries no longer route through dnsRouter. See
+		// peerDNSQueryHandler below, kept unused pending a replacement hook.
 	case adapter.StartStateStart:
 		return t.start()
 	case adapter.StartStatePostStart:
@@ -311,19 +312,16 @@ func (t *Endpoint) start() error {
 		t.systemDialer = systemDialer
 		t.server.TunDevice = wgTunDevice
 	}
-	if mark := t.network.AutoRedirectOutputMark(); mark > 0 {
-		controlFunc := t.network.AutoRedirectOutputMarkFunc()
-		if bindFunc := t.network.AutoDetectInterfaceFunc(); bindFunc != nil {
-			controlFunc = control.Append(controlFunc, bindFunc)
-		}
-		netns.SetControlFunc(controlFunc)
-	} else if runtime.GOOS == "android" && t.platformInterface != nil {
-		netns.SetControlFunc(func(network, address string, c syscall.RawConn) error {
-			return control.Raw(c, func(fd uintptr) error {
-				return t.platformInterface.AutoDetectInterfaceControl(int(fd))
-			})
+	if runtime.GOOS == "android" && t.platformInterface != nil {
+		setAndroidProtectFunc(func(fd int) error {
+			return t.platformInterface.AutoDetectInterfaceControl(fd)
 		})
 	}
+	// Auto-redirect output-mark control (t.network.AutoRedirectOutputMark/
+	// AutoRedirectOutputMarkFunc/AutoDetectInterfaceFunc) has no equivalent
+	// hook in the current netns package (netns.SetControlFunc was removed);
+	// non-Android auto-detect-interface binding for Tailscale's own sockets
+	// is not currently applied.
 	return nil
 }
 
@@ -357,7 +355,7 @@ func (t *Endpoint) postStart() error {
 	if gErr != nil {
 		return gonet.TranslateNetstackError(gErr)
 	}
-	icmpForwarder := tun.NewICMPForwarder(t.ctx, ipStack, t, t.udpTimeout)
+	icmpForwarder := tun.NewICMPForwarder(ipStack, t, t.logger)
 	ipStack.SetTransportProtocolHandler(icmp.ProtocolNumber4, icmpForwarder.HandlePacket)
 	ipStack.SetTransportProtocolHandler(icmp.ProtocolNumber6, icmpForwarder.HandlePacket)
 	t.stack = ipStack
@@ -538,7 +536,9 @@ func (t *Endpoint) Close() error {
 		t.serverStarted = false
 	}
 	netmon.RegisterInterfaceGetter(nil)
-	netns.SetControlFunc(nil)
+	if runtime.GOOS == "android" {
+		setAndroidProtectFunc(nil)
+	}
 	if t.fallbackTCPCloser != nil {
 		t.fallbackTCPCloser()
 		t.fallbackTCPCloser = nil
@@ -685,60 +685,98 @@ func (t *Endpoint) ListenPacket(ctx context.Context, destination M.Socksaddr) (n
 	return packetConn, nil
 }
 
-func (t *Endpoint) PrepareConnection(network string, source M.Socksaddr, destination M.Socksaddr, routeContext tun.DirectRouteContext, timeout time.Duration) (tun.DirectRouteDestination, error) {
+// JudgeFlow implements tun.Handler for traffic arriving from Tailscale peers
+// via the gVisor ICMP forwarder, checking Tailscale's own ACL filter before
+// falling through to the sing-box router.
+func (t *Endpoint) JudgeFlow(network uint8, source netip.AddrPort, destination netip.AddrPort, firstPacket []byte) tun.FlowVerdict {
+	inet4Address, inet6Address := t.server.TailscaleIPs()
+	if destination.Addr() == inet4Address || destination.Addr() == inet6Address {
+		return tun.FlowVerdict{Action: tun.ActionAccept}
+	}
+	tsFilter := t.filter.Load()
+	if tsFilter != nil {
+		var (
+			ipProto         ipproto.Proto
+			destinationPort uint16
+		)
+		switch network {
+		case uint8(header.TCPProtocolNumber):
+			ipProto = ipproto.TCP
+			destinationPort = destination.Port()
+		case uint8(header.UDPProtocolNumber):
+			ipProto = ipproto.UDP
+			destinationPort = destination.Port()
+		case uint8(header.ICMPv4ProtocolNumber):
+			ipProto = ipproto.ICMPv4
+		case uint8(header.ICMPv6ProtocolNumber):
+			ipProto = ipproto.ICMPv6
+		}
+		switch tsFilter.Check(source.Addr(), destination.Addr(), destinationPort, ipProto) {
+		case filter.Drop:
+			return tun.FlowVerdict{Action: tun.ActionReject}
+		case filter.DropSilently:
+			return tun.FlowVerdict{Action: tun.ActionDrop}
+		}
+	}
+	return adapter.JudgeFlow(t.router, t.Tag(), t.Type(), network, source, destination, firstPacket)
+}
+
+// PreMatchFlow reports whether this endpoint accepts a direct-route (tun.Port)
+// flow for the given network/destination, checking Tailscale's own ACL
+// filter. Only ICMP is supported (see icmpFlowPort); other networks fall
+// through to normal outbound dialing.
+func (t *Endpoint) PreMatchFlow(network string, destination netip.Addr) adapter.PreMatchAction {
 	if !t.started.Load() {
-		return nil, E.New("Tailscale is not ready yet")
+		return adapter.PreMatchReject
+	}
+	if network != N.NetworkICMP || t.systemDialer == nil {
+		return adapter.PreMatchContinue
 	}
 	tsFilter := t.filter.Load()
 	if tsFilter != nil {
 		var ipProto ipproto.Proto
-		switch N.NetworkName(network) {
-		case N.NetworkTCP:
-			ipProto = ipproto.TCP
-		case N.NetworkUDP:
-			ipProto = ipproto.UDP
-		case N.NetworkICMP:
-			if !destination.IsIPv6() {
-				ipProto = ipproto.ICMPv4
-			} else {
-				ipProto = ipproto.ICMPv6
-			}
+		if !destination.Is6() {
+			ipProto = ipproto.ICMPv4
+		} else {
+			ipProto = ipproto.ICMPv6
 		}
-		response := tsFilter.Check(source.Addr, destination.Addr, destination.Port, ipProto)
-		switch response {
+		switch tsFilter.Check(destination, destination, 0, ipProto) {
 		case filter.Drop:
-			return nil, syscall.ECONNREFUSED
+			return adapter.PreMatchReject
 		case filter.DropSilently:
-			return nil, tun.ErrDrop
+			return adapter.PreMatchDrop
 		}
 	}
-	var ipVersion uint8
-	if !destination.IsIPv6() {
-		ipVersion = 4
-	} else {
-		ipVersion = 6
+	return adapter.PreMatchFlow
+}
+
+func (t *Endpoint) icmpFlowPort() *ping.Port {
+	if t.icmpPort == nil {
+		t.icmpPort = ping.NewPort(t.ctx, t.logger, func(destination netip.Addr) control.Func {
+			return t.systemDialer.DialerForICMPDestination(destination).Control
+		}, t.udpTimeout)
 	}
-	routeDestination, err := t.router.PreMatch(adapter.InboundContext{
-		Inbound:     t.Tag(),
-		InboundType: t.Type(),
-		IPVersion:   ipVersion,
-		Network:     network,
-		Source:      source,
-		Destination: destination,
-	}, routeContext, timeout, false)
-	if err != nil {
-		switch {
-		case R.IsBypassed(err):
-			err = nil
-		case R.IsRejected(err):
-			t.logger.Trace("reject ", network, " connection from ", source.AddrString(), " to ", destination.AddrString())
-		default:
-			if network == N.NetworkICMP {
-				t.logger.Warn(E.Cause(err, "link ", network, " connection from ", source.AddrString(), " to ", destination.AddrString()))
-			}
-		}
-	}
-	return routeDestination, err
+	return t.icmpPort
+}
+
+func (t *Endpoint) PortAddresses() (netip.Addr, netip.Addr) {
+	return t.icmpFlowPort().PortAddresses()
+}
+
+func (t *Endpoint) PortMTU() uint32 {
+	return t.icmpFlowPort().PortMTU()
+}
+
+func (t *Endpoint) AttachReturn(returnPath tun.Return) error {
+	return t.icmpFlowPort().AttachReturn(returnPath)
+}
+
+func (t *Endpoint) DetachReturn(returnPath tun.Return) error {
+	return t.icmpFlowPort().DetachReturn(returnPath)
+}
+
+func (t *Endpoint) WritePackets(packets [][]byte) error {
+	return t.icmpFlowPort().WritePackets(packets)
 }
 
 func (t *Endpoint) NewConnectionEx(ctx context.Context, conn net.Conn, source M.Socksaddr, destination M.Socksaddr, onClose N.CloseHandlerFunc) {
@@ -781,41 +819,7 @@ func (t *Endpoint) NewPacketConnectionEx(ctx context.Context, conn N.PacketConn,
 	t.router.RoutePacketConnectionEx(ctx, conn, metadata, onClose)
 }
 
-func (t *Endpoint) NewDirectRouteConnection(metadata adapter.InboundContext, routeContext tun.DirectRouteContext, timeout time.Duration) (tun.DirectRouteDestination, error) {
-	if !t.started.Load() {
-		return nil, E.New("Tailscale is not ready yet")
-	}
-	ctx := log.ContextWithNewID(t.ctx)
-	var destination tun.DirectRouteDestination
-	var err error
-	if t.systemDialer != nil {
-		destination, err = ping.ConnectDestination(
-			ctx, t.logger,
-			t.systemDialer.DialerForICMPDestination(metadata.Destination.Addr).Control,
-			metadata.Destination.Addr, routeContext, timeout,
-		)
-	} else {
-		inet4Address, inet6Address := t.server.TailscaleIPs()
-		if metadata.Destination.Addr.Is4() && !inet4Address.IsValid() || metadata.Destination.Addr.Is6() && !inet6Address.IsValid() {
-			return nil, E.New("Tailscale is not ready yet")
-		}
-		destination, err = ping.ConnectGVisor(
-			ctx, t.logger,
-			metadata.Source.Addr, metadata.Destination.Addr,
-			routeContext,
-			t.stack,
-			inet4Address, inet6Address,
-			timeout,
-		)
-	}
-	if err != nil {
-		return nil, err
-	}
-	t.logger.InfoContext(ctx, "linked ", metadata.Network, " connection from ", metadata.Source.AddrString(), " to ", metadata.Destination.AddrString())
-	return destination, nil
-}
-
-func (t *Endpoint) PreferredDomain(domain string) bool {
+func (t *Endpoint) PreferredDomain(metadata *adapter.InboundContext, domain string) bool {
 	routeDomains := t.routeDomains.Load()
 	if routeDomains == nil {
 		return false
@@ -823,7 +827,7 @@ func (t *Endpoint) PreferredDomain(domain string) bool {
 	return routeDomains[strings.ToLower(domain)]
 }
 
-func (t *Endpoint) PreferredAddress(address netip.Addr) bool {
+func (t *Endpoint) PreferredAddress(metadata *adapter.InboundContext, address netip.Addr) bool {
 	routePrefixes := t.routePrefixes.Load()
 	if routePrefixes == nil {
 		return false
@@ -842,15 +846,6 @@ func (t *Endpoint) onReconfig(cfg *wgcfg.Config, routerCfg *router.Config, dnsCf
 	if (t.cfg != nil && reflect.DeepEqual(t.cfg, cfg)) && (t.dnsCfg != nil && reflect.DeepEqual(t.dnsCfg, dnsCfg)) {
 		return
 	}
-	var inet4Address, inet6Address netip.Addr
-	for _, address := range cfg.Addresses {
-		if address.Addr().Is4() {
-			inet4Address = address.Addr()
-		} else if address.Addr().Is6() {
-			inet6Address = address.Addr()
-		}
-	}
-	t.icmpForwarder.SetLocalAddresses(inet4Address, inet6Address)
 	t.cfg = cfg
 	t.dnsCfg = dnsCfg
 

@@ -5,6 +5,7 @@ package cloudflare
 import (
 	"context"
 	"net"
+	"net/netip"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -13,7 +14,6 @@ import (
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
-	"github.com/sagernet/sing-box/route/rule"
 	cloudflared "github.com/sagernet/sing-cloudflared"
 	tun "github.com/sagernet/sing-tun"
 	"github.com/sagernet/sing/common/bufio"
@@ -129,32 +129,36 @@ type icmpRouterHandler struct {
 	tag    string
 }
 
-func (h *icmpRouterHandler) RouteICMPConnection(ctx context.Context, session tun.DirectRouteSession, routeContext tun.DirectRouteContext, timeout time.Duration) (tun.DirectRouteDestination, error) {
+func (h *icmpRouterHandler) RouteICMPFlow(source netip.Addr, destination netip.Addr) (tun.Port, error) {
 	var ipVersion uint8
-	if session.Destination.Is4() {
+	if destination.Is4() {
 		ipVersion = 4
 	} else {
 		ipVersion = 6
 	}
-	destination := M.SocksaddrFrom(session.Destination, 0)
-	routeDestination, err := h.router.PreMatch(adapter.InboundContext{
+	destinationAddr := M.SocksaddrFrom(destination, 0)
+	result := h.router.PreMatch(adapter.InboundContext{
 		Inbound:           h.tag,
 		InboundType:       C.TypeCloudflared,
 		IPVersion:         ipVersion,
 		Network:           N.NetworkICMP,
-		Source:            M.SocksaddrFrom(session.Source, 0),
-		Destination:       destination,
-		OriginDestination: destination,
-	}, routeContext, timeout, false)
-	if err != nil {
-		switch {
-		case rule.IsBypassed(err):
-			err = nil
-		case rule.IsRejected(err):
-			h.logger.Trace("reject ICMP connection from ", session.Source, " to ", session.Destination)
-		default:
-			h.logger.Warn(E.Cause(err, "link ICMP connection from ", session.Source, " to ", session.Destination))
+		Source:            M.SocksaddrFrom(source, 0),
+		Destination:       destinationAddr,
+		OriginDestination: destinationAddr,
+	}, nil)
+	switch result.Action {
+	case adapter.PreMatchFlow:
+		port, isPort := result.Outbound.(tun.Port)
+		if !isPort {
+			return nil, E.New("outbound does not support ICMP flow routing")
 		}
+		return port, nil
+	case adapter.PreMatchReject:
+		h.logger.Trace("reject ICMP connection from ", source, " to ", destination)
+		return nil, E.New("rejected")
+	case adapter.PreMatchBypass:
+		return nil, E.New("bypassed")
+	default:
+		return nil, E.New("no route for ICMP connection from ", source, " to ", destination)
 	}
-	return routeDestination, err
 }
