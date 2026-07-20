@@ -72,6 +72,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/tidwall/gjson v1.18.0
 	github.com/vishvananda/netns v0.0.5
+	github.com/xchacha20-poly1305/sing-trusttunnel v0.2.1
 	github.com/yosida95/uritemplate/v3 v3.0.2
 	go.uber.org/zap v1.27.1
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba

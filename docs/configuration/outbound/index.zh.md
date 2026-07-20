@@ -41,6 +41,7 @@
 | `selector`     | [Selector](./selector/)         |
 | `urltest`      | [URLTest](./urltest/)           |
 | `naive`        | [NaiveProxy](./naive/)          |
+| `trusttunnel`  | [TrustTunnel](./trusttunnel/)   |
 
 #### tag
 
