@@ -73,6 +73,12 @@ func (t *Transport) Close() error {
 func (t *Transport) Reset() {
 }
 
+func (m *Transport) ExchangeAsync(ctx context.Context, msg *mDNS.Msg, callback func(response *mDNS.Msg, err error)) {
+	go func() {
+		callback(m.Exchange(ctx, msg))
+	}()
+}
+
 func (m *Transport) Exchange(ctx context.Context, msg *mDNS.Msg) (*mDNS.Msg, error) {
 	defer func() {
 		select {
