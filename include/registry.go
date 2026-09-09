@@ -43,6 +43,7 @@ import (
 	"github.com/sagernet/sing-box/protocol/ssh"
 	"github.com/sagernet/sing-box/protocol/tor"
 	"github.com/sagernet/sing-box/protocol/trojan"
+	"github.com/sagernet/sing-box/protocol/trusttunnel"
 	"github.com/sagernet/sing-box/protocol/tun"
 	"github.com/sagernet/sing-box/protocol/tunnel"
 	"github.com/sagernet/sing-box/protocol/vless"
@@ -82,6 +83,7 @@ func InboundRegistry() *inbound.Registry {
 	anytls.RegisterInbound(registry)
 	mieru.RegisterInbound(registry)
 	ssh.RegisterInbound(registry)
+	trusttunnel.RegistryInbound(registry)
 
 	registerQUICInbounds(registry)
 	registerCloudflaredInbound(registry)
@@ -122,6 +124,7 @@ func OutboundRegistry() *outbound.Registry {
 	balancer.RegisterLoadBalance(registry)
 	registerMASQUEOutbound(registry)
 	legacyWireguard.RegisterOutbound(registry) //H
+	trusttunnel.RegisterOutbound(registry)
 
 	registerQUICOutbounds(registry)
 	registerStubForRemovedOutbounds(registry)
