@@ -2,6 +2,400 @@
 icon: material/alert-decagram
 ---
 
+#### 1.14.0-beta.2
+
+* Add [JSON Schema](/configuration/schema/) support **1**
+* Fixes and improvements
+
+**1**:
+
+sing-box now provides a JSON Schema for its configuration, enabling completion
+and validation in compatible editors. The schema published with the
+documentation can be selected with the new top-level `$schema` field, while
+the new `sing-box schema` command generates a schema matching the current
+binary and its build tags.
+
+We have also improved the JSON editor experience in the graphical clients on
+macOS, Android, Windows, and Linux, and added schema-based completion support.
+
+#### 1.14.0-beta.1
+
+* Correct undefined rule-set matching semantics **1**
+* Add search domain rule items **2**
+* Add parallel DNS response evaluation support **3**
+* Fixes and improvements
+
+**1**:
+
+Rule-set matching has always been described as merged matching: fields of
+rule-set rules are considered merged into the referencing rule. However, this
+description is only intuitive when a rule-set contains only a single `default`
+rule without `invert`. Merged matching is now limited to exactly this case;
+any other referenced rule-set is matched as an `other field`, which matches
+when any of its rules matches on its own.
+Since the previous behavior in the corrected cases was effectively undefined,
+counterintuitive, and hard to understand, we do not consider this a breaking
+change — except for configurations that worked without their author
+understanding why.
+
+**2**:
+
+The new DNS rule items
+[`domain_label_count`](/configuration/dns/rule/#domain_label_count) and
+[`search_domain_available`](/configuration/dns/rule/#search_domain_available)
+match the number of labels in the query name and whether a DNS server
+currently holds search domains; combined with `racing`, they allow unqualified
+name queries to race a server that can expand them against a public resolver.
+Additionally, [`preferred_by`](/configuration/dns/rule/#preferred_by) now
+matches search domain suffixes and supports `local` and `dhcp` servers.
+
+**3**:
+
+The [`evaluate`](/configuration/dns/rule_action/#evaluate) action can now assign
+a `tag` to each response, allowing multiple evaluated responses to coexist and
+be selected through tagged
+[`match_response`](/configuration/dns/rule/#match_response) rules. The new
+[`race`](/configuration/dns/rule_action/#race) field allows response-dependent
+rules to compete in parallel, with the first matching rule taking effect and
+the remaining queries canceled. The new `speculative` option can start
+`evaluate` and `route` queries while race rules are still pending, reducing
+latency at the cost of potentially unused queries.
+
+#### 1.14.0-alpha.50
+
+* Improve OpenVPN interoperability **1**
+* Improve OpenConnect interoperability **2**
+* Add Fortinet host check support **3**
+* Fixes and improvements
+
+**1**:
+
+The OpenVPN client and server now interoperate with more existing deployments
+through static-key mode, additional legacy ciphers and digests, and
+OpenVPN-compatible certificate purpose, key usage, extended key usage, and
+certificate profile checks. They also support more OpenVPN options for tunnel
+addressing, MSS calculation, replay windows, timers, and TLS renegotiation. The
+new [OpenVPN DNS server](/configuration/dns/server/openvpn/) can use both modern
+and legacy DNS options pushed by OpenVPN servers, while the sing-box server can
+push both forms.
+
+**2**:
+
+The OpenConnect client now supports existing authentication sessions, OIDC
+Bearer authentication, additional platform and AnyConnect mobile identity
+fields, AnyConnect compression, and controls for MTU, DPD and reconnect timing,
+TCP keep alive, and TLS trust and certificate pinning. The new
+[OpenConnect DNS server](/configuration/dns/server/openconnect/) can use pushed
+split-DNS resolvers and, when enabled, general pushed resolvers.
+
+**3**:
+
+The [OpenConnect Client](/configuration/endpoint/openconnect/) endpoint can now
+submit Fortinet host check results using the new
+[`fortinet_host_check`](/configuration/endpoint/openconnect/#fortinet_host_check)
+option. This behavior is modeled after openfortivpn and is not an OpenConnect
+feature. sing-box only submits explicitly configured values when requested by
+the Fortinet server and does not collect system information automatically.
+
+#### 1.14.0-alpha.48
+
+* Add SSO support for AnyConnect **1**
+* Add Linux support for the [desktop client application](/clients/desktop/) **2**
+* Fixes and improvements
+
+**1**:
+
+The [OpenConnect Client](/configuration/endpoint/openconnect/) endpoint now
+supports SSO (single sign-on) authentication for Cisco AnyConnect servers,
+available through the sing-box graphical clients.
+
+**2**:
+
+The [sing-box for Desktop](/clients/desktop/) client is now available for Linux
+(x64 / arm64 / armv7l) from
+[GitHub Releases](https://github.com/SagerNet/sing-box/releases).
+
+#### 1.14.0-alpha.47
+
+* Add OpenVPN client and server support **1**
+* Add OpenConnect client support **2**
+* Fixes and improvements
+
+**1**:
+
+The new [OpenVPN Client](/configuration/endpoint/openvpn-client/) and
+[OpenVPN Server](/configuration/endpoint/openvpn-server/) endpoints are
+compatible with standard OpenVPN clients and servers. Interactive client
+authentication is available through the sing-box graphical clients and
+[Dashboard](https://github.com/SagerNet/sing-box-dashboard).
+
+**2**:
+
+The new [OpenConnect Client](/configuration/endpoint/openconnect/) endpoint
+supports Cisco AnyConnect, GlobalProtect, Fortinet, F5, Pulse Connect Secure,
+and Juniper Network Connect VPN servers. Interactive authentication is
+available through the sing-box graphical clients and
+[Dashboard](https://github.com/SagerNet/sing-box-dashboard).
+
+#### 1.14.0-alpha.46
+
+* Add multiple tags support to rule-sets **1**
+* Add new UDP NAT options **2**
+* Fixes and improvements
+
+**1**:
+
+The rule-set [`tag`](/configuration/rule-set/#tag) field now accepts a list of
+tags to define multiple rule-sets sharing other options at once, with the
+`{tag}` placeholder in `path` or `url` replaced by each tag.
+
+**2**:
+
+The new [UDP NAT](/configuration/shared/udp-nat/) fields
+[`udp_mapping`](/configuration/shared/udp-nat/#udp_mapping),
+[`udp_filtering`](/configuration/shared/udp-nat/#udp_filtering) and
+[`udp_nat_max`](/configuration/shared/udp-nat/#udp_nat_max) configure the NAT
+mapping and filtering behaviors and the maximum number of UDP NAT sessions for
+TUN and TProxy inbounds and the WireGuard endpoint.
+
+#### 1.14.0-alpha.45
+
+* Improve the Windows client application **1**
+* Fixes and improvements
+
+**1**:
+
+The [Windows client](/clients/desktop/) now includes an updater, adds support
+for Windows native sharing of sing-box profile and JSON files, and fixes the
+Tailscale SSH terminal. The
+[Tailscale SSH server](/configuration/endpoint/tailscale/#ssh_server) can now
+open sessions for any local user in the graphical client, while the command
+line client remains limited to the user sing-box runs as. Additionally,
+configurations that use privileges unrelated to networking are now rejected by
+default; an insecure mode is available to allow them.
+
+#### 1.14.0-alpha.44
+
+* Introducing our [new Windows client application](/clients/desktop/) **1**
+* Fixes and improvements
+
+**1**:
+
+The new [Windows client](/clients/desktop/) provides an experience equal to
+other standard sing-box graphical clients, is available for Windows 10+
+(x64 / x86 / arm64), and is distributed as an installer from
+[GitHub Releases](https://github.com/SagerNet/sing-box/releases)
+(`SFW-<version>-<architecture>.exe`).
+
+#### 1.14.0-alpha.43
+
+* Add network namespace support **1**
+* Fixes and improvements
+
+**1**:
+
+The new [`network_namespaces`](/configuration/network-namespace/) option defines
+Linux network namespaces for inbounds and outbounds, referenced by tag from the
+new tun [`netns`](/configuration/inbound/tun/#netns) field and the existing
+[Listen](/configuration/shared/listen/#netns) and
+[Dial](/configuration/shared/dial/#netns) `netns` fields.
+
+The [`unshare`](/configuration/network-namespace/unshare/) type creates the
+namespace at startup without requiring root privileges: a rootless sing-box can
+provide a tun (including `auto_route` and `auto_redirect`) inside a namespace,
+which can be entered with `nsenter`.
+
+#### 1.14.0-alpha.42
+
+* Fixes and improvements
+
+#### 1.14.0-alpha.41
+
+* Add windows bridge **1**
+* Add `preferred_by` support for bridge **2**
+* Add hysteria2 realm IP version restriction **3**
+* Add hysteria2 realm port mapping **4**
+* Fixes and improvements
+
+**1**:
+
+The [`bridge`](/configuration/outbound/bridge/) outbound is now supported on
+Windows, implemented via WinDivert and requiring Administrator privileges.
+
+**2**:
+
+The [`bridge`](/configuration/outbound/bridge/) outbound now works with the
+[`preferred_by`](/configuration/route/rule/#preferred_by) route rule item.
+It is recommended to use `preferred_by` as a gate in the `route` rule: it only
+matches in [pre-match](/configuration/shared/pre-match/) and excludes local
+addresses that cannot be routed.
+
+**3**:
+
+The new [`realm.ip_version`](/configuration/outbound/hysteria2/#realmip_version)
+inbound and outbound field restricts realm connections (STUN, hole punching,
+and the resulting QUIC path) to a single IP version.
+
+**4**:
+
+The new [`realm.port_mapping`](/configuration/outbound/hysteria2/#realmport_mapping)
+inbound and outbound field maintains a UDP port mapping on the local gateway
+via UPnP or NAT-PMP, improving hole-punching reliability behind gateways that
+support it.
+
+#### 1.14.0-alpha.40
+
+* Add bridge outbound **1**
+* Fixes and improvements
+
+**1**:
+
+The new `bridge` outbound is the L3 counterpart of `direct`: it forwards L3
+traffic (TCP, UDP and ICMP) from a TUN or other L3 endpoints directly out of a
+network interface, without going through L3 to L4 translation. It requires
+privileges and is supported on Linux, macOS, rooted Android, and jailbroken iOS.
+
+See [Bridge](/configuration/outbound/bridge/).
+
+#### 1.14.0-alpha.39
+
+* Add L3 forwarding support **1**
+* Fixes and improvements
+
+**1**:
+
+Building on the ICMP proxy support introduced in sing-box 1.13.0, TCP and UDP
+traffic from L3 inbounds (TUN, WireGuard, and Tailscale) can now be forwarded
+directly to WireGuard and Tailscale endpoints at L3, without going through
+L3 to L4 translation.
+
+See [Pre-match](/configuration/shared/pre-match/).
+
+#### 1.14.0-alpha.38
+
+* Add Snell protocol support **1**
+* Fixes and improvements
+
+**1**:
+
+Surge believes that being closed-source and not proliferated can keep
+[Snell](https://kb.nssurge.com/surge-knowledge-base/release-notes/snell)
+covert, but this is already impossible in 2026; considering that Snell still
+has advantages that other random-traffic protocols do not possess, such as
+multiplexing support with complete TCP semantics and traffic-characteristic
+diversity, we [implemented it in Go](https://github.com/SagerNet/sing-snell)
+instead of reinventing the wheel, with all features except the v5 QUIC proxy,
+behavior as consistent with the official implementation as possible, and
+performance at least on par with it.
+
+See [Snell Inbound](/configuration/inbound/snell/) and
+[Snell Outbound](/configuration/outbound/snell/).
+
+#### 1.13.14
+
+* Fixes and improvements
+
+#### 1.14.0-alpha.33
+
+* Add iOS jailbreak release **1**
+* Fixes and improvements
+
+**1**:
+
+A new jailbreak build of the iOS [sing-box for Apple](/clients/apple/) client is
+available, distributed as a `.deb` for rootless iOS 15.0+ from
+[GitHub Releases](https://github.com/SagerNet/sing-box/releases)
+(`SFI-iphoneos-arm64.deb`). Unlike the App Store and TestFlight builds, it can run
+a [Tailscale SSH server](/configuration/endpoint/tailscale/#ssh_server) on the
+device and supports [process matching](/configuration/route/rule/#process_name)
+(`process_name`, `process_path`, `user`, and so on) in route and DNS rules.
+
+#### 1.14.0-alpha.32
+
+* Add dashboard support for the API service **1**
+* Add USB/IP service **2**
+* Fixes and improvements
+
+**1**:
+
+The [sing-box API service](/configuration/service/api/) can now download, update
+and serve [sing-box-dashboard](https://github.com/SagerNet/sing-box-dashboard)
+directly over its listener, configured via the new
+[`dashboard`](/configuration/service/api/#dashboard) option.
+
+**2**:
+
+New [USB/IP Server](/configuration/service/usbip-server/) and
+[USB/IP Client](/configuration/service/usbip-client/) services export and import
+USB devices over the [USB/IP](https://usbip.sourceforge.net/) protocol, built on
+[sing-usbip](https://github.com/SagerNet/sing-usbip), which adds hotplug while
+staying interoperable with standard USB/IP. Exporting config-selected local
+devices (`provider: default`) runs via the CLI on Linux, Windows, and macOS and
+requires elevated privileges (macOS additionally needs a CGO build and disabled
+System Integrity Protection). With `provider: dynamic`, devices are instead
+supplied at runtime through the API service by the graphical clients on macOS and
+Android, or the [sing-box Dashboard](https://github.com/SagerNet/sing-box-dashboard).
+
+#### 1.14.0-alpha.31
+
+* Fixes and improvements
+
+#### 1.14.0-alpha.30
+
+* Introducing sing-box API service **1**
+* Apple/Android: Introducing remote control **2**
+* Introducing sing-box Dashboard **3**
+* Fixes and improvements
+
+**1**:
+
+The new [sing-box API service](/configuration/service/api/) is a gRPC
+server for observing and controlling the running sing-box instance,
+exposing the same interface the graphical clients use locally: service
+status, logs, outbound groups (selection and URL tests), Clash mode,
+connection tracking, and tools such as network quality tests, STUN
+tests, and Tailscale operations.
+
+**2**:
+
+The graphical clients for Apple platforms and Android can now control
+remote sing-box instances running the API service. Remote servers (URL
+and secret) are managed in settings; the dashboard, logs, connections,
+groups, and tools pages can then switch between the local service and
+remote instances.
+
+**3**:
+
+[sing-box Dashboard](https://github.com/SagerNet/sing-box-dashboard) is
+a new web client for the API service, providing almost the same
+experience as the graphical clients. A public instance is available at
+http://sing-box-dashboard.sagernet.org (shortcut: dash.sing-box.app).
+
+#### 1.14.0-alpha.29
+
+* Fixes and improvements
+
+#### 1.13.13
+
+* Fixes and improvements
+
+#### 1.14.0-alpha.27
+
+* Add Tailscale SSH server **1**
+* Fixes and improvements
+
+**1**:
+
+Adds an [`ssh_server`](/configuration/endpoint/tailscale/#ssh_server) field to
+[Tailscale](/configuration/endpoint/tailscale/) endpoints, running a Tailscale SSH
+server on tailnet port 22. Access is controlled by the SSH ACL in the Tailscale
+admin console, which maps each connection to a local user (behavior varies by
+platform; iOS and tvOS are not yet supported). The value may be `true` (equivalent
+to `{ "enabled": true }`), or an object that additionally sets
+[`disable_pty`](/configuration/endpoint/tailscale/#ssh_serverdisable_pty),
+[`disable_sftp`](/configuration/endpoint/tailscale/#ssh_serverdisable_sftp), and
+[`disable_forwarding`](/configuration/endpoint/tailscale/#ssh_serverdisable_forwarding).
+
 #### 1.14.0-alpha.26
 
 * Add gecko obfs for Hysteria2 **1**

@@ -18,6 +18,7 @@ import (
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-tun"
+	"github.com/sagernet/sing-tun/gtcpip/header"
 	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/json/badoption"
@@ -42,6 +43,9 @@ type Inbound struct {
 	logger                      log.ContextLogger
 	tunOptions                  tun.Options
 	udpTimeout                  time.Duration
+	udpMapping                  tun.NATMapping
+	udpFiltering                tun.NATFiltering
+	udpNATMax                   uint32
 	dnsHijackAddress            []netip.Addr
 	stack                       string
 	tunIf                       tun.Tun
@@ -230,6 +234,9 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 			EXP_MultiPendingPackets:               multiPendingPackets,
 		},
 		udpTimeout:        udpTimeout,
+		udpMapping:        tun.NATMapping(options.UDPMapping),
+		udpFiltering:      tun.NATFiltering(options.UDPFiltering),
+		udpNATMax:         options.UDPNATMax,
 		stack:             options.Stack,
 		platformInterface: platformInterface,
 		platformOptions:   common.PtrValueOrDefault(options.Platform),
@@ -335,7 +342,7 @@ func (t *Inbound) Start(stage adapter.StartStage) error {
 			outboundManager := service.FromContext[adapter.OutboundManager](t.ctx)
 			endpointManager := service.FromContext[adapter.EndpointManager](t.ctx)
 			for _, outbound := range outboundManager.Outbounds() {
-				if _, isFlowOutbound := outbound.(adapter.FlowOutbound); isFlowOutbound {
+				if _, isFlowOutbound := outbound.(adapter.FlowOutbound); isFlowOutbound && common.Contains(outbound.Network(), N.NetworkTCP) {
 					if C.IsLinux {
 						t.tunOptions.GSO = true
 					} else {
@@ -345,7 +352,7 @@ func (t *Inbound) Start(stage adapter.StartStage) error {
 				}
 			}
 			for _, endpoint := range endpointManager.Endpoints() {
-				if _, isFlowOutbound := endpoint.(adapter.FlowOutbound); isFlowOutbound {
+				if _, isFlowOutbound := endpoint.(adapter.FlowOutbound); isFlowOutbound && common.Contains(endpoint.Network(), N.NetworkTCP) {
 					if C.IsLinux {
 						t.tunOptions.GSO = true
 					} else {
@@ -367,7 +374,7 @@ func (t *Inbound) Start(stage adapter.StartStage) error {
 				t.tunOptions.NetNs = manager.ResolvePath(t.tunOptions.NetNs)
 			}
 		}
-		if t.platformInterface == nil {
+		if t.platformInterface == nil || C.IsWindows {
 			t.routeAddressSet = common.FlatMap(t.routeRuleSet, adapter.RuleSet.ExtractIPSet)
 			for _, routeRuleSet := range t.routeRuleSet {
 				ipSets := routeRuleSet.ExtractIPSet()
@@ -432,12 +439,16 @@ func (t *Inbound) Start(stage adapter.StartStage) error {
 		}
 		t.logger.Trace("creating stack")
 		t.tunIf = tunInterface
-		var (
-			forwarderBindInterface bool
-			includeAllNetworks     bool
-		)
 		if t.platformInterface != nil {
-			forwarderBindInterface = true
+			err = t.platformInterface.ProcessPlatformOptions(t.platformOptions)
+			if err != nil {
+				closeError := t.tunIf.Close()
+				t.tunIf = nil
+				return E.Errors(E.Cause(err, "process platform options"), closeError)
+			}
+		}
+		var includeAllNetworks bool
+		if t.platformInterface != nil && t.platformInterface.UnderNetworkExtension() {
 			includeAllNetworks = t.platformInterface.NetworkExtensionIncludeAllNetworks()
 		}
 		tunStack, err := tun.NewStack(t.stack, tun.StackOptions{
@@ -446,9 +457,12 @@ func (t *Inbound) Start(stage adapter.StartStage) error {
 			TunOptions:             t.tunOptions,
 			UDPTimeout:             t.udpTimeout,
 			ICMPTimeout:            C.ICMPTimeout,
+			UDPMapping:             t.udpMapping,
+			UDPFiltering:           t.udpFiltering,
+			UDPNATMax:              t.udpNATMax,
 			Handler:                t,
 			Logger:                 t.logger,
-			ForwarderBindInterface: forwarderBindInterface,
+			ForwarderBindInterface: C.IsDarwin,
 			InterfaceFinder:        t.networkManager.InterfaceFinder(),
 			IncludeAllNetworks:     includeAllNetworks,
 		})
@@ -493,6 +507,13 @@ func (t *Inbound) updateRouteAddressSet(it adapter.RuleSet) {
 	t.routeExcludeAddressSet = nil
 }
 
+func (t *Inbound) InterfaceUpdated() {
+	tunStack := t.tunStack
+	if tunStack != nil {
+		tunStack.ResetNetwork()
+	}
+}
+
 func (t *Inbound) Close() error {
 	return common.Close(
 		t.tunStack,
@@ -503,9 +524,25 @@ func (t *Inbound) Close() error {
 
 func (t *Inbound) JudgeFlow(network uint8, source netip.AddrPort, destination netip.AddrPort, firstPacket []byte) tun.FlowVerdict {
 	if slices.Contains(t.dnsHijackAddress, destination.Addr()) {
+		if network == uint8(header.UDPProtocolNumber) {
+			return tun.FlowVerdict{Action: tun.ActionHijackDNS}
+		}
 		return tun.FlowVerdict{Action: tun.ActionAccept}
 	}
 	return adapter.JudgeFlow(t.router, t.tag, C.TypeTun, network, source, destination, firstPacket)
+}
+
+func (t *Inbound) NewDNSPacket(payload []byte, source M.Socksaddr, destination M.Socksaddr, writer N.PacketWriter) {
+	ctx := log.ContextWithNewID(t.ctx)
+	var metadata adapter.InboundContext
+	metadata.Inbound = t.tag
+	metadata.InboundType = C.TypeTun
+	metadata.Network = N.NetworkUDP
+	metadata.Source = source
+	metadata.Destination = destination
+	metadata.Protocol = C.ProtocolDNS
+	t.logger.InfoContext(ctx, "inbound DNS packet from ", source)
+	t.router.HijackDNSPacket(ctx, payload, writer, metadata)
 }
 
 func (t *Inbound) NewConnectionEx(ctx context.Context, conn net.Conn, source M.Socksaddr, destination M.Socksaddr, onClose N.CloseHandlerFunc) {
@@ -577,4 +614,8 @@ func (t *autoRedirectHandler) NewConnectionEx(ctx context.Context, conn net.Conn
 
 func (t *autoRedirectHandler) NewPacketConnectionEx(ctx context.Context, conn N.PacketConn, source M.Socksaddr, destination M.Socksaddr, onClose N.CloseHandlerFunc) {
 	panic("unexcepted")
+}
+
+func (t *autoRedirectHandler) NewDNSPacket(payload []byte, source M.Socksaddr, destination M.Socksaddr, writer N.PacketWriter) {
+	(*Inbound)(t).NewDNSPacket(payload, source, destination, writer)
 }

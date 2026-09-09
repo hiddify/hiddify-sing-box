@@ -45,6 +45,7 @@ type CacheFile struct {
 	logger             logger.Logger
 	path               string
 	cacheID            []byte
+	cacheIDText        string
 	storeFakeIP        bool
 	storeRDRC          bool
 	storeWARPConfig    bool
@@ -106,11 +107,12 @@ func New(ctx context.Context, logger logger.Logger, options option.CacheFileOpti
 		logger:       logger,
 		path:         filemanager.BasePath(ctx, path),
 		cacheID:      cacheIDBytes,
-		storeFakeIP:     options.StoreFakeIP,
-		storeRDRC:       options.StoreRDRC,
+		cacheIDText:       options.CacheID,
+		storeFakeIP:       options.StoreFakeIP,
+		storeRDRC:         options.StoreRDRC,
 		storeWARPConfig:   options.StoreWARPConfig,
 		storeMASQUEConfig: options.StoreMASQUEConfig,
-		storeDNS:        options.StoreDNS,
+		storeDNS:          options.StoreDNS,
 		rdrcTimeout:  rdrcTimeout,
 		saveDomain:   make(map[netip.Addr]string),
 		saveAddress4: make(map[string]netip.Addr),
@@ -126,6 +128,10 @@ func (c *CacheFile) Name() string {
 
 func (c *CacheFile) Dependencies() []string {
 	return nil
+}
+
+func (c *CacheFile) CacheID() string {
+	return c.cacheIDText
 }
 
 func (c *CacheFile) SetOptimisticTimeout(timeout time.Duration) {
@@ -167,11 +173,13 @@ func (c *CacheFile) startCacheCleanup() {
 
 func (c *CacheFile) start() error {
 	const fileMode = 0o666
+	cacheFile, err := filemanager.OpenFile(c.ctx, c.path, os.O_RDWR|os.O_CREATE, fileMode)
+	if err != nil {
+		return err
+	}
+	cacheFile.Close()
 	options := bbolt.Options{Timeout: time.Second}
-	var (
-		db  *bbolt.DB
-		err error
-	)
+	var db *bbolt.DB
 	for range 10 {
 		db, err = bbolt.Open(c.path, fileMode, &options)
 		if err == nil {
@@ -181,7 +189,7 @@ func (c *CacheFile) start() error {
 			continue
 		}
 		if E.IsMulti(err, bboltErrors.ErrInvalid, bboltErrors.ErrChecksum, bboltErrors.ErrVersionMismatch) {
-			rmErr := os.Remove(c.path)
+			rmErr := filemanager.Remove(c.ctx, c.path)
 			if rmErr != nil {
 				return err
 			}
@@ -264,7 +272,7 @@ func (c *CacheFile) resetDB() {
 	c.resetAccess.Lock()
 	defer c.resetAccess.Unlock()
 	c.DB.Close()
-	os.Remove(c.path)
+	filemanager.Remove(c.ctx, c.path)
 	db, err := bbolt.Open(c.path, 0o666, &bbolt.Options{Timeout: time.Second})
 	if err == nil {
 		_ = filemanager.Chown(c.ctx, c.path)

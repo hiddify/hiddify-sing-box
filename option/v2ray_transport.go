@@ -2,11 +2,13 @@ package option
 
 import (
 	"net/http"
+	"reflect"
 	"strings"
 
 	Xbadoption "github.com/sagernet/sing-box/common/xray/json/badoption"
 	"github.com/sagernet/sing-box/common/xray/utils"
 	C "github.com/sagernet/sing-box/constant"
+	"github.com/sagernet/sing-box/schema"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/json"
 	"github.com/sagernet/sing/common/json/badjson"
@@ -14,7 +16,7 @@ import (
 )
 
 type _V2RayTransportOptions struct {
-	Type               string                  `json:"type"`
+	Type               string                  `json:"type" enum:"http,ws,quic,grpc,httpupgrade"`
 	HTTPOptions        V2RayHTTPOptions        `json:"-"`
 	WebsocketOptions   V2RayWebsocketOptions   `json:"-"`
 	QUICOptions        V2RayQUICOptions        `json:"-"`
@@ -76,6 +78,18 @@ func (o *V2RayTransportOptions) UnmarshalJSON(bytes []byte) error {
 		return err
 	}
 	return nil
+}
+
+func (o V2RayTransportOptions) DescribeSchema(builder schema.Builder) (*schema.Node, error) {
+	return builder.Define("V2RayTransport", func() (*schema.Node, error) {
+		return schema.DiscriminatedUnion(builder, "type", true, []schema.UnionVariant{
+			{Value: C.V2RayTransportTypeHTTP, StructType: reflect.TypeFor[V2RayHTTPOptions]()},
+			{Value: C.V2RayTransportTypeWebsocket, StructType: reflect.TypeFor[V2RayWebsocketOptions]()},
+			{Value: C.V2RayTransportTypeQUIC, StructType: reflect.TypeFor[V2RayQUICOptions]()},
+			{Value: C.V2RayTransportTypeGRPC, StructType: reflect.TypeFor[V2RayGRPCOptions]()},
+			{Value: C.V2RayTransportTypeHTTPUpgrade, StructType: reflect.TypeFor[V2RayHTTPUpgradeOptions]()},
+		}, nil)
+	})
 }
 
 type V2RayHTTPOptions struct {

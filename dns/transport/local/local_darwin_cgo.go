@@ -77,6 +77,18 @@ func darwinResolverHErrno(name string, hErrno int) error {
 	}
 }
 
+type systemResolver struct{}
+
+func (r *systemResolver) close() {}
+
+func (r *systemResolver) reset() {}
+
+func (t *Transport) systemExchangeAsync(ctx context.Context, message *mDNS.Msg, callback func(response *mDNS.Msg, err error)) {
+	go func() {
+		callback(t.systemExchange(ctx, message))
+	}()
+}
+
 func (t *Transport) systemExchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error) {
 	question := message.Question[0]
 	type resolvResult struct {
