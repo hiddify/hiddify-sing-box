@@ -41,6 +41,7 @@ type Server struct {
 	path       string
 	method     string
 	headers    http.Header
+	version    int //H
 }
 
 func NewServer(ctx context.Context, logger logger.ContextLogger, options option.V2RayHTTPOptions, tlsConfig tls.ServerConfig, handler adapter.V2RayServerTransportHandler) (*Server, error) {
@@ -56,6 +57,7 @@ func NewServer(ctx context.Context, logger logger.ContextLogger, options option.
 		path:    options.Path,
 		method:  options.Method,
 		headers: options.Headers.Build(),
+		version: options.Version, //H
 	}
 	if !strings.HasPrefix(server.path, "/") {
 		server.path = "/" + server.path
@@ -165,7 +167,11 @@ func (s *Server) Network() []string {
 
 func (s *Server) Serve(listener net.Listener) error {
 	if s.tlsConfig != nil {
-		if len(s.tlsConfig.NextProtos()) == 0 {
+		if s.version == 1 { //H
+			if len(s.tlsConfig.NextProtos()) == 0 { //H
+				s.tlsConfig.SetNextProtos([]string{"http/1.1"}) //H
+			} //H
+		} else if len(s.tlsConfig.NextProtos()) == 0 {
 			s.tlsConfig.SetNextProtos([]string{http2.NextProtoTLS, "http/1.1"})
 		} else if !common.Contains(s.tlsConfig.NextProtos(), http2.NextProtoTLS) {
 			s.tlsConfig.SetNextProtos(append([]string{http2.NextProtoTLS}, s.tlsConfig.NextProtos()...))
