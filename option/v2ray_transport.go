@@ -16,7 +16,7 @@ import (
 )
 
 type _V2RayTransportOptions struct {
-	Type               string                  `json:"type" enum:"http,ws,quic,grpc,httpupgrade"`
+	Type               string                  `json:"type" enum:"http,ws,quic,grpc,httpupgrade,raw"`
 	HTTPOptions        V2RayHTTPOptions        `json:"-"`
 	WebsocketOptions   V2RayWebsocketOptions   `json:"-"`
 	QUICOptions        V2RayQUICOptions        `json:"-"`
@@ -24,6 +24,7 @@ type _V2RayTransportOptions struct {
 	HTTPUpgradeOptions V2RayHTTPUpgradeOptions `json:"-"`
 	XHTTPOptions       V2RayXHTTPOptions       `json:"-"`
 	DNSTTOptions       DnsttOptions            `json:"-"`
+	RawOptions         V2RayRawOptions         `json:"-"`
 }
 
 type V2RayTransportOptions _V2RayTransportOptions
@@ -43,6 +44,8 @@ func (o V2RayTransportOptions) MarshalJSON() ([]byte, error) {
 		v = o.HTTPUpgradeOptions
 	case C.V2RayTransportTypeXHTTP:
 		v = o.XHTTPOptions
+	case C.V2RayTransportTypeRaw:
+		v = o.RawOptions
 
 	case "":
 		return nil, E.New("missing transport type")
@@ -71,6 +74,8 @@ func (o *V2RayTransportOptions) UnmarshalJSON(bytes []byte) error {
 		v = &o.HTTPUpgradeOptions
 	case C.V2RayTransportTypeXHTTP:
 		v = &o.XHTTPOptions
+	case C.V2RayTransportTypeRaw:
+		v = &o.RawOptions
 	default:
 		return E.New("unknown transport type: " + o.Type)
 	}
@@ -89,6 +94,7 @@ func (o V2RayTransportOptions) DescribeSchema(builder schema.Builder) (*schema.N
 			{Value: C.V2RayTransportTypeQUIC, StructType: reflect.TypeFor[V2RayQUICOptions]()},
 			{Value: C.V2RayTransportTypeGRPC, StructType: reflect.TypeFor[V2RayGRPCOptions]()},
 			{Value: C.V2RayTransportTypeHTTPUpgrade, StructType: reflect.TypeFor[V2RayHTTPUpgradeOptions]()},
+			{Value: C.V2RayTransportTypeRaw, StructType: reflect.TypeFor[V2RayRawOptions]()},
 		}, nil)
 	})
 }
@@ -100,7 +106,13 @@ type V2RayHTTPOptions struct {
 	Headers     badoption.HTTPHeader       `json:"headers,omitempty"`
 	IdleTimeout badoption.Duration         `json:"idle_timeout,omitempty"`
 	PingTimeout badoption.Duration         `json:"ping_timeout,omitempty"`
+	Version     int                        `json:"version,omitempty" enum:"1,2"` //H version of HTTP protocol to use; when TLS is enabled, defaults to 2 (h2), set to 1 to force HTTP/1.1
 }
+
+// V2RayRawOptions configures the "raw" V2Ray transport: it passes the
+// underlying (optionally TLS-wrapped) connection through unmodified, with no
+// additional framing or headers, similar to Xray's "raw" stream setting. //H
+type V2RayRawOptions struct{} //H
 
 type V2RayWebsocketOptions struct {
 	Path                string               `json:"path,omitempty"`
