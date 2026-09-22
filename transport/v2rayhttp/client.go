@@ -36,8 +36,15 @@ type Client struct {
 }
 
 func NewClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr, options option.V2RayHTTPOptions, tlsConfig tls.Config) (adapter.V2RayClientTransport, error) {
+	useHTTP2 := tlsConfig != nil && options.Version != 1 //H
 	var transport http.RoundTripper
-	if tlsConfig == nil {
+	if !useHTTP2 {
+		if tlsConfig != nil { //H
+			if len(tlsConfig.NextProtos()) == 0 { //H
+				tlsConfig.SetNextProtos([]string{"http/1.1"}) //H
+			} //H
+			dialer = tls.NewDialer(dialer, tlsConfig) //H
+		} //H
 		transport = &http.Transport{
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 				return dialer.DialContext(ctx, network, M.ParseSocksaddr(addr))
@@ -92,7 +99,7 @@ func NewClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr, opt
 		method:     options.Method,
 		headers:    headers, //H
 		transport:  transport,
-		http2:      tlsConfig != nil,
+		http2:      useHTTP2, //H
 	}, nil
 }
 
