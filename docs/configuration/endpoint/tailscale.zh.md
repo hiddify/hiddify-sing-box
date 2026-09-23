@@ -61,7 +61,7 @@ icon: material/new-box
 
 !!! note
 
-    认证密钥不是必需的。默认情况下，sing-box 将记录登录 URL（或在图形客户端上弹出通知）。
+    认证密钥不是必需的。默认情况下，sing-box 将记录登录 URL。
 
 用于创建节点的认证密钥。如果节点已经创建（从之前存储的状态），则不使用此字段。
 
@@ -161,6 +161,50 @@ UDP NAT 过期时间。
 
 参阅 [HTTP 客户端字段](/zh/configuration/shared/http-client/) 了解详情。
 
+#### ssh_server
+
+!!! question "自 sing-box 1.14.0 起"
+
+在 tailnet 的 TCP 22 端口上运行 Tailscale SSH 服务器。
+
+访问控制由 Tailscale 管理控制台中的 SSH ACL 决定，它将每个连接映射到一个本地用户。该用户如何解析、以及允许哪些用户，取决于平台：
+
+- **Linux** 和 **macOS**：从系统用户数据库解析用户。要切换到 sing-box 运行身份以外的用户需要以 root 运行；非 root 时，会话仅限于当前用户。
+- **Windows**：在命令行客户端中，会话以 sing-box 进程的身份运行；映射的用户不会被模拟，因此映射到其他本地账户的会话将被拒绝。在图形客户端中没有此限制。
+- **Android**：用户由应用解析，而非系统用户数据库。`root` 即超级用户（UID 0），`shell` 为 ADB shell 用户（UID 2000）；其他名称均作为已安装应用的包名解析，以该应用的 UID 运行，并使用其数据目录作为主目录，因此目标应用必须已安装。`termux` 是 `com.termux` 的快捷方式，`sing-box` 是应用自身包名的快捷方式；当 Termux 已安装时，`root` 和 `termux` 用户将加载 Termux 环境。以 sing-box 应用自身身份运行无需 root，其他用户则需要已授予的 root 权限；非 root 时，会话仅限于 sing-box 用户。
+- **macOS**：SSH 服务器仅在独立版本中可用，且需要 Root Helper；App Store 版本不支持。
+- **iOS**：SSH 服务器仅在越狱版本中可用；App Store 和 TestFlight 版本不支持。
+- **tvOS**：暂不支持。
+
+对象格式：
+
+```json
+{
+  "enabled": true,
+  "disable_pty": false,
+  "disable_sftp": false,
+  "disable_forwarding": false
+}
+```
+
+将 `ssh_server` 值设置为 `true` 等同于 `{ "enabled": true }`。
+
+#### ssh_server.enabled
+
+启用 SSH 服务器。
+
+#### ssh_server.disable_pty
+
+拒绝 PTY 分配请求。
+
+#### ssh_server.disable_sftp
+
+拒绝 SFTP 子系统。
+
+#### ssh_server.disable_forwarding
+
+拒绝本地和远程的 TCP 与 Unix 套接字转发，包括 SSH agent 转发。
+
 ### 拨号字段
 
 !!! failure "已在 sing-box 1.14.0 废弃"
@@ -168,3 +212,7 @@ UDP NAT 过期时间。
     Tailscale 端点中的拨号字段已在 sing-box 1.14.0 废弃且将在 sing-box 1.16.0 中被移除，请使用 `control_http_client` 代替。
 
 参阅 [拨号字段](/zh/configuration/shared/dial/) 了解详情。
+
+### 交互式认证
+
+在 sing-box dashboard 或任意 sing-box 图形客户端的 `工具` > `端点` 中认证和管理 endpoint。

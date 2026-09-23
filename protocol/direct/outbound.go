@@ -29,10 +29,11 @@ func RegisterOutbound(registry *outbound.Registry) {
 }
 
 var (
-	_ N.ParallelDialer             = (*Outbound)(nil)
-	_ dialer.ParallelNetworkDialer = (*Outbound)(nil)
-	_ dialer.DirectDialer          = (*Outbound)(nil)
-	_ adapter.FlowOutbound         = (*Outbound)(nil)
+	_ N.ParallelDialer                = (*Outbound)(nil)
+	_ dialer.ParallelNetworkDialer    = (*Outbound)(nil)
+	_ dialer.DirectDialer             = (*Outbound)(nil)
+	_ adapter.FlowOutbound            = (*Outbound)(nil)
+	_ adapter.InterfaceUpdateListener = (*Outbound)(nil)
 )
 
 type Outbound struct {
@@ -71,7 +72,9 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 		domainStrategy: C.DomainStrategy(options.DomainStrategy),
 		fallbackDelay:  time.Duration(options.FallbackDelay),
 		dialer:         outboundDialer.(dialer.ParallelInterfaceDialer),
-		isEmpty:        reflect.DeepEqual(options.DialerOptions, option.DialerOptions{UDPFragmentDefault: true}),
+		isEmpty: reflect.DeepEqual(options.DialerOptions, option.DialerOptions{
+			AbstractDialerOptions: option.AbstractDialerOptions{UDPFragmentDefault: true},
+		}),
 	}
 	//nolint:staticcheck
 	if options.ProxyProtocol != 0 {
@@ -88,28 +91,41 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 func (h *Outbound) Start(stage adapter.StartStage) error {
 	switch stage {
 	case adapter.StartStatePostStart, adapter.StartStateStarted:
-		h.fetchMyAddresses()
+		if len(h.myAddresses.Load()) == 0 {
+			h.fetchMyAddresses()
+		}
 	}
 	return nil
 }
 
 func (h *Outbound) fetchMyAddresses() {
-	if len(h.myAddresses.Load()) > 0 {
-		return
-	}
 	myInterfaceNames := h.network.InterfaceMonitor().MyInterfaces()
 	if len(myInterfaceNames) == 0 {
 		return
 	}
-	var myAddresses []netip.Prefix
+	var (
+		myAddresses []netip.Prefix
+		found       bool
+	)
 	for _, myInterfaceName := range myInterfaceNames {
 		myInterface, err := h.network.InterfaceFinder().ByName(myInterfaceName)
 		if err != nil {
 			continue
 		}
+		found = true
 		myAddresses = append(myAddresses, myInterface.Addresses...)
 	}
+	if !found {
+		return
+	}
 	h.myAddresses.Store(myAddresses)
+}
+
+func (h *Outbound) InterfaceUpdated() {
+	h.fetchMyAddresses()
+	if h.icmpPort != nil {
+		h.icmpPort.Close()
+	}
 }
 
 func (h *Outbound) isMyLoopbackAddress(addresses ...netip.Addr) bool {

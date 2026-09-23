@@ -5,6 +5,7 @@ import (
 	"context"
 	"net/netip"
 	"os"
+	"reflect"
 
 	box "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/adapter"
@@ -13,6 +14,7 @@ import (
 	"github.com/sagernet/sing-box/include"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
+	"github.com/sagernet/sing-box/schema"
 	"github.com/sagernet/sing-box/service/oomkiller"
 	tun "github.com/sagernet/sing-tun"
 	"github.com/sagernet/sing/common/control"
@@ -105,6 +107,10 @@ func (s *platformInterfaceStub) UsePlatformInterface() bool {
 
 func (s *platformInterfaceStub) OpenInterface(options *tun.Options, platformOptions option.TunPlatformOptions) (tun.Tun, error) {
 	return nil, os.ErrInvalid
+}
+
+func (s *platformInterfaceStub) ProcessPlatformOptions(options option.TunPlatformOptions) error {
+	return nil
 }
 
 func (s *platformInterfaceStub) UsePlatformDefaultInterfaceMonitor() bool {
@@ -264,6 +270,14 @@ func (s *interfaceMonitorStub) RegisterMyInterface(interfaceName string) {
 
 func (s *interfaceMonitorStub) MyInterface() string {
 	return ""
+}
+
+func GenerateConfigSchema() (*StringBox, error) {
+	content, err := schema.Generate(baseContext(nil), reflect.TypeFor[option.Options]())
+	if err != nil {
+		return nil, err
+	}
+	return wrapString(string(content)), nil
 }
 
 func FormatConfig(configContent string) (*StringBox, error) {

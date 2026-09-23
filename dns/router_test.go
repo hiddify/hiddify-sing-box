@@ -40,6 +40,12 @@ func (t *fakeDNSTransport) Exchange(context.Context, *mDNS.Msg) (*mDNS.Msg, erro
 	return nil, E.New("unused transport exchange")
 }
 
+func (t *fakeDNSTransport) ExchangeAsync(ctx context.Context, message *mDNS.Msg, callback func(response *mDNS.Msg, err error)) {
+	go func() {
+		callback(t.Exchange(ctx, message))
+	}()
+}
+
 type fakeDNSTransportManager struct {
 	defaultTransport adapter.DNSTransport
 	transports       map[string]adapter.DNSTransport
@@ -88,6 +94,9 @@ func (r *fakeRouter) Start(adapter.StartStage) error { return nil }
 func (r *fakeRouter) Close() error                   { return nil }
 func (r *fakeRouter) PreMatch(metadata adapter.InboundContext, firstPacket []byte) adapter.PreMatchResult {
 	return adapter.PreMatchResult{}
+}
+
+func (r *fakeRouter) HijackDNSPacket(ctx context.Context, payload []byte, writer N.PacketWriter, metadata adapter.InboundContext) {
 }
 
 func (r *fakeRouter) RouteConnection(context.Context, net.Conn, adapter.InboundContext) error {
@@ -243,6 +252,12 @@ func (c *fakeDNSClient) Exchange(ctx context.Context, transport adapter.DNSTrans
 	return c.exchange(transport, message)
 }
 
+func (c *fakeDNSClient) ExchangeAsync(ctx context.Context, transport adapter.DNSTransport, message *mDNS.Msg, options adapter.DNSQueryOptions, responseChecker func(*mDNS.Msg) bool, callback func(response *mDNS.Msg, err error)) {
+	go func() {
+		callback(c.Exchange(ctx, transport, message, options, responseChecker))
+	}()
+}
+
 func (c *fakeDNSClient) Lookup(ctx context.Context, transport adapter.DNSTransport, domain string, options adapter.DNSQueryOptions, responseChecker func(*mDNS.Msg) bool) ([]netip.Addr, error) {
 	if c.lookup == nil && c.lookupWithCtx == nil {
 		return nil, E.New("unused client lookup")
@@ -325,9 +340,9 @@ func TestInitializeRejectsDirectLegacyRuleWhenRuleSetForcesNew(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	ruleSet, err := rulepkg.NewRuleSet(ctx, log.NewNOPFactory().NewLogger("router"), option.RuleSet{
+	ruleSet, err := rulepkg.NewRuleSet(ctx, log.NewNOPFactory().NewLogger("router"), "query-set", option.RuleSet{
 		Type: C.RuleSetTypeInline,
-		Tag:  "query-set",
+		Tag:  badoption.Listable[string]{"query-set"},
 		InlineOptions: option.PlainRuleSet{
 			Rules: []option.HeadlessRule{{
 				Type: C.RuleTypeDefault,
@@ -386,9 +401,9 @@ func TestLookupLegacyDNSModeDefersRuleSetDestinationIPMatch(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	ruleSet, err := rulepkg.NewRuleSet(ctx, log.NewNOPFactory().NewLogger("router"), option.RuleSet{
+	ruleSet, err := rulepkg.NewRuleSet(ctx, log.NewNOPFactory().NewLogger("router"), "legacy-ipcidr-set", option.RuleSet{
 		Type: C.RuleSetTypeInline,
-		Tag:  "legacy-ipcidr-set",
+		Tag:  badoption.Listable[string]{"legacy-ipcidr-set"},
 		InlineOptions: option.PlainRuleSet{
 			Rules: []option.HeadlessRule{{
 				Type: C.RuleTypeDefault,
@@ -698,7 +713,7 @@ func TestValidateRuleSetMetadataUpdateAllowsRuleSetThatKeepsNonLegacyDNSMode(t *
 				},
 				DNSRuleAction: option.DNSRuleAction{
 					Action:       C.RuleActionTypeEvaluate,
-					RouteOptions: option.DNSRouteActionOptions{Server: "upstream"},
+					EvaluateOptions: option.DNSEvaluateActionOptions{Server: "upstream"},
 				},
 			},
 		},
@@ -1124,9 +1139,9 @@ func TestLookupLegacyDNSModeRuleSetAcceptEmptyDoesNotTreatMismatchAsEmpty(t *tes
 	t.Parallel()
 
 	ctx := context.Background()
-	ruleSet, err := rulepkg.NewRuleSet(ctx, log.NewNOPFactory().NewLogger("router"), option.RuleSet{
+	ruleSet, err := rulepkg.NewRuleSet(ctx, log.NewNOPFactory().NewLogger("router"), "legacy-ipcidr-set", option.RuleSet{
 		Type: C.RuleSetTypeInline,
-		Tag:  "legacy-ipcidr-set",
+		Tag:  badoption.Listable[string]{"legacy-ipcidr-set"},
 		InlineOptions: option.PlainRuleSet{
 			Rules: []option.HeadlessRule{{
 				Type: C.RuleTypeDefault,
@@ -1245,7 +1260,7 @@ func TestExchangeLegacyDNSModeDisabledEvaluateMatchResponseRoute(t *testing.T) {
 				},
 				DNSRuleAction: option.DNSRuleAction{
 					Action:       C.RuleActionTypeEvaluate,
-					RouteOptions: option.DNSRouteActionOptions{Server: "upstream"},
+					EvaluateOptions: option.DNSEvaluateActionOptions{Server: "upstream"},
 				},
 			},
 		},
@@ -1253,7 +1268,7 @@ func TestExchangeLegacyDNSModeDisabledEvaluateMatchResponseRoute(t *testing.T) {
 			Type: C.RuleTypeDefault,
 			DefaultOptions: option.DefaultDNSRule{
 				RawDefaultDNSRule: option.RawDefaultDNSRule{
-					MatchResponse:  true,
+					MatchResponse: &option.DNSRuleMatchResponse{Enabled: true},
 					ResponseAnswer: badoption.Listable[option.DNSRecordOptions]{mustRecord(t, "example.com. IN A 1.1.1.1")},
 				},
 				DNSRuleAction: option.DNSRuleAction{
@@ -1311,7 +1326,7 @@ func TestExchangeLegacyDNSModeDisabledEvaluateMatchResponseRcodeRoute(t *testing
 				},
 				DNSRuleAction: option.DNSRuleAction{
 					Action:       C.RuleActionTypeEvaluate,
-					RouteOptions: option.DNSRouteActionOptions{Server: "upstream"},
+					EvaluateOptions: option.DNSEvaluateActionOptions{Server: "upstream"},
 				},
 			},
 		},
@@ -1319,7 +1334,7 @@ func TestExchangeLegacyDNSModeDisabledEvaluateMatchResponseRcodeRoute(t *testing
 			Type: C.RuleTypeDefault,
 			DefaultOptions: option.DefaultDNSRule{
 				RawDefaultDNSRule: option.RawDefaultDNSRule{
-					MatchResponse: true,
+					MatchResponse: &option.DNSRuleMatchResponse{Enabled: true},
 					ResponseRcode: &rcode,
 				},
 				DNSRuleAction: option.DNSRuleAction{
@@ -1378,7 +1393,7 @@ func TestExchangeLegacyDNSModeDisabledEvaluateMatchResponseNsRoute(t *testing.T)
 				},
 				DNSRuleAction: option.DNSRuleAction{
 					Action:       C.RuleActionTypeEvaluate,
-					RouteOptions: option.DNSRouteActionOptions{Server: "upstream"},
+					EvaluateOptions: option.DNSEvaluateActionOptions{Server: "upstream"},
 				},
 			},
 		},
@@ -1386,7 +1401,7 @@ func TestExchangeLegacyDNSModeDisabledEvaluateMatchResponseNsRoute(t *testing.T)
 			Type: C.RuleTypeDefault,
 			DefaultOptions: option.DefaultDNSRule{
 				RawDefaultDNSRule: option.RawDefaultDNSRule{
-					MatchResponse: true,
+					MatchResponse: &option.DNSRuleMatchResponse{Enabled: true},
 					ResponseNs:    badoption.Listable[option.DNSRecordOptions]{nsRecord},
 				},
 				DNSRuleAction: option.DNSRuleAction{
@@ -1445,7 +1460,7 @@ func TestExchangeLegacyDNSModeDisabledEvaluateMatchResponseExtraRoute(t *testing
 				},
 				DNSRuleAction: option.DNSRuleAction{
 					Action:       C.RuleActionTypeEvaluate,
-					RouteOptions: option.DNSRouteActionOptions{Server: "upstream"},
+					EvaluateOptions: option.DNSEvaluateActionOptions{Server: "upstream"},
 				},
 			},
 		},
@@ -1453,7 +1468,7 @@ func TestExchangeLegacyDNSModeDisabledEvaluateMatchResponseExtraRoute(t *testing
 			Type: C.RuleTypeDefault,
 			DefaultOptions: option.DefaultDNSRule{
 				RawDefaultDNSRule: option.RawDefaultDNSRule{
-					MatchResponse: true,
+					MatchResponse: &option.DNSRuleMatchResponse{Enabled: true},
 					ResponseExtra: badoption.Listable[option.DNSRecordOptions]{extraRecord},
 				},
 				DNSRuleAction: option.DNSRuleAction{
@@ -1515,7 +1530,7 @@ func TestExchangeLegacyDNSModeDisabledEvaluateDoesNotLeakAddressesToNextQuery(t 
 				},
 				DNSRuleAction: option.DNSRuleAction{
 					Action:       C.RuleActionTypeEvaluate,
-					RouteOptions: option.DNSRouteActionOptions{Server: "upstream"},
+					EvaluateOptions: option.DNSEvaluateActionOptions{Server: "upstream"},
 				},
 			},
 		},
@@ -1523,7 +1538,7 @@ func TestExchangeLegacyDNSModeDisabledEvaluateDoesNotLeakAddressesToNextQuery(t 
 			Type: C.RuleTypeDefault,
 			DefaultOptions: option.DefaultDNSRule{
 				RawDefaultDNSRule: option.RawDefaultDNSRule{
-					MatchResponse:  true,
+					MatchResponse: &option.DNSRuleMatchResponse{Enabled: true},
 					ResponseAnswer: badoption.Listable[option.DNSRecordOptions]{mustRecord(t, "example.com. IN A 1.1.1.1")},
 				},
 				DNSRuleAction: option.DNSRuleAction{
@@ -1577,7 +1592,7 @@ func TestExchangeLegacyDNSModeDisabledEvaluateRouteResolutionFailureClearsRespon
 				},
 				DNSRuleAction: option.DNSRuleAction{
 					Action:       C.RuleActionTypeEvaluate,
-					RouteOptions: option.DNSRouteActionOptions{Server: "upstream"},
+					EvaluateOptions: option.DNSEvaluateActionOptions{Server: "upstream"},
 				},
 			},
 		},
@@ -1589,7 +1604,7 @@ func TestExchangeLegacyDNSModeDisabledEvaluateRouteResolutionFailureClearsRespon
 				},
 				DNSRuleAction: option.DNSRuleAction{
 					Action:       C.RuleActionTypeEvaluate,
-					RouteOptions: option.DNSRouteActionOptions{Server: "missing"},
+					EvaluateOptions: option.DNSEvaluateActionOptions{Server: "missing"},
 				},
 			},
 		},
@@ -1597,7 +1612,7 @@ func TestExchangeLegacyDNSModeDisabledEvaluateRouteResolutionFailureClearsRespon
 			Type: C.RuleTypeDefault,
 			DefaultOptions: option.DefaultDNSRule{
 				RawDefaultDNSRule: option.RawDefaultDNSRule{
-					MatchResponse:  true,
+					MatchResponse: &option.DNSRuleMatchResponse{Enabled: true},
 					ResponseAnswer: badoption.Listable[option.DNSRecordOptions]{mustRecord(t, "example.com. IN A 1.1.1.1")},
 				},
 				DNSRuleAction: option.DNSRuleAction{
@@ -1656,7 +1671,7 @@ func TestExchangeLegacyDNSModeDisabledSecondEvaluateOverwritesFirstResponse(t *t
 				},
 				DNSRuleAction: option.DNSRuleAction{
 					Action:       C.RuleActionTypeEvaluate,
-					RouteOptions: option.DNSRouteActionOptions{Server: "first-upstream"},
+					EvaluateOptions: option.DNSEvaluateActionOptions{Server: "first-upstream"},
 				},
 			},
 		},
@@ -1668,7 +1683,7 @@ func TestExchangeLegacyDNSModeDisabledSecondEvaluateOverwritesFirstResponse(t *t
 				},
 				DNSRuleAction: option.DNSRuleAction{
 					Action:       C.RuleActionTypeEvaluate,
-					RouteOptions: option.DNSRouteActionOptions{Server: "second-upstream"},
+					EvaluateOptions: option.DNSEvaluateActionOptions{Server: "second-upstream"},
 				},
 			},
 		},
@@ -1676,7 +1691,7 @@ func TestExchangeLegacyDNSModeDisabledSecondEvaluateOverwritesFirstResponse(t *t
 			Type: C.RuleTypeDefault,
 			DefaultOptions: option.DefaultDNSRule{
 				RawDefaultDNSRule: option.RawDefaultDNSRule{
-					MatchResponse:  true,
+					MatchResponse: &option.DNSRuleMatchResponse{Enabled: true},
 					ResponseAnswer: badoption.Listable[option.DNSRecordOptions]{mustRecord(t, "example.com. IN A 1.1.1.1")},
 				},
 				DNSRuleAction: option.DNSRuleAction{
@@ -1689,7 +1704,7 @@ func TestExchangeLegacyDNSModeDisabledSecondEvaluateOverwritesFirstResponse(t *t
 			Type: C.RuleTypeDefault,
 			DefaultOptions: option.DefaultDNSRule{
 				RawDefaultDNSRule: option.RawDefaultDNSRule{
-					MatchResponse:  true,
+					MatchResponse: &option.DNSRuleMatchResponse{Enabled: true},
 					ResponseAnswer: badoption.Listable[option.DNSRecordOptions]{mustRecord(t, "example.com. IN A 2.2.2.2")},
 				},
 				DNSRuleAction: option.DNSRuleAction{
@@ -1761,7 +1776,7 @@ func TestExchangeLegacyDNSModeDisabledEvaluateExchangeFailureUsesMatchResponseBo
 						},
 						DNSRuleAction: option.DNSRuleAction{
 							Action:       C.RuleActionTypeEvaluate,
-							RouteOptions: option.DNSRouteActionOptions{Server: "upstream"},
+							EvaluateOptions: option.DNSEvaluateActionOptions{Server: "upstream"},
 						},
 					},
 				},
@@ -1769,7 +1784,7 @@ func TestExchangeLegacyDNSModeDisabledEvaluateExchangeFailureUsesMatchResponseBo
 					Type: C.RuleTypeDefault,
 					DefaultOptions: option.DefaultDNSRule{
 						RawDefaultDNSRule: option.RawDefaultDNSRule{
-							MatchResponse: true,
+							MatchResponse: &option.DNSRuleMatchResponse{Enabled: true},
 							Invert:        testCase.invert,
 						},
 						DNSRuleAction: option.DNSRuleAction{
@@ -1804,7 +1819,7 @@ func TestExchangeLegacyDNSModeDisabledRespondReturnsEvaluatedResponse(t *testing
 				},
 				DNSRuleAction: option.DNSRuleAction{
 					Action:       C.RuleActionTypeEvaluate,
-					RouteOptions: option.DNSRouteActionOptions{Server: "upstream"},
+					EvaluateOptions: option.DNSEvaluateActionOptions{Server: "upstream"},
 				},
 			},
 		},
@@ -1855,7 +1870,7 @@ func TestLookupLegacyDNSModeDisabledRespondReturnsEvaluatedResponse(t *testing.T
 				},
 				DNSRuleAction: option.DNSRuleAction{
 					Action:       C.RuleActionTypeEvaluate,
-					RouteOptions: option.DNSRouteActionOptions{Server: "upstream"},
+					EvaluateOptions: option.DNSEvaluateActionOptions{Server: "upstream"},
 				},
 			},
 		},
@@ -1912,7 +1927,7 @@ func TestExchangeLegacyDNSModeDisabledRespondWithoutEvaluatedResponseReturnsErro
 				},
 				DNSRuleAction: option.DNSRuleAction{
 					Action:       C.RuleActionTypeEvaluate,
-					RouteOptions: option.DNSRouteActionOptions{Server: "upstream"},
+					EvaluateOptions: option.DNSEvaluateActionOptions{Server: "upstream"},
 				},
 			},
 		},
@@ -2103,9 +2118,11 @@ func TestInitializeRejectsDNSRuleStrategyWhenLegacyDNSModeIsDisabledByEvaluate(t
 			},
 			DNSRuleAction: option.DNSRuleAction{
 				Action: C.RuleActionTypeEvaluate,
-				RouteOptions: option.DNSRouteActionOptions{
-					Server:   "default",
-					Strategy: option.DomainStrategy(C.DomainStrategyIPv4Only),
+				EvaluateOptions: option.DNSEvaluateActionOptions{
+					Server: "default",
+					AbstractDNSRouteActionOptions: option.AbstractDNSRouteActionOptions{
+						Strategy: option.DomainStrategy(C.DomainStrategyIPv4Only),
+					},
 				},
 			},
 		},
@@ -2133,7 +2150,7 @@ func TestInitializeRejectsEvaluateFakeIPServerInDefaultRule(t *testing.T) {
 			},
 			DNSRuleAction: option.DNSRuleAction{
 				Action:       C.RuleActionTypeEvaluate,
-				RouteOptions: option.DNSRouteActionOptions{Server: "fake"},
+				EvaluateOptions: option.DNSEvaluateActionOptions{Server: "fake"},
 			},
 		},
 	}})
@@ -2168,7 +2185,7 @@ func TestInitializeRejectsEvaluateFakeIPServerInLogicalRule(t *testing.T) {
 			},
 			DNSRuleAction: option.DNSRuleAction{
 				Action:       C.RuleActionTypeEvaluate,
-				RouteOptions: option.DNSRouteActionOptions{Server: "fake"},
+				EvaluateOptions: option.DNSEvaluateActionOptions{Server: "fake"},
 			},
 		},
 	}})
@@ -2191,7 +2208,7 @@ func TestInitializeRejectsDNSRuleStrategyWhenLegacyDNSModeIsDisabledByMatchRespo
 		Type: C.RuleTypeDefault,
 		DefaultOptions: option.DefaultDNSRule{
 			RawDefaultDNSRule: option.RawDefaultDNSRule{
-				MatchResponse: true,
+				MatchResponse: &option.DNSRuleMatchResponse{Enabled: true},
 			},
 			DNSRuleAction: option.DNSRuleAction{
 				Action: C.RuleActionTypeRouteOptions,
@@ -2220,7 +2237,7 @@ func TestInitializeRejectsDNSMatchResponseWithoutPrecedingEvaluate(t *testing.T)
 		Type: C.RuleTypeDefault,
 		DefaultOptions: option.DefaultDNSRule{
 			RawDefaultDNSRule: option.RawDefaultDNSRule{
-				MatchResponse:  true,
+				MatchResponse: &option.DNSRuleMatchResponse{Enabled: true},
 				ResponseAnswer: badoption.Listable[option.DNSRecordOptions]{mustRecord(t, "example.com. IN A 1.1.1.1")},
 			},
 			DNSRuleAction: option.DNSRuleAction{
@@ -2319,7 +2336,7 @@ func TestInitializeRejectsEvaluateRuleWithResponseMatchWithoutPrecedingEvaluate(
 						Type: C.RuleTypeDefault,
 						DefaultOptions: option.DefaultDNSRule{
 							RawDefaultDNSRule: option.RawDefaultDNSRule{
-								MatchResponse:  true,
+								MatchResponse: &option.DNSRuleMatchResponse{Enabled: true},
 								ResponseAnswer: badoption.Listable[option.DNSRecordOptions]{mustRecord(t, "example.com. IN A 1.1.1.1")},
 							},
 						},
@@ -2328,7 +2345,7 @@ func TestInitializeRejectsEvaluateRuleWithResponseMatchWithoutPrecedingEvaluate(
 			},
 			DNSRuleAction: option.DNSRuleAction{
 				Action:       C.RuleActionTypeEvaluate,
-				RouteOptions: option.DNSRouteActionOptions{Server: "default"},
+				EvaluateOptions: option.DNSEvaluateActionOptions{Server: "default"},
 			},
 		},
 	}})
@@ -2355,7 +2372,7 @@ func TestInitializeAllowsEvaluateRuleWithResponseMatchAfterPrecedingEvaluate(t *
 				},
 				DNSRuleAction: option.DNSRuleAction{
 					Action:       C.RuleActionTypeEvaluate,
-					RouteOptions: option.DNSRouteActionOptions{Server: "bootstrap"},
+					EvaluateOptions: option.DNSEvaluateActionOptions{Server: "bootstrap"},
 				},
 			},
 		},
@@ -2377,7 +2394,7 @@ func TestInitializeAllowsEvaluateRuleWithResponseMatchAfterPrecedingEvaluate(t *
 							Type: C.RuleTypeDefault,
 							DefaultOptions: option.DefaultDNSRule{
 								RawDefaultDNSRule: option.RawDefaultDNSRule{
-									MatchResponse:  true,
+									MatchResponse: &option.DNSRuleMatchResponse{Enabled: true},
 									ResponseAnswer: badoption.Listable[option.DNSRecordOptions]{mustRecord(t, "example.com. IN A 1.1.1.1")},
 								},
 							},
@@ -2386,7 +2403,7 @@ func TestInitializeAllowsEvaluateRuleWithResponseMatchAfterPrecedingEvaluate(t *
 				},
 				DNSRuleAction: option.DNSRuleAction{
 					Action:       C.RuleActionTypeEvaluate,
-					RouteOptions: option.DNSRouteActionOptions{Server: "default"},
+					EvaluateOptions: option.DNSEvaluateActionOptions{Server: "default"},
 				},
 			},
 		},
@@ -2568,7 +2585,7 @@ func TestExchangeLegacyDNSModeDisabledLogicalMatchResponseIPCIDRFallsThrough(t *
 				},
 				DNSRuleAction: option.DNSRuleAction{
 					Action:       C.RuleActionTypeEvaluate,
-					RouteOptions: option.DNSRouteActionOptions{Server: "upstream"},
+					EvaluateOptions: option.DNSEvaluateActionOptions{Server: "upstream"},
 				},
 			},
 		},
@@ -2581,7 +2598,7 @@ func TestExchangeLegacyDNSModeDisabledLogicalMatchResponseIPCIDRFallsThrough(t *
 						Type: C.RuleTypeDefault,
 						DefaultOptions: option.DefaultDNSRule{
 							RawDefaultDNSRule: option.RawDefaultDNSRule{
-								MatchResponse: true,
+								MatchResponse: &option.DNSRuleMatchResponse{Enabled: true},
 								IPCIDR:        badoption.Listable[string]{"1.1.1.0/24"},
 							},
 						},
@@ -2654,8 +2671,10 @@ func TestLegacyDNSModeReportsDNSRuleStrategyDeprecation(t *testing.T) {
 			DNSRuleAction: option.DNSRuleAction{
 				Action: C.RuleActionTypeRoute,
 				RouteOptions: option.DNSRouteActionOptions{
-					Server:   "default",
-					Strategy: option.DomainStrategy(C.DomainStrategyIPv4Only),
+					Server: "default",
+					AbstractDNSRouteActionOptions: option.AbstractDNSRouteActionOptions{
+						Strategy: option.DomainStrategy(C.DomainStrategyIPv4Only),
+					},
 				},
 			},
 		},

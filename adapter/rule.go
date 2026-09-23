@@ -24,6 +24,10 @@ type DNSRule interface {
 	WithAddressLimit() bool
 	MatchAddressLimit(metadata *InboundContext, response *dns.Msg) bool
 	BypassIfFailed() bool
+	MatchResponseTag() string
+	MatchResponseTags() []string
+	MatchResponseAnonymous() bool
+	Race() bool
 }
 
 type RuleAction interface {

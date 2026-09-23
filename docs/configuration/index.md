@@ -5,6 +5,7 @@ sing-box uses JSON for configuration files.
 
 ```json
 {
+  "$schema": "https://sing-box.sagernet.org/schema.json",
   "log": {},
   "dns": {},
   "ntp": {},
@@ -24,6 +25,7 @@ sing-box uses JSON for configuration files.
 
 | Key            | Format                          |
 |----------------|---------------------------------|
+| `$schema`      | [JSON Schema](./schema/)        |
 | `log`          | [Log](./log/)                   |
 | `dns`          | [DNS](./dns/)                   |
 | `ntp`          | [NTP](./ntp/)                   |

@@ -21,7 +21,7 @@ type CacheFileOptions struct {
 	Path              string             `json:"path,omitempty"`
 	CacheID           string             `json:"cache_id,omitempty"`
 	StoreFakeIP       bool               `json:"store_fakeip,omitempty"`
-	StoreRDRC         bool               `json:"store_rdrc,omitempty"`
+	StoreRDRC         bool               `json:"store_rdrc,omitempty" schema:"omit"`
 	StoreWARPConfig   bool               `json:"store_warp_config,omitempty"`   //H
 	StoreMASQUEConfig bool               `json:"store_masque_config,omitempty"` //H
 	RDRCTimeout       badoption.Duration `json:"rdrc_timeout,omitempty"`
@@ -32,7 +32,7 @@ type ClashAPIOptions struct {
 	ExternalController               string                     `json:"external_controller,omitempty"`
 	ExternalUI                       string                     `json:"external_ui,omitempty"`
 	ExternalUIDownloadURL            string                     `json:"external_ui_download_url,omitempty"`
-	ExternalUIDownloadDetour         string                     `json:"external_ui_download_detour,omitempty"`
+	ExternalUIDownloadDetour         string                     `json:"external_ui_download_detour,omitempty" reference:"outbound"`
 	Secret                           string                     `json:"secret,omitempty"`
 	DefaultMode                      string                     `json:"default_mode,omitempty"`
 	ModeList                         []string                   `json:"-"`
@@ -40,15 +40,15 @@ type ClashAPIOptions struct {
 	AccessControlAllowPrivateNetwork bool                       `json:"access_control_allow_private_network,omitempty"`
 
 	// Deprecated: migrated to global cache file
-	CacheFile string `json:"cache_file,omitempty"`
+	CacheFile string `json:"cache_file,omitempty" schema:"omit"`
 	// Deprecated: migrated to global cache file
-	CacheID string `json:"cache_id,omitempty"`
+	CacheID string `json:"cache_id,omitempty" schema:"omit"`
 	// Deprecated: migrated to global cache file
-	StoreMode bool `json:"store_mode,omitempty"`
+	StoreMode bool `json:"store_mode,omitempty" schema:"omit"`
 	// Deprecated: migrated to global cache file
-	StoreSelected bool `json:"store_selected,omitempty"`
+	StoreSelected bool `json:"store_selected,omitempty" schema:"omit"`
 	// Deprecated: migrated to global cache file
-	StoreFakeIP bool `json:"store_fakeip,omitempty"`
+	StoreFakeIP bool `json:"store_fakeip,omitempty" schema:"omit"`
 }
 
 type V2RayAPIOptions struct {

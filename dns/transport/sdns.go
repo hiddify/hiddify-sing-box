@@ -61,6 +61,12 @@ func (t *SDNSTransport) Close() error {
 	return nil
 }
 
+func (t *SDNSTransport) ExchangeAsync(ctx context.Context, message *mDNS.Msg, callback func(response *mDNS.Msg, err error)) {
+	go func() {
+		callback(t.Exchange(ctx, message))
+	}()
+}
+
 func (t *SDNSTransport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error) {
 	resolverInfo, err := t.client.Dial(t.stamp)
 	if err != nil {
