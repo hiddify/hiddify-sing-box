@@ -319,7 +319,7 @@ func (h *Outbound) IsReady() bool {
 	return h.psiphon.IsConnected()
 }
 
-func (h *Outbound) InterfaceUpdated() {
+func (h *Outbound) InterfaceUpdated(ctx context.Context) {
 	h.logger.Info("Network Changed... Restarting Psiphon Tunnel")
 	h.psiphon.controller.NetworkChanged()
 }
