@@ -48,6 +48,24 @@ func TestV2RayHTTPVersion2Self(t *testing.T) {
 	})
 }
 
+func TestV2RayHTTPServerVersion1ClientDefaultSelf(t *testing.T) {
+	testV2RayTransportSelfWith(t,
+		&option.V2RayTransportOptions{
+			Type: C.V2RayTransportTypeHTTP,
+			HTTPOptions: option.V2RayHTTPOptions{
+				Method:  "POST",
+				Version: 1,
+			},
+		},
+		&option.V2RayTransportOptions{
+			Type: C.V2RayTransportTypeHTTP,
+			HTTPOptions: option.V2RayHTTPOptions{
+				Method: "POST",
+			},
+		},
+	)
+}
+
 func TestV2RayRawSelf(t *testing.T) {
 	testV2RayTransportSelf(t, &option.V2RayTransportOptions{
 		Type: C.V2RayTransportTypeRaw,
