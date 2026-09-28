@@ -27,20 +27,21 @@ replace github.com/sagernet/sing-vmess => github.com/starifly/sing-vmess v0.2.7-
 replace github.com/Diniboy1123/connect-ip-go => github.com/shtorm-7/connect-ip-go v1.0.0-extended-1.0.0
 
 require (
+	github.com/coder/websocket v1.8.14
 	github.com/docker/docker v27.3.1+incompatible
 	github.com/docker/go-connections v0.5.0
 	github.com/gofrs/uuid/v5 v5.5.1
 	github.com/opencontainers/image-spec v1.1.0
 	github.com/sagernet/quic-go v0.61.0-sing-box-mod.7
-	github.com/sagernet/sing v0.9.6-0.20260920093640-814d533a21ef
+	github.com/sagernet/sing v0.9.6-0.20260922013359-4ca3bebe0b8e
 	github.com/sagernet/sing-openvpn v0.0.0-20260903200517-e060dda5b1f1
 	github.com/sagernet/sing-quic v0.7.1-0.20260904135313-497364e8ee3e
 	github.com/sagernet/sing-shadowsocks v0.2.8
 	github.com/sagernet/sing-shadowsocks2 v0.2.1
-	github.com/sagernet/sing-tun v0.9.6-0.20260919141142-a39eab51450b
+	github.com/sagernet/sing-tun v0.9.6-0.20260923054625-041629c89d77
 	github.com/sagernet/tailscale v1.102.1-sing-box-1.14-mod.5.0.20260916060041-a8fbeb4b0838
 	github.com/spyzhov/ajson v0.9.4
-	github.com/stretchr/testify v1.12.0
+	github.com/stretchr/testify v1.12.1
 	go.uber.org/goleak v1.3.0
 	go4.org/mem v0.0.0-20240501181205-ae6ca9944745
 	golang.org/x/net v0.57.0
@@ -53,8 +54,16 @@ require (
 	github.com/AdguardTeam/golibs v0.32.7 // indirect
 	github.com/AndreasBriese/bbloom v0.0.0-20190825152654-46b345b51c96 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
+	github.com/Diniboy1123/connect-ip-go v0.0.0-20260613064811-66cba32d7d33 // indirect
 	github.com/Jigsaw-Code/outline-sdk v0.0.20 // indirect
 	github.com/Microsoft/go-winio v0.6.1 // indirect
+	github.com/Psiphon-Labs/bolt v0.0.0-20200624191537-23cedaef7ad7 // indirect
+	github.com/Psiphon-Labs/consistent v0.0.0-20240322131436-20aaa4e05737 // indirect
+	github.com/Psiphon-Labs/goptlib v0.0.0-20200406165125-c0e32a7a3464 // indirect
+	github.com/Psiphon-Labs/psiphon-tls v0.0.0-20250318183125-2a2fae2db378 // indirect
+	github.com/Psiphon-Labs/psiphon-tunnel-core v1.0.11-0.20260126173038-c86a1497a760 // indirect
+	github.com/Psiphon-Labs/quic-go v0.0.0-20250527153145-79fe45fb83b1 // indirect
+	github.com/Psiphon-Labs/utls v0.0.0-20260129182755-24497d415a8d // indirect
 	github.com/RyuaNerin/go-krypto v1.3.0 // indirect
 	github.com/ajg/form v1.5.1 // indirect
 	github.com/akutz/memconn v0.1.0 // indirect
@@ -79,7 +88,6 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cheekybits/genny v0.0.0-20170328200008-9127e812e1e9 // indirect
 	github.com/cloudflare/circl v1.6.1 // indirect
-	github.com/coder/websocket v1.8.14 // indirect
 	github.com/cognusion/go-cache-lru v0.0.0-20170419142635-f73e2280ecea // indirect
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/coreos/go-iptables v0.7.1-0.20240112124308-65c67c9f46e6 // indirect
@@ -90,11 +98,12 @@ require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dblohm7/wingoes v0.0.0-20240119213807-a09d6be7affa // indirect
 	github.com/dgryski/go-camellia v0.0.0-20191119043421-69a8a13fb23d // indirect
-	github.com/dgryski/go-metro v0.0.0-20180109044635-280f6062b5bc // indirect
+	github.com/dgryski/go-metro v0.0.0-20250106013310-edb8663e5e33 // indirect
 	github.com/distribution/reference v0.5.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
+	github.com/dunglas/httpsfv v1.0.2 // indirect
 	github.com/ebitengine/purego v0.10.0 // indirect
-	github.com/enfein/mieru/v3 v3.27.0 // indirect
+	github.com/enfein/mieru/v3 v3.38.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/florianl/go-nfqueue/v2 v2.1.0 // indirect
 	github.com/flynn/noise v1.1.0 // indirect
@@ -145,7 +154,7 @@ require (
 	github.com/logrusorgru/aurora v2.0.3+incompatible // indirect
 	github.com/marusama/semaphore v0.0.0-20171214154724-565ffd8e868a // indirect
 	github.com/mdlayher/netlink v1.11.2 // indirect
-	github.com/mdlayher/socket v0.5.1 // indirect
+	github.com/mdlayher/socket v0.6.0 // indirect
 	github.com/metacubex/utls v1.8.7 // indirect
 	github.com/mholt/acmez/v3 v3.1.6 // indirect
 	github.com/miekg/dns v1.1.72 // indirect
@@ -154,7 +163,7 @@ require (
 	github.com/moby/term v0.5.0 // indirect
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/mroth/weightedrand v1.0.0 // indirect
-	github.com/net2share/vaydns v0.2.6 // indirect
+	github.com/net2share/vaydns v0.2.8 // indirect
 	github.com/openai/openai-go/v3 v3.26.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/pierrec/lz4/v4 v4.1.26 // indirect
@@ -166,6 +175,7 @@ require (
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus-community/pro-bing v0.4.0 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
+	github.com/quic-go/quic-go v0.59.0 // indirect
 	github.com/refraction-networking/conjure v0.7.11-0.20240130155008-c8df96195ab2 // indirect
 	github.com/refraction-networking/ed25519 v0.1.2 // indirect
 	github.com/refraction-networking/gotapdance v1.7.10 // indirect
@@ -221,13 +231,17 @@ require (
 	github.com/sagernet/smux v1.5.50-sing-box-mod.1 // indirect
 	github.com/sagernet/wireguard-go v0.0.8-0.20260917055437-bc6039037038 // indirect
 	github.com/sagernet/ws v0.0.0-20231204124109-acfe8907c854 // indirect
+	github.com/shadowsocks/go-shadowsocks2 v0.1.5 // indirect
+	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/smallstep/pkcs7 v0.1.1 // indirect
+	github.com/songgao/water v0.0.0-20200317203138-2b4b6d7c09d8 // indirect
 	github.com/tailscale/certstore v0.1.1-0.20260409135935-3638fb84b77d // indirect
 	github.com/tailscale/go-winio v0.0.0-20231025203758-c4f33415bf55 // indirect
 	github.com/tailscale/hujson v0.0.0-20260302212456-ecc657c15afd // indirect
 	github.com/tailscale/netlink v1.1.1-0.20240822203006-4d49adab4de7 // indirect
 	github.com/tailscale/peercred v0.0.0-20250107143737-35a0c7bd7edc // indirect
 	github.com/tailscale/web-client-prebuilt v0.0.0-20250124233751-d4cd19a26976 // indirect
+	github.com/tevino/abool v1.2.0 // indirect
 	github.com/things-go/go-socks5 v0.1.1 // indirect
 	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
@@ -239,20 +253,23 @@ require (
 	github.com/wader/filtertransport v0.0.0-20200316221534-bdd9e61eee78 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
-	github.com/xchacha20-poly1305/sing-trusttunnel v0.2.1 // indirect
+	github.com/xchacha20-poly1305/sing-trusttunnel v0.3.2 // indirect
 	github.com/xtaci/kcp-go/v5 v5.6.70 // indirect
 	github.com/xtaci/smux v1.5.50 // indirect
+	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
 	github.com/zeebo/blake3 v0.2.4 // indirect
 	gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/goptlib v1.5.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
-	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.59.0 // indirect
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.60.0 // indirect
 	go.opentelemetry.io/otel v1.39.0 // indirect
 	go.opentelemetry.io/otel/metric v1.39.0 // indirect
 	go.opentelemetry.io/otel/trace v1.39.0 // indirect
+	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.1 // indirect
 	go.uber.org/zap/exp v0.3.0 // indirect
+	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba // indirect
 	golang.org/x/crypto v0.54.0 // indirect
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
@@ -274,10 +291,8 @@ require (
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gotest.tools/v3 v3.5.1 // indirect
-	gvisor.dev/gvisor v0.0.0-20231202080848-1f7806d17489 // indirect
+	gvisor.dev/gvisor v0.0.0-20250606233247-e3c4c4cad86f // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
 	tailscale.com v1.58.2 // indirect
 	zombiezen.com/go/capnproto2 v2.18.2+incompatible // indirect
 )
-
-replace github.com/sagernet/sing-tun => ../../sing-tun

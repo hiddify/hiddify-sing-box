@@ -96,7 +96,7 @@ type OutboundMonitoring struct {
 }
 
 // InterfaceUpdated implements [adapter.InterfaceUpdateListener].
-func (m *OutboundMonitoring) InterfaceUpdated() {
+func (m *OutboundMonitoring) InterfaceUpdated(ctx context.Context) {
 	m.startCycleOnce()
 }
 
@@ -201,11 +201,11 @@ func (m *OutboundMonitoring) RoutedPacketConnection(ctx context.Context, conn N.
 
 type noopFlowTracker struct{}
 
-func (noopFlowTracker) AttachFlow(tun.FlowHandle)          {}
-func (noopFlowTracker) CountForward(int)                   {}
-func (noopFlowTracker) CountReverse(int)                   {}
-func (noopFlowTracker) FlowEstablished()                   {}
-func (noopFlowTracker) CloseFlow(tun.FlowCloseReason)       {}
+func (noopFlowTracker) AttachFlow(tun.FlowHandle)     {}
+func (noopFlowTracker) CountForward(int)              {}
+func (noopFlowTracker) CountReverse(int)              {}
+func (noopFlowTracker) FlowEstablished()              {}
+func (noopFlowTracker) CloseFlow(tun.FlowCloseReason) {}
 
 func (m *OutboundMonitoring) RoutedFlow(ctx context.Context, metadata adapter.InboundContext, matchedRule adapter.Rule, matchOutbound adapter.Outbound) tun.FlowTracker {
 	m.Touch()
@@ -918,9 +918,8 @@ func (m *OutboundMonitoring) emitGroupEventThrottled(groupTag string, since time
 //	}
 func RealTag(detour adapter.Outbound) string {
 	if group, isGroup := detour.(adapter.OutboundGroup); isGroup {
-		tag := group.Now()
-		if tag != "" {
-			return tag
+		if selected := group.Selected(N.NetworkTCP); selected != nil {
+			return selected.Tag()
 		}
 	}
 	return detour.Tag()
