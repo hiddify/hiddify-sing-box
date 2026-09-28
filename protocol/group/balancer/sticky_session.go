@@ -22,11 +22,11 @@ type StickySession struct {
 
 	mu                   sync.Mutex
 	delayAcceptableRatio float64
-	lruCache             *freelru.ShardedLRU[uint64, int]
+	lruCache             *freelru.Cache[uint64, int]
 }
 
 func NewStickySession(outbounds []adapter.Outbound, options option.BalancerOutboundOptions) *StickySession {
-	lruCache := common.Must1(freelru.NewSharded[uint64, int](1000, maphash.NewHasher[uint64]().Hash32))
+	lruCache := common.Must1(freelru.New[uint64, int](1000, maphash.NewHasher[uint64]().Hash32, true))
 	lruCache.SetLifetime(options.TTL.Build())
 	cOutbounds := convertOutbounds(outbounds)
 	return &StickySession{
