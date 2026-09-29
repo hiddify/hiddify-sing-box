@@ -36,7 +36,6 @@ var _ adapter.NetworkManager = (*NetworkManager)(nil)
 type NetworkManager struct {
 	ctx                     context.Context
 	logger                  logger.ContextLogger
-	router                  adapter.Router
 	interfaceFinder         *control.DefaultInterfaceFinder
 	networkInterfaces       common.TypedValue[[]adapter.NetworkInterface]
 	autoDetectInterface     bool
@@ -82,6 +81,7 @@ func NewNetworkManager(ctx context.Context, logger logger.ContextLogger, options
 		return nil, E.New("`default_mark` is only supported on linux")
 	}
 	nm := &NetworkManager{
+		ctx:                 ctx,
 		logger:              logger,
 		interfaceFinder:     control.NewDefaultInterfaceFinder(),
 		autoDetectInterface: options.AutoDetectInterface,
@@ -492,7 +492,6 @@ func (r *NetworkManager) ResetNetwork(ctx context.Context) {
 		}
 	}
 
-	r.router.ResetNetwork()
 }
 
 func (r *NetworkManager) FlushSystemDNSCache() {
