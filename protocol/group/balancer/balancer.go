@@ -2,6 +2,7 @@ package balancer
 
 import (
 	"context"
+	"io"
 	"net"
 	"net/netip"
 	"time"
@@ -156,6 +157,19 @@ func (s *Balancer) Now() string {
 
 func (s *Balancer) All() []string {
 	return s.tags
+}
+
+func (s *Balancer) Selected(network string) adapter.Outbound {
+	tag := s.Now()
+	if tag == "" {
+		return nil
+	}
+	outbound, _ := s.outbound.Outbound(tag)
+	return outbound
+}
+
+func (s *Balancer) AttachConnection(closer io.Closer) func() {
+	return s.interruptGroup.Add(closer, true)
 }
 
 func (s *Balancer) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {

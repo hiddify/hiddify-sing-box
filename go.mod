@@ -3,13 +3,11 @@ module github.com/sagernet/sing-box
 go 1.25.6
 
 require (
-	filippo.io/age v1.3.1
 	github.com/Diniboy1123/connect-ip-go v0.0.0-20260613064811-66cba32d7d33
 	github.com/Psiphon-Labs/psiphon-tunnel-core v1.0.11-0.20260126173038-c86a1497a760
 	github.com/ameshkov/dnscrypt/v2 v2.4.0
 	github.com/amnezia-vpn/amneziawg-go v1.0.4
 	github.com/anthropics/anthropic-sdk-go v1.26.0
-	github.com/anytls/sing-anytls v0.0.11
 	github.com/biter777/countries v1.7.5
 	github.com/caddyserver/certmagic v0.25.3-0.20260421143802-60d9d8b415d6
 	github.com/caddyserver/zerossl v0.1.5
@@ -80,7 +78,7 @@ require (
 	github.com/tailscale/go-winio v0.0.0-20231025203758-c4f33415bf55
 	github.com/tidwall/gjson v1.18.0
 	github.com/vishvananda/netns v0.0.5
-	github.com/xchacha20-poly1305/sing-trusttunnel v0.2.1
+	github.com/xchacha20-poly1305/sing-trusttunnel v0.3.2
 	github.com/yosida95/uritemplate/v3 v3.0.2
 	go.uber.org/zap v1.27.1
 	go4.org/mem v0.0.0-20240501181205-ae6ca9944745
@@ -102,7 +100,6 @@ require (
 
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
-	filippo.io/hpke v0.4.0 // indirect
 	github.com/AdguardTeam/golibs v0.32.7 // indirect
 	github.com/RyuaNerin/go-krypto v1.3.0 // indirect
 	github.com/ajg/form v1.5.1 // indirect
@@ -143,7 +140,6 @@ require (
 	github.com/pion/logging v0.2.4 // indirect
 	github.com/pion/transport/v4 v4.0.2 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus-community/pro-bing v0.4.0 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
 	github.com/quic-go/quic-go v0.59.0 // indirect
@@ -178,7 +174,7 @@ require (
 	github.com/sagernet/cronet-go/lib/tvos_arm64_simulator v0.0.0-20260912104006-c10c03c318db // indirect
 	github.com/sagernet/cronet-go/lib/windows_amd64 v0.0.0-20260912104006-c10c03c318db // indirect
 	github.com/sagernet/cronet-go/lib/windows_arm64 v0.0.0-20260912104006-c10c03c318db // indirect
-	github.com/sagernet/gvisor v0.0.0-20260727.0-sing-box-mod.1 // indirect
+	github.com/sagernet/gvisor v0.0.0-20260727.0-sing-box-mod.1
 	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/smallstep/pkcs7 v0.1.1 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
@@ -207,7 +203,6 @@ require (
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
 	golang.zx2c4.com/wireguard/windows v0.5.3 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251202230838-ff82c1b0f217 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gvisor.dev/gvisor v0.0.0-20250606233247-e3c4c4cad86f // indirect
 	zombiezen.com/go/capnproto2 v2.18.2+incompatible // indirect
 )
@@ -231,18 +226,32 @@ require (
 	github.com/cheekybits/genny v0.0.0-20170328200008-9127e812e1e9 // indirect
 	github.com/cloudflare/circl v1.6.1 // indirect
 	github.com/cognusion/go-cache-lru v0.0.0-20170419142635-f73e2280ecea // indirect
+	github.com/coreos/go-iptables v0.7.1-0.20240112124308-65c67c9f46e6 // indirect
+	github.com/coreos/go-oidc/v3 v3.17.0 // indirect
 	github.com/dchest/siphash v1.2.3 // indirect
 	github.com/dgraph-io/badger v1.5.4-0.20180815194500-3a87f6d9c273 // indirect
 	github.com/dgryski/go-farm v0.0.0-20240924180020-3414d57e47da // indirect
 	github.com/dgryski/go-metro v0.0.0-20250106013310-edb8663e5e33 // indirect
+	github.com/ebitengine/purego v0.10.0 // indirect
+	github.com/florianl/go-nfqueue/v2 v2.1.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
+	github.com/gaissmai/bart v0.18.0 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.3 // indirect
+	github.com/go-json-experiment/json v0.0.0-20250813024750-ebf49471dced // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
+	github.com/google/go-cmp v0.7.0 // indirect
+	github.com/google/nftables v0.2.1-0.20240414091927-5e242ec57806 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/grafov/m3u8 v0.0.0-20171211212457-6ab8f28ed427 // indirect
+	github.com/hdevalence/ed25519consensus v0.2.0 // indirect
+	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/josharian/native v1.1.1-0.20230202152459-5c7d0dd6ab86 // indirect
 	github.com/kamstrup/intmap v0.5.2 // indirect
+	github.com/kr/fs v0.1.0 // indirect
 	github.com/libp2p/go-reuseport v0.4.0 // indirect
 	github.com/marusama/semaphore v0.0.0-20171214154724-565ffd8e868a // indirect
+	github.com/mdlayher/socket v0.6.0 // indirect
 	github.com/mroth/weightedrand v1.0.0 // indirect
 	github.com/pelletier/go-toml v1.9.5 // indirect
 	github.com/pion/datachannel v1.5.5 // indirect
@@ -267,6 +276,7 @@ require (
 	github.com/sergeyfrolov/bsbuffer v0.0.0-20180903213811-94e85abb8507 // indirect
 	github.com/shadowsocks/go-shadowsocks2 v0.1.5 // indirect
 	github.com/syndtr/gocapability v0.0.0-20200815063812-42c35b437635 // indirect
+	github.com/tailscale/goupnp v1.0.1-0.20210804011211-c64d0f06ea05 // indirect
 	github.com/things-go/go-socks5 v0.1.1 // indirect
 	github.com/wader/filtertransport v0.0.0-20200316221534-bdd9e61eee78 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
@@ -278,7 +288,7 @@ require (
 
 replace github.com/sagernet/sing-vmess => github.com/starifly/sing-vmess v0.2.7-mod.9
 
-replace github.com/Diniboy1123/connect-ip-go => github.com/shtorm-7/connect-ip-go v1.0.0-extended-1.0.0
+replace github.com/Diniboy1123/connect-ip-go => github.com/shtorm-7/connect-ip-go v1.0.0-extended-1.1.1
 
 replace github.com/sagernet/sing-dns => github.com/shtorm-7/sing-dns v0.4.6-extended-1.0.0
 

@@ -14,6 +14,7 @@ import (
 	"github.com/sagernet/quic-go"
 	"github.com/sagernet/quic-go/http3"
 	qtls "github.com/sagernet/sing-quic"
+	"github.com/sagernet/sing/common/bufio"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 	aTLS "github.com/sagernet/sing/common/tls"
@@ -62,8 +63,7 @@ func ConnectTunnel(ctx context.Context, dialer N.Dialer, tlsConfig aTLS.Config, 
 	}
 	conn, err := qtls.Dial(
 		ctx,
-		udpConn,
-		quicEndpoint,
+		bufio.NewBindPacketConn(udpConn, quicEndpoint),
 		tlsConfig,
 		quicConfig,
 	)

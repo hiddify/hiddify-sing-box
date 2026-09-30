@@ -19,12 +19,13 @@ import (
 )
 
 type fakeDNSTransport struct {
-	tag         string
-	delay       time.Duration
-	immediate   bool
-	rcode       int
-	address     netip.Addr
-	exchangeErr error
+	tag           string
+	transportType string
+	delay         time.Duration
+	immediate     bool
+	rcode         int
+	address       netip.Addr
+	exchangeErr   error
 
 	access       sync.Mutex
 	queryCount   atomic.Int32
@@ -40,6 +41,9 @@ func (t *fakeDNSTransport) Close() error {
 }
 
 func (t *fakeDNSTransport) Type() string {
+	if t.transportType != "" {
+		return t.transportType
+	}
 	return "fake"
 }
 

@@ -230,31 +230,6 @@ func (e *Endpoint) Start(postStart bool) error {
 		}
 		domainPeers[publicKey] = &e.peers[peerIndex]
 	}
-	if len(domainPeers) > 0 {
-		wgDevice.SetEndpointResolverFunc(func(publicKey device.NoisePublicKey) ([]conn.Endpoint, error) {
-			peer, found := domainPeers[publicKey]
-			if !found {
-				return nil, nil
-			}
-			addresses, lookupErr := e.options.ResolvePeer(peer.destination.Fqdn)
-			if lookupErr != nil {
-				return nil, lookupErr
-			}
-			endpoints := make([]conn.Endpoint, 0, len(addresses))
-			for _, address := range addresses {
-				destination := netip.AddrPortFrom(address, peer.destination.Port)
-				if peer.reserved != ([3]uint8{}) {
-					bind.SetReservedForEndpoint(destination, peer.reserved)
-				}
-				endpoint, parseErr := bind.ParseEndpoint(destination.String())
-				if parseErr != nil {
-					return nil, parseErr
-				}
-				endpoints = append(endpoints, endpoint)
-			}
-			return endpoints, nil
-		})
-	}
 	var ipcConf strings.Builder
 	ipcConf.WriteString(e.ipcConf)
 	for _, peer := range e.peers {
@@ -264,6 +239,33 @@ func (e *Endpoint) Start(postStart bool) error {
 	if err != nil {
 		wgDevice.Close()
 		return E.Cause(err, "setup wireguard: \n", ipcConf.String())
+	}
+	for publicKey, peerConf := range domainPeers {
+		wgPeer := wgDevice.LookupPeer(publicKey)
+		if wgPeer == nil {
+			wgDevice.Close()
+			return E.New("missing peer after setup for domain destination ", peerConf.destination.Fqdn)
+		}
+		peerConf := peerConf
+		wgPeer.SetEndpointResolver(func() ([]conn.Endpoint, error) {
+			addresses, lookupErr := e.options.ResolvePeer(peerConf.destination.Fqdn)
+			if lookupErr != nil {
+				return nil, lookupErr
+			}
+			endpoints := make([]conn.Endpoint, 0, len(addresses))
+			for _, address := range addresses {
+				destination := netip.AddrPortFrom(address, peerConf.destination.Port)
+				if peerConf.reserved != ([3]uint8{}) {
+					bind.SetReservedForEndpoint(destination, peerConf.reserved)
+				}
+				endpoint, parseErr := bind.ParseEndpoint(destination.String())
+				if parseErr != nil {
+					return nil, parseErr
+				}
+				endpoints = append(endpoints, endpoint)
+			}
+			return endpoints, nil
+		})
 	}
 	e.device.Store(wgDevice)
 	e.pause = service.FromContext[pause.Manager](e.options.Context)

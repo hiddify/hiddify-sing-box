@@ -20,7 +20,7 @@ func TestReproLookupWithRulesUsesRequestStrategy(t *testing.T) {
 
 	defaultTransport := &fakeDNSTransport{tag: "default", transportType: C.DNSTypeUDP}
 	var qTypes []uint16
-	router := newTestRouter(t, nil, &fakeDNSTransportManager{
+	router := newTestRouter(t, nil, &routerTestFakeDNSTransportManager{
 		defaultTransport: defaultTransport,
 		transports: map[string]adapter.DNSTransport{
 			"default": defaultTransport,
@@ -46,7 +46,7 @@ func TestReproLookupWithRulesUsesRequestStrategy(t *testing.T) {
 func TestReproLogicalMatchResponseIPCIDR(t *testing.T) {
 	t.Parallel()
 
-	transportManager := &fakeDNSTransportManager{
+	transportManager := &routerTestFakeDNSTransportManager{
 		defaultTransport: &fakeDNSTransport{tag: "default", transportType: C.DNSTypeUDP},
 		transports: map[string]adapter.DNSTransport{
 			"upstream": &fakeDNSTransport{tag: "upstream", transportType: C.DNSTypeUDP},
@@ -88,7 +88,7 @@ func TestReproLogicalMatchResponseIPCIDR(t *testing.T) {
 						Type: C.RuleTypeDefault,
 						DefaultOptions: option.DefaultDNSRule{
 							RawDefaultDNSRule: option.RawDefaultDNSRule{
-								MatchResponse: true,
+								MatchResponse: &option.DNSRuleMatchResponse{Enabled: true},
 								IPCIDR:        badoption.Listable[string]{"1.1.1.0/24"},
 							},
 						},
