@@ -16,7 +16,7 @@ func TestBuildTCPSegment_IPv4_ValidChecksum(t *testing.T) {
 	src := netip.MustParseAddrPort("10.0.0.1:54321")
 	dst := netip.MustParseAddrPort("1.2.3.4:443")
 	payload := []byte("fake-client-hello")
-	frame := buildTCPSegment(src, dst, 100_000, 200_000, payload, false)
+	frame := buildTCPSegment(src, dst, spoofPacketInfo{seqNum: 100_000, ackNum: 200_000}, payload)
 
 	ip := header.IPv4(frame[:header.IPv4MinimumSize])
 	require.True(t, ip.IsChecksumValid())
@@ -36,7 +36,7 @@ func TestBuildTCPSegment_IPv4_CorruptChecksum(t *testing.T) {
 	src := netip.MustParseAddrPort("10.0.0.1:54321")
 	dst := netip.MustParseAddrPort("1.2.3.4:443")
 	payload := []byte("fake-client-hello")
-	frame := buildTCPSegment(src, dst, 100_000, 200_000, payload, true)
+	frame := buildTCPSegment(src, dst, spoofPacketInfo{seqNum: 100_000, ackNum: 200_000, corrupt: true}, payload)
 
 	tcp := header.TCP(frame[header.IPv4MinimumSize:])
 	payloadChecksum := checksum.Checksum(payload, 0)
@@ -55,7 +55,7 @@ func TestBuildTCPSegment_IPv6_ValidChecksum(t *testing.T) {
 	src := netip.MustParseAddrPort("[fe80::1]:54321")
 	dst := netip.MustParseAddrPort("[2606:4700::1]:443")
 	payload := []byte("fake-client-hello")
-	frame := buildTCPSegment(src, dst, 0xDEADBEEF, 0x12345678, payload, false)
+	frame := buildTCPSegment(src, dst, spoofPacketInfo{seqNum: 0xDEADBEEF, ackNum: 0x12345678}, payload)
 
 	tcp := header.TCP(frame[header.IPv6MinimumSize:])
 	payloadChecksum := checksum.Checksum(payload, 0)
@@ -72,7 +72,7 @@ func TestBuildTCPSegment_MixedFamilyPanics(t *testing.T) {
 	src := netip.MustParseAddrPort("10.0.0.1:54321")
 	dst := netip.MustParseAddrPort("[2606:4700::1]:443")
 	require.Panics(t, func() {
-		buildTCPSegment(src, dst, 0, 0, nil, false)
+		buildTCPSegment(src, dst, spoofPacketInfo{}, nil)
 	})
 }
 
@@ -82,7 +82,7 @@ func TestBuildSpoofFrame_WrongSequence(t *testing.T) {
 	dst := netip.MustParseAddrPort("1.2.3.4:443")
 	payload := []byte("fake-client-hello")
 	const sendNext uint32 = 10_000
-	frame, err := buildSpoofFrame(MethodWrongSequence, src, dst, sendNext, 20_000, payload)
+	frame, err := buildSpoofFrame(MethodWrongSequence, src, dst, sendNext, 20_000, 0, nil, payload)
 	require.NoError(t, err)
 
 	tcp := header.TCP(frame[header.IPv4MinimumSize:])
@@ -106,7 +106,7 @@ func TestBuildSpoofFrame_WrongChecksum(t *testing.T) {
 	dst := netip.MustParseAddrPort("1.2.3.4:443")
 	payload := []byte("fake-client-hello")
 	const sendNext uint32 = 5_000
-	frame, err := buildSpoofFrame(MethodWrongChecksum, src, dst, sendNext, 20_000, payload)
+	frame, err := buildSpoofFrame(MethodWrongChecksum, src, dst, sendNext, 20_000, 0, nil, payload)
 	require.NoError(t, err)
 
 	tcp := header.TCP(frame[header.IPv4MinimumSize:])
@@ -129,7 +129,7 @@ func TestBuildSpoofTCPSegment_EncodesWithoutIPHeader(t *testing.T) {
 	src := netip.MustParseAddrPort("[fe80::1]:54321")
 	dst := netip.MustParseAddrPort("[2606:4700::1]:443")
 	payload := []byte("fake-client-hello")
-	segment, err := buildSpoofTCPSegment(MethodWrongSequence, src, dst, 1000, 2000, payload)
+	segment, err := buildSpoofTCPSegment(MethodWrongSequence, src, dst, 1000, 2000, 0, payload)
 	require.NoError(t, err)
 	require.Equal(t, tcpHeaderLen+len(payload), len(segment),
 		"segment must be TCP header + payload, no IP header")
