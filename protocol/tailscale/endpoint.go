@@ -4,7 +4,6 @@ package tailscale
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"net"
 	"net/http"
@@ -24,11 +23,15 @@ import (
 	"github.com/sagernet/sing-box/common/dialer"
 	"github.com/sagernet/sing-box/common/iponly"
 	C "github.com/sagernet/sing-box/constant"
+	"github.com/sagernet/gvisor/pkg/tcpip"
+	"github.com/sagernet/gvisor/pkg/tcpip/adapters/gonet"
+	"github.com/sagernet/gvisor/pkg/tcpip/header"
+	"github.com/sagernet/gvisor/pkg/tcpip/stack"
 	"github.com/sagernet/sing-box/dns"
-	"github.com/sagernet/sing-box/experimental/deprecated"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	R "github.com/sagernet/sing-box/route/rule"
+	"github.com/sagernet/sing-box/protocol/tailscale/tailssh"
 	"github.com/sagernet/sing-box/service/oomkiller"
 	"github.com/sagernet/sing-tun"
 	"github.com/sagernet/sing/common"
@@ -38,7 +41,6 @@ import (
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
-	"github.com/sagernet/sing/common/ntp"
 	"github.com/sagernet/sing/service"
 	"github.com/sagernet/sing/service/filemanager"
 	_ "github.com/sagernet/tailscale/feature/relayserver"
@@ -84,7 +86,7 @@ type Endpoint struct {
 	platformInterface adapter.PlatformInterface
 	detour            string
 	server            *tsnet.Server
-	stack             *tun.Go
+	stack             *stack.Stack
 	returnAccess      sync.Mutex
 	returnPath        tun.Return
 	wgEngine          wgengine.ExportedUserspaceEngine
@@ -107,6 +109,7 @@ type Endpoint struct {
 	relayServerStaticEndpoints []netip.AddrPort
 
 	sshServerInstance *tailssh.Server
+	sshReconfigHook   func(cfg *wgcfg.Config, routerCfg *router.Config, dnsCfg *tsDNS.Config)
 	sshServerOptions  *option.TailscaleSSHServerOptions
 	taildrop          *taildropManager
 	udpTimeout        time.Duration
@@ -177,10 +180,15 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 		// controlplane.tailscale.com
 		remoteIsDomain = true
 	}
+	var controlHTTPClientOptions option.HTTPClientOptions
+	controlHTTPClientOptions.DialerOptions = options.DialerOptions
+	if remoteIsDomain {
+		controlHTTPClientOptions.ResolveOnDetour = true
+	}
 	outboundDialer, err := dialer.NewWithOptions(dialer.Options{
 		Context:          ctx,
 		Options:          options.DialerOptions,
-		RemoteIsDomain:   true,
+		RemoteIsDomain:   remoteIsDomain,
 		ResolverOnDetour: true,
 		NewDialer:        true,
 	})
@@ -415,12 +423,12 @@ func (t *Endpoint) watchState() {
 	}
 	for {
 		var busError string
-		localBackend.WatchNotifications(t.ctx, ipn.NotifyInitialState|ipn.NotifyPeerPatches, nil, func(roNotify *ipn.Notify) (keepGoing bool) {
+		localBackend.WatchNotifications(t.ctx, ipn.NotifyInitialState|ipn.NotifyInitialNetMap, nil, func(roNotify *ipn.Notify) (keepGoing bool) {
 			if roNotify.ErrMessage != nil {
 				busError = *roNotify.ErrMessage
 				return false
 			}
-			if running && exitNodePending && len(roNotify.PeersChanged) > 0 {
+			if running && exitNodePending && roNotify.NetMap != nil {
 				tryApplyExitNode()
 			}
 			if roNotify.State == nil && roNotify.BrowseToURL == nil {
@@ -774,15 +782,30 @@ func (t *Endpoint) DialContext(ctx context.Context, network string, destination 
 	if !local.IsValid() {
 		return nil, E.New("missing Tailscale address for ", destination)
 	}
+	bind := tcpip.FullAddress{
+		NIC:  tun.DefaultNIC,
+		Addr: tun.AddressFromAddr(local),
+	}
+	addr := tcpip.FullAddress{
+		NIC:  tun.DefaultNIC,
+		Addr: tun.AddressFromAddr(destination.Addr),
+		Port: destination.Port,
+	}
+	var networkProtocol tcpip.NetworkProtocolNumber
+	if local.Is4() {
+		networkProtocol = header.IPv4ProtocolNumber
+	} else {
+		networkProtocol = header.IPv6ProtocolNumber
+	}
 	switch N.NetworkName(network) {
 	case N.NetworkTCP:
-		conn, err := t.stack.DialTCP(ctx, local, destination.AddrPort())
+		conn, err := gonet.DialTCPWithBind(ctx, t.stack, bind, addr, networkProtocol)
 		if err != nil {
 			return nil, err
 		}
 		return conn, nil
 	case N.NetworkUDP:
-		conn, err := t.stack.DialUDP(netip.AddrPortFrom(local, 0), destination.AddrPort())
+		conn, err := gonet.DialUDP(t.stack, &bind, &addr, networkProtocol)
 		if err != nil {
 			return nil, err
 		}
@@ -811,7 +834,17 @@ func (t *Endpoint) listenPacketWithAddress(ctx context.Context, destination M.So
 	if !local.IsValid() {
 		return nil, E.New("missing Tailscale address for ", destination)
 	}
-	conn, err := t.stack.ListenUDP(netip.AddrPortFrom(local, 0))
+	bind := tcpip.FullAddress{
+		NIC:  tun.DefaultNIC,
+		Addr: tun.AddressFromAddr(local),
+	}
+	var networkProtocol tcpip.NetworkProtocolNumber
+	if local.Is4() {
+		networkProtocol = header.IPv4ProtocolNumber
+	} else {
+		networkProtocol = header.IPv6ProtocolNumber
+	}
+	conn, err := gonet.DialUDP(t.stack, &bind, nil, networkProtocol)
 	if err != nil {
 		return nil, err
 	}

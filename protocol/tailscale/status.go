@@ -80,13 +80,12 @@ func (t *Endpoint) SubscribeTailscaleStatus(ctx context.Context, fn func(*adapte
 	scheduleUpdate()
 	for {
 		var busError string
-		localBackend.WatchNotifications(ctx, ipn.NotifyInitialState|ipn.NotifyPeerPatches, nil, func(roNotify *ipn.Notify) (keepGoing bool) {
+		localBackend.WatchNotifications(ctx, ipn.NotifyInitialState|ipn.NotifyInitialNetMap, nil, func(roNotify *ipn.Notify) (keepGoing bool) {
 			if roNotify.ErrMessage != nil {
 				busError = *roNotify.ErrMessage
 				return false
 			}
-			if roNotify.State != nil || roNotify.SelfChange != nil ||
-				len(roNotify.PeersChanged) > 0 || len(roNotify.PeersRemoved) > 0 || len(roNotify.PeerChangedPatch) > 0 ||
+			if roNotify.State != nil || roNotify.NetMap != nil ||
 				roNotify.BrowseToURL != nil || roNotify.Prefs != nil {
 				scheduleUpdate()
 			}
