@@ -1,6 +1,6 @@
 module github.com/sagernet/sing-box
 
-go 1.25.6
+go 1.26.3
 
 require (
 	github.com/Diniboy1123/connect-ip-go v0.0.0-20260613064811-66cba32d7d33
@@ -174,7 +174,7 @@ require (
 	github.com/sagernet/cronet-go/lib/tvos_arm64_simulator v0.0.0-20260912104006-c10c03c318db // indirect
 	github.com/sagernet/cronet-go/lib/windows_amd64 v0.0.0-20260912104006-c10c03c318db // indirect
 	github.com/sagernet/cronet-go/lib/windows_arm64 v0.0.0-20260912104006-c10c03c318db // indirect
-	github.com/sagernet/gvisor v0.0.0-20260727.0-sing-box-mod.1
+	github.com/sagernet/gvisor v0.0.0-20260727.0-sing-box-mod.3
 	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/smallstep/pkcs7 v0.1.1 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
@@ -203,7 +203,6 @@ require (
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
 	golang.zx2c4.com/wireguard/windows v0.5.3 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251202230838-ff82c1b0f217 // indirect
-	gvisor.dev/gvisor v0.0.0-20250606233247-e3c4c4cad86f // indirect
 	zombiezen.com/go/capnproto2 v2.18.2+incompatible // indirect
 )
 
@@ -237,7 +236,7 @@ require (
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
 	github.com/gaissmai/bart v0.18.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.3 // indirect
-	github.com/go-json-experiment/json v0.0.0-20250813024750-ebf49471dced // indirect
+	github.com/go-json-experiment/json v0.0.0-20260820222146-c27c302e5fc3 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
@@ -282,6 +281,7 @@ require (
 	github.com/wlynxg/anet v0.0.5 // indirect
 	gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/goptlib v1.5.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
+	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
 	golang.zx2c4.com/wireguard v0.0.0-20231211153847-12269c276173 // indirect
 	tailscale.com v1.58.2 // indirect
 )
@@ -305,3 +305,5 @@ replace github.com/Psiphon-Labs/psiphon-tls => ./replace/psiphon-tls
 replace github.com/net2share/vaydns => github.com/hiddify/vaydns v0.0.0-20260401180616-890dc987a6a9
 
 replace github.com/kianmhz/GooseRelayVPN => github.com/hiddify/GooseRelayVPN v0.0.0-20260429125124-0e68c2a3ae4c
+
+replace github.com/amnezia-vpn/amneziawg-go => github.com/hiddifydeveloper/amneziawg-go v0.0.0-20261001141816-70b344f2f78b

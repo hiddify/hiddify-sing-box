@@ -38,7 +38,7 @@ func (t *Endpoint) SendTaildropFile(ctx context.Context, peerStableID string, fi
 		return E.New("taildrop: not connected to the tailnet")
 	}
 	nodeBackend := localBackend.NodeBackend()
-	self := nodeBackend.Self()
+	self := localBackend.ExportSelf()
 	if !self.Valid() {
 		return E.New("taildrop: not connected to the tailnet")
 	}
@@ -46,7 +46,7 @@ func (t *Endpoint) SendTaildropFile(ctx context.Context, peerStableID string, fi
 		return E.New("taildrop: file sharing not enabled by Tailscale admin")
 	}
 	var peer tailcfg.NodeView
-	for _, candidate := range nodeBackend.Peers() {
+	for _, candidate := range localBackend.ExportPeers() {
 		if string(candidate.StableID()) == peerStableID {
 			peer = candidate
 			break
@@ -181,12 +181,12 @@ func (t *Endpoint) taildropTargets() (canShareFiles bool, targets map[string]boo
 		return false, nil
 	}
 	nodeBackend := localBackend.NodeBackend()
-	self := nodeBackend.Self()
+	self := localBackend.ExportSelf()
 	if !self.Valid() || !self.CapMap().Contains(tailcfg.CapabilityFileSharing) {
 		return false, nil
 	}
 	targets = make(map[string]bool)
-	for _, peer := range nodeBackend.Peers() {
+	for _, peer := range localBackend.ExportPeers() {
 		if !peer.Valid() || peer.Hostinfo().OS() == "tvOS" {
 			continue
 		}
