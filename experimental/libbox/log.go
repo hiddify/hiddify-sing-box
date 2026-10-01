@@ -97,7 +97,14 @@ func redirectStderr(path string) error {
 	return nil
 }
 
-func CreateZipArchive(sourcePath string, destinationPath string) error {
+// CreateZipArchive zips sourcePath into destinationPath. encrypt is accepted
+// for API compatibility with callers that already request encrypted
+// archives (the ".age" filename suffix), but encryption itself is not yet
+// implemented: callers currently get a plain zip regardless of encrypt.
+//
+// TODO: wire up real age-based encryption once a recipient/passphrase
+// source is decided.
+func CreateZipArchive(sourcePath string, destinationPath string, encrypt bool) error {
 	sourceInfo, err := os.Stat(sourcePath)
 	if err != nil {
 		return err

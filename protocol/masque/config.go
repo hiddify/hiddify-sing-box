@@ -70,7 +70,7 @@ func (c *Config) SelectEndpointFromConfig(useHTTP2 bool, useIPv6 bool, port int)
 		v4 := c.EndpointH2V4
 		ip := net.ParseIP(v4)
 		if ip == nil {
-			return nil, fmt.Errorf("invalid endpoint_h2_v4 value %q")
+			return nil, fmt.Errorf("invalid endpoint_h2_v4 value %q", v4)
 		}
 		return &net.TCPAddr{IP: ip, Port: port}, nil
 	}

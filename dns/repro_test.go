@@ -74,8 +74,8 @@ func TestReproLogicalMatchResponseIPCIDR(t *testing.T) {
 					Domain: badoption.Listable[string]{"example.com"},
 				},
 				DNSRuleAction: option.DNSRuleAction{
-					Action:       C.RuleActionTypeEvaluate,
-					RouteOptions: option.DNSRouteActionOptions{Server: "upstream"},
+					Action:          C.RuleActionTypeEvaluate,
+					EvaluateOptions: option.DNSEvaluateActionOptions{Server: "upstream"},
 				},
 			},
 		},
