@@ -296,16 +296,28 @@ func New(options Options) (*Box, error) {
 				Outbound: tag,
 			})
 		}
+		endpointLogger := logFactory.NewLogger(F.ToString("endpoint/", endpointOptions.Type, "[", tag, "]"))
 		err = endpointManager.Create(
 			endpointCtx,
 			router,
-			logFactory.NewLogger(F.ToString("endpoint/", endpointOptions.Type, "[", tag, "]")),
+			endpointLogger,
 			tag,
 			endpointOptions.Type,
 			endpointOptions.Options,
 		)
 		if err != nil {
-			return nil, E.Cause(err, "initialize endpoint[", i, "]")
+			// H: replace a broken endpoint with an invalid placeholder instead of failing the whole config
+			err = endpointManager.Create(
+				endpointCtx,
+				router,
+				endpointLogger,
+				tag,
+				C.TypeHInvalidConfig,
+				&option.HInvalidOptions{InvalidConfig: endpointOptions.Options, OriginalType: endpointOptions.Type, Err: E.Cause(err, "initialize endpoint/", endpointOptions.Type, "[", tag, "]")},
+			)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 	for i, inboundOptions := range options.Inbounds {
@@ -324,7 +336,7 @@ func New(options Options) (*Box, error) {
 			inboundOptions.Options,
 		)
 		if err != nil {
-			return nil, E.Cause(err, "initialize inbound[", i, "]")
+			return nil, E.Cause(err, "initialize inbound[", tag, "]")
 		}
 	}
 	for i, serviceOptions := range options.Services {
@@ -342,7 +354,7 @@ func New(options Options) (*Box, error) {
 			serviceOptions.Options,
 		)
 		if err != nil {
-			return nil, E.Cause(err, "initialize service[", i, "]")
+			return nil, E.Cause(err, "initialize service[", tag, "]")
 		}
 	}
 	for i, outboundOptions := range options.Outbounds {
@@ -359,25 +371,48 @@ func New(options Options) (*Box, error) {
 				Outbound: tag,
 			})
 		}
+		outboundLogger := logFactory.NewLogger(F.ToString("outbound/", outboundOptions.Type, "[", tag, "]"))
 		err = outboundManager.Create(
 			outboundCtx,
 			router,
-			logFactory.NewLogger(F.ToString("outbound/", outboundOptions.Type, "[", tag, "]")),
+			outboundLogger,
 			tag,
 			outboundOptions.Type,
 			outboundOptions.Options,
 		)
 		if err != nil {
-			return nil, E.Cause(err, "initialize outbound[", i, "]")
+			// H: replace a broken outbound with an invalid placeholder instead of failing the whole config
+			err = outboundManager.Create(
+				outboundCtx,
+				router,
+				outboundLogger,
+				tag,
+				C.TypeHInvalidConfig,
+				&option.HInvalidOptions{InvalidConfig: outboundOptions.Options, OriginalType: outboundOptions.Type, Err: E.Cause(err, "initialize outbound/", outboundOptions.Type, "[", tag, "]")},
+			)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
+	// H: fail only when every real outbound/endpoint is invalid
 	var invalidOutbound *hinvalid.Outbound
-	for _, outbound := range outboundManager.Outbounds() {
-		if outbound.Type() == C.TypeURLTest || outbound.Type() == C.TypeSelector || outbound.Type() == C.TypeDirect {
+	allOutbounds := outboundManager.Outbounds()
+	for _, endpoint := range endpointManager.Endpoints() {
+		allOutbounds = append(allOutbounds, endpoint)
+	}
+	for _, outbound := range allOutbounds {
+		switch outbound.Type() {
+		case C.TypeDirect, C.TypeBlock, C.TypeDNS, C.TypeBridge, C.TypeSelector, C.TypeURLTest, C.TypeBalancer:
 			continue
 		}
 		if outbound.Type() == C.TypeHInvalidConfig {
-			invalidOutbound = outbound.(*hinvalid.Outbound)
+			switch invalid := outbound.(type) {
+			case *hinvalid.Outbound:
+				invalidOutbound = invalid
+			case *hinvalid.Endpoint:
+				invalidOutbound = invalid.Outbound
+			}
 			continue
 		}
 		invalidOutbound = nil

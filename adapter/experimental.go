@@ -176,6 +176,13 @@ type OutboundGroup interface {
 	AttachConnection(closer io.Closer) (detach func())
 }
 
+// H: PerConnectionOutboundGroup is a group that picks its outbound for each connection
+// (e.g. balancer), so the router hands connections to the group instead of resolving Selected.
+type PerConnectionOutboundGroup interface {
+	OutboundGroup
+	SelectsPerConnection()
+}
+
 type URLTestGroup interface {
 	OutboundGroup
 	URLTest(ctx context.Context) (map[string]uint16, error)

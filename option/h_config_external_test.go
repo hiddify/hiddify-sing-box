@@ -80,8 +80,14 @@ func TestH_TunnelConfigParse(t *testing.T) {
 
 func TestH_TunnelConfigInvalidNested(t *testing.T) {
 	ctx := include.Context(context.Background())
-	_, err := json.UnmarshalExtendedContext[option.Options](ctx, []byte(`{"endpoints":[{"type":"tunnel_client","tag":"tc","outbound":{"type":"h-unknown"}}]}`))
-	require.Error(t, err)
-	_, err = json.UnmarshalExtendedContext[option.Options](ctx, []byte(`{"endpoints":[{"type":"tunnel_server","tag":"ts","inbound":{"type":"h-unknown"}}]}`))
-	require.Error(t, err)
+	// H: an invalid nested outbound becomes an hinvalid placeholder instead of failing the config
+	options, err := json.UnmarshalExtendedContext[option.Options](ctx, []byte(`{"endpoints":[{"type":"tunnel_client","tag":"tc","outbound":{"type":"h-unknown"}}]}`))
+	require.NoError(t, err)
+	client, ok := options.Endpoints[0].Options.(*option.TunnelClientEndpointOptions)
+	require.True(t, ok)
+	require.Equal(t, C.TypeHInvalidConfig, client.Outbound.Type)
+	options, err = json.UnmarshalExtendedContext[option.Options](ctx, []byte(`{"endpoints":[{"type":"tunnel_server","tag":"ts","inbound":{"type":"h-unknown"}}]}`))
+	require.NoError(t, err)
+	require.Equal(t, C.TypeHInvalidConfig, options.Endpoints[0].Type)
+	require.ErrorContains(t, options.Endpoints[0].Options.(*option.HInvalidOptions).Err, "endpoints[0: ts]: inbound")
 }

@@ -77,6 +77,10 @@ func NewLoadBalance(ctx context.Context, router adapter.Router, logger log.Conte
 	return outbound, nil
 }
 
+var _ adapter.PerConnectionOutboundGroup = (*Balancer)(nil)
+
+func (s *Balancer) SelectsPerConnection() {}
+
 func (s *Balancer) Strategy() string {
 	return s.options.Strategy
 }
@@ -91,6 +95,9 @@ func (s *Balancer) Start() error {
 			return E.New("outbound ", i, " not found: ", tag)
 		}
 		outbounds = append(outbounds, detour)
+	}
+	if s.options.Strategy == "" {
+		s.options.Strategy = StrategyRoundRobin
 	}
 	switch s.options.Strategy {
 	case StrategyRoundRobin:
@@ -220,6 +227,11 @@ func (s *Balancer) ListenPacket(ctx context.Context, destination M.Socksaddr) (n
 func (s *Balancer) NewConnection(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
 	ctx = interrupt.ContextWithIsExternalConnection(ctx)
 	selected := s.strategyFn.Select(metadata, metadata.Network, true)
+	if selected == nil {
+		N.CloseOnHandshakeFailure(conn, onClose, E.New("missing supported outbound"))
+		return
+	}
+	metadata.SetRealOutbound(selected.Tag())
 	conn = s.interruptGroup.NewConn(conn, interrupt.IsExternalConnectionFromContext(ctx))
 	if outboundHandler, isHandler := selected.(adapter.ConnectionHandler); isHandler {
 		outboundHandler.NewConnection(ctx, conn, metadata, onClose)
@@ -232,6 +244,7 @@ func (s *Balancer) NewPacketConnection(ctx context.Context, conn N.PacketConn, m
 	ctx = interrupt.ContextWithIsExternalConnection(ctx)
 	selected := s.strategyFn.Select(metadata, metadata.Network, true)
 	if selected == nil {
+		N.CloseOnHandshakeFailure(conn, onClose, E.New("missing supported outbound"))
 		return
 	}
 	metadata.SetRealOutbound(selected.Tag())
@@ -244,7 +257,7 @@ func (s *Balancer) NewPacketConnection(ctx context.Context, conn N.PacketConn, m
 }
 
 func (s *Balancer) PreMatchFlow(network string, destination netip.Addr) adapter.PreMatchAction {
-	selected := s.strategyFn.Select(adapter.InboundContext{Network: network}, network, true)
+	selected := s.strategyFn.Select(adapter.InboundContext{Network: network}, network, false)
 	if selected == nil {
 		return adapter.PreMatchReject
 	}

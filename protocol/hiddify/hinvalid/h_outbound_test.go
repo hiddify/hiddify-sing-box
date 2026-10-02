@@ -51,14 +51,12 @@ func TestH_HInvalidDisplayTypeIncludesError(t *testing.T) {
 }
 
 func TestH_HInvalidDisplayTypeName(t *testing.T) {
-	t.Skip("BUG: DisplayType passes h.Tag() instead of h.Type() to C.ProxyDisplayName, so it renders \"Unknown ...\" instead of \"Invalid ...\" (protocol/hiddify/hinvalid/outbound.go:49)")
 	t.Parallel()
 	out := newTestOutbound(t, "broken", errors.New("bad uuid"))
 	require.Equal(t, "Invalid bad uuid", out.DisplayType())
 }
 
 func TestH_HInvalidDisplayTypeNilError(t *testing.T) {
-	t.Skip("BUG: DisplayType dereferences InvalidOptions.Err without a nil check and panics when Err is nil (protocol/hiddify/hinvalid/outbound.go:49)")
 	t.Parallel()
 	out := newTestOutbound(t, "broken", nil)
 	require.NotPanics(t, func() { _ = out.DisplayType() })

@@ -146,6 +146,7 @@ func EndpointRegistry() *endpoint.Registry {
 	tunnel.RegisterClientEndpoint(registry)
 	registerWarpEndpoint(registry)
 	registerAwgEndpoint(registry)
+	hinvalid.RegisterEndpoint(registry)
 
 	return registry
 }

@@ -28,6 +28,9 @@ type Outbound struct {
 }
 
 func New(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, invalidOptions option.HInvalidOptions) (adapter.Outbound, error) {
+	if invalidOptions.Err != nil {
+		logger.Error(invalidOptions.Err)
+	}
 	return &Outbound{
 		Adapter:        outbound.NewAdapter(C.TypeHInvalidConfig, tag, []string{N.NetworkTCP, N.NetworkUDP}, nil),
 		logger:         logger,
@@ -46,5 +49,8 @@ func (h *Outbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (n
 }
 
 func (h *Outbound) DisplayType() string {
-	return C.ProxyDisplayName(h.Tag()) + " " + h.InvalidOptions.Err.Error()
+	if h.InvalidOptions.Err == nil {
+		return C.ProxyDisplayName(h.Type())
+	}
+	return C.ProxyDisplayName(h.Type()) + " " + h.InvalidOptions.Err.Error()
 }
