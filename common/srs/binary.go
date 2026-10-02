@@ -123,6 +123,19 @@ func Write(writer io.Writer, ruleSet option.PlainRuleSet, generateVersion uint8)
 
 const maxLogicalRuleDepth = 100
 
+// maxRuleItemCount bounds the number of elements in a single rule item list
+// (domain/process-path strings, ports, query types, ...). Legitimate rule
+// items realistically contain at most a few thousand entries; 1<<20 (~1M)
+// comfortably covers any real-world rule-set while rejecting a
+// deliberately-absurd claimed count (e.g. a crafted uvarint(1<<40)) before
+// it drives a huge allocation.
+const maxRuleItemCount = 1 << 20
+
+// maxRuleItemStringLength bounds the length of a single string value
+// (domain, regex, process path, ...) within a rule item. 1<<24 (16MiB) is
+// far beyond any realistic domain/path/regex string.
+const maxRuleItemStringLength = 1 << 24
+
 func readRule(reader varbin.Reader, recover bool, depth int, mmap *mmapReader) (rule option.HeadlessRule, err error) {
 	if depth > maxLogicalRuleDepth {
 		err = E.New("logical rule nested too deep")
@@ -557,7 +570,36 @@ func writeDefaultRule(writer varbin.Writer, rule option.DefaultHeadlessRule, gen
 }
 
 func readRuleItemString(reader varbin.Reader) ([]string, error) {
-	return varbin.ReadValue[[]string](reader, binary.BigEndian)
+	length, err := binary.ReadUvarint(reader)
+	if err != nil {
+		return nil, E.Cause(err, "slice length")
+	}
+	if length > maxRuleItemCount {
+		return nil, E.New("too many rule item strings: ", length)
+	}
+	if length == 0 {
+		return nil, nil
+	}
+	result := make([]string, length)
+	for i := range result {
+		strLength, strErr := binary.ReadUvarint(reader)
+		if strErr != nil {
+			return nil, E.Cause(strErr, "string length")
+		}
+		if strLength > maxRuleItemStringLength {
+			return nil, E.New("rule item string too long: ", strLength)
+		}
+		if strLength == 0 {
+			continue
+		}
+		stringData := make([]byte, strLength)
+		_, strErr = io.ReadFull(reader, stringData)
+		if strErr != nil {
+			return nil, E.Cause(strErr, "string value")
+		}
+		result[i] = string(stringData)
+	}
+	return result, nil
 }
 
 func writeRuleItemString(writer varbin.Writer, itemType uint8, value []string) error {
@@ -568,8 +610,27 @@ func writeRuleItemString(writer varbin.Writer, itemType uint8, value []string) e
 	return varbin.Write(writer, binary.BigEndian, value)
 }
 
-func readRuleItemUint8[E ~uint8](reader varbin.Reader) ([]E, error) {
-	return varbin.ReadValue[[]E](reader, binary.BigEndian)
+func readRuleItemUint8[T ~uint8](reader varbin.Reader) ([]T, error) {
+	length, err := binary.ReadUvarint(reader)
+	if err != nil {
+		return nil, E.Cause(err, "slice length")
+	}
+	if length > maxRuleItemCount {
+		return nil, E.New("too many rule item values: ", length)
+	}
+	if length == 0 {
+		return nil, nil
+	}
+	buf := make([]byte, length)
+	_, err = io.ReadFull(reader, buf)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]T, length)
+	for i, b := range buf {
+		result[i] = T(b)
+	}
+	return result, nil
 }
 
 func writeRuleItemUint8[E ~uint8](writer varbin.Writer, itemType uint8, value []E) error {
@@ -581,7 +642,22 @@ func writeRuleItemUint8[E ~uint8](writer varbin.Writer, itemType uint8, value []
 }
 
 func readRuleItemUint16(reader varbin.Reader) ([]uint16, error) {
-	return varbin.ReadValue[[]uint16](reader, binary.BigEndian)
+	length, err := binary.ReadUvarint(reader)
+	if err != nil {
+		return nil, E.Cause(err, "slice length")
+	}
+	if length > maxRuleItemCount {
+		return nil, E.New("too many rule item values: ", length)
+	}
+	if length == 0 {
+		return nil, nil
+	}
+	result := make([]uint16, length)
+	err = binary.Read(reader, binary.BigEndian, result)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func writeRuleItemUint16(writer varbin.Writer, itemType uint8, value []uint16) error {
