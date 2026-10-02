@@ -179,23 +179,11 @@ func (d *Service) Start(stage adapter.StartStage) error {
 
 		verifyClientKeys := slices.Clone(d.verifyClientKeys)
 		if len(d.verifyClientInbound) > 0 {
-			inboundManager := service.FromContext[adapter.InboundManager](d.ctx)
-			for _, inboundTag := range d.verifyClientInbound {
-				inbound, loaded := inboundManager.Get(inboundTag)
-				if !loaded {
-					return E.New("verify_client_inbound: inbound not found: ", inboundTag)
-				}
-				tailcatInbound, isTailcat := inbound.(*boxScale.TailcatInbound)
-				if !isTailcat {
-					return E.New("verify_client_inbound: inbound is not Tailcat: ", inboundTag)
-				}
-				userKeys := tailcatInbound.UserPublicKeys()
-				if len(userKeys) == 0 {
-					return E.New("verify_client_inbound: inbound has no users: ", inboundTag)
-				}
-				verifyClientKeys = append(verifyClientKeys, tailcatInbound.PublicKey())
-				verifyClientKeys = append(verifyClientKeys, userKeys...)
+			inboundKeys, err := resolveTailcatVerifyKeys(d.ctx, d.verifyClientInbound)
+			if err != nil {
+				return err
 			}
+			verifyClientKeys = append(verifyClientKeys, inboundKeys...)
 		}
 		if len(verifyClientKeys) > 0 {
 			server.SetVerifyClientKeys(verifyClientKeys)

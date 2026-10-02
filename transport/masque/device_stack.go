@@ -19,7 +19,6 @@ import (
 	"github.com/sagernet/gvisor/pkg/tcpip/transport/tcp"
 	"github.com/sagernet/gvisor/pkg/tcpip/transport/udp"
 	"github.com/sagernet/sing-box/log"
-	"github.com/sagernet/sing-box/transport/wireguard"
 	"github.com/sagernet/sing-tun"
 	"github.com/sagernet/sing/common/buf"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -86,7 +85,7 @@ func newStackDevice(options DeviceOptions) (*stackDevice, error) {
 	tunDevice.stack = ipStack
 	if options.Handler != nil {
 		ipStack.SetTransportProtocolHandler(tcp.ProtocolNumber, tun.NewTCPForwarder(options.Context, ipStack, options.Handler).HandlePacket)
-		ipStack.SetTransportProtocolHandler(udp.ProtocolNumber, tun.NewUDPForwarder(options.Context, ipStack, options.Handler, options.UDPTimeout).HandlePacket)
+		ipStack.SetTransportProtocolHandler(udp.ProtocolNumber, tun.NewUDPForwarder(options.Context, ipStack, options.Handler, tun.UDPNatOptions{Timeout: options.UDPTimeout}).HandlePacket)
 		icmpForwarder := tun.NewICMPForwarder(ipStack, options.Handler, options.Logger)
 		ipStack.SetTransportProtocolHandler(icmp.ProtocolNumber4, icmpForwarder.HandlePacket)
 		ipStack.SetTransportProtocolHandler(icmp.ProtocolNumber6, icmpForwarder.HandlePacket)
@@ -119,7 +118,7 @@ func (w *stackDevice) DialContext(ctx context.Context, network string, destinati
 	}
 	switch N.NetworkName(network) {
 	case N.NetworkTCP:
-		tcpConn, err := wireguard.DialTCPWithBind(ctx, w.stack, bind, addr, networkProtocol)
+		tcpConn, err := gonet.DialTCPWithBind(ctx, w.stack, bind, addr, networkProtocol)
 		if err != nil {
 			return nil, err
 		}

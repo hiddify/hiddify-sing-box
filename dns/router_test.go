@@ -742,8 +742,8 @@ func TestValidateRuleSetMetadataUpdateAllowsRuleSetThatKeepsNonLegacyDNSMode(t *
 					Domain: badoption.Listable[string]{"example.com"},
 				},
 				DNSRuleAction: option.DNSRuleAction{
-					Action:       C.RuleActionTypeEvaluate,
-					RouteOptions: option.DNSRouteActionOptions{Server: "upstream"},
+					Action:          C.RuleActionTypeEvaluate,
+					EvaluateOptions: option.DNSEvaluateActionOptions{Server: "upstream"},
 				},
 			},
 		},
@@ -770,7 +770,8 @@ func TestValidateRuleSetMetadataUpdateAllowsRuleSetThatKeepsNonLegacyDNSMode(t *
 	require.False(t, router.legacyDNSMode)
 
 	err := router.ValidateRuleSetMetadataUpdate("dynamic-set", adapter.RuleSetMetadata{
-		ContainsIPCIDRRule: true,
+		ContainsIPCIDRRule:    true,
+		ContainsNonIPCIDRRule: true,
 	})
 	require.NoError(t, err)
 }
@@ -1130,8 +1131,8 @@ func TestExchangeLegacyDNSModeDisabledEvaluateMatchResponseRoute(t *testing.T) {
 					Domain: badoption.Listable[string]{"example.com"},
 				},
 				DNSRuleAction: option.DNSRuleAction{
-					Action:       C.RuleActionTypeEvaluate,
-					RouteOptions: option.DNSRouteActionOptions{Server: "upstream"},
+					Action:          C.RuleActionTypeEvaluate,
+					EvaluateOptions: option.DNSEvaluateActionOptions{Server: "upstream"},
 				},
 			},
 		},
@@ -1196,8 +1197,8 @@ func TestExchangeLegacyDNSModeDisabledEvaluateMatchResponseRcodeRoute(t *testing
 					Domain: badoption.Listable[string]{"example.com"},
 				},
 				DNSRuleAction: option.DNSRuleAction{
-					Action:       C.RuleActionTypeEvaluate,
-					RouteOptions: option.DNSRouteActionOptions{Server: "upstream"},
+					Action:          C.RuleActionTypeEvaluate,
+					EvaluateOptions: option.DNSEvaluateActionOptions{Server: "upstream"},
 				},
 			},
 		},
@@ -1263,8 +1264,8 @@ func TestExchangeLegacyDNSModeDisabledEvaluateMatchResponseNsRoute(t *testing.T)
 					Domain: badoption.Listable[string]{"example.com"},
 				},
 				DNSRuleAction: option.DNSRuleAction{
-					Action:       C.RuleActionTypeEvaluate,
-					RouteOptions: option.DNSRouteActionOptions{Server: "upstream"},
+					Action:          C.RuleActionTypeEvaluate,
+					EvaluateOptions: option.DNSEvaluateActionOptions{Server: "upstream"},
 				},
 			},
 		},
@@ -1330,8 +1331,8 @@ func TestExchangeLegacyDNSModeDisabledEvaluateMatchResponseExtraRoute(t *testing
 					Domain: badoption.Listable[string]{"example.com"},
 				},
 				DNSRuleAction: option.DNSRuleAction{
-					Action:       C.RuleActionTypeEvaluate,
-					RouteOptions: option.DNSRouteActionOptions{Server: "upstream"},
+					Action:          C.RuleActionTypeEvaluate,
+					EvaluateOptions: option.DNSEvaluateActionOptions{Server: "upstream"},
 				},
 			},
 		},
@@ -1400,8 +1401,8 @@ func TestExchangeLegacyDNSModeDisabledEvaluateDoesNotLeakAddressesToNextQuery(t 
 					Domain: badoption.Listable[string]{"example.com"},
 				},
 				DNSRuleAction: option.DNSRuleAction{
-					Action:       C.RuleActionTypeEvaluate,
-					RouteOptions: option.DNSRouteActionOptions{Server: "upstream"},
+					Action:          C.RuleActionTypeEvaluate,
+					EvaluateOptions: option.DNSEvaluateActionOptions{Server: "upstream"},
 				},
 			},
 		},
@@ -1462,8 +1463,8 @@ func TestExchangeLegacyDNSModeDisabledEvaluateRouteResolutionFailureClearsRespon
 					Domain: badoption.Listable[string]{"example.com"},
 				},
 				DNSRuleAction: option.DNSRuleAction{
-					Action:       C.RuleActionTypeEvaluate,
-					RouteOptions: option.DNSRouteActionOptions{Server: "upstream"},
+					Action:          C.RuleActionTypeEvaluate,
+					EvaluateOptions: option.DNSEvaluateActionOptions{Server: "upstream"},
 				},
 			},
 		},
@@ -1474,8 +1475,8 @@ func TestExchangeLegacyDNSModeDisabledEvaluateRouteResolutionFailureClearsRespon
 					Domain: badoption.Listable[string]{"example.com"},
 				},
 				DNSRuleAction: option.DNSRuleAction{
-					Action:       C.RuleActionTypeEvaluate,
-					RouteOptions: option.DNSRouteActionOptions{Server: "missing"},
+					Action:          C.RuleActionTypeEvaluate,
+					EvaluateOptions: option.DNSEvaluateActionOptions{Server: "missing"},
 				},
 			},
 		},
@@ -1541,8 +1542,8 @@ func TestExchangeLegacyDNSModeDisabledSecondEvaluateOverwritesFirstResponse(t *t
 					Domain: badoption.Listable[string]{"example.com"},
 				},
 				DNSRuleAction: option.DNSRuleAction{
-					Action:       C.RuleActionTypeEvaluate,
-					RouteOptions: option.DNSRouteActionOptions{Server: "first-upstream"},
+					Action:          C.RuleActionTypeEvaluate,
+					EvaluateOptions: option.DNSEvaluateActionOptions{Server: "first-upstream"},
 				},
 			},
 		},
@@ -1553,8 +1554,8 @@ func TestExchangeLegacyDNSModeDisabledSecondEvaluateOverwritesFirstResponse(t *t
 					Domain: badoption.Listable[string]{"example.com"},
 				},
 				DNSRuleAction: option.DNSRuleAction{
-					Action:       C.RuleActionTypeEvaluate,
-					RouteOptions: option.DNSRouteActionOptions{Server: "second-upstream"},
+					Action:          C.RuleActionTypeEvaluate,
+					EvaluateOptions: option.DNSEvaluateActionOptions{Server: "second-upstream"},
 				},
 			},
 		},
@@ -1646,8 +1647,8 @@ func TestExchangeLegacyDNSModeDisabledEvaluateExchangeFailureUsesMatchResponseBo
 							Domain: badoption.Listable[string]{"example.com"},
 						},
 						DNSRuleAction: option.DNSRuleAction{
-							Action:       C.RuleActionTypeEvaluate,
-							RouteOptions: option.DNSRouteActionOptions{Server: "upstream"},
+							Action:          C.RuleActionTypeEvaluate,
+							EvaluateOptions: option.DNSEvaluateActionOptions{Server: "upstream"},
 						},
 					},
 				},
@@ -1689,8 +1690,8 @@ func TestExchangeLegacyDNSModeDisabledRespondReturnsEvaluatedResponse(t *testing
 					Domain: badoption.Listable[string]{"example.com"},
 				},
 				DNSRuleAction: option.DNSRuleAction{
-					Action:       C.RuleActionTypeEvaluate,
-					RouteOptions: option.DNSRouteActionOptions{Server: "upstream"},
+					Action:          C.RuleActionTypeEvaluate,
+					EvaluateOptions: option.DNSEvaluateActionOptions{Server: "upstream"},
 				},
 			},
 		},
@@ -1740,8 +1741,8 @@ func TestLookupLegacyDNSModeDisabledRespondReturnsEvaluatedResponse(t *testing.T
 					Domain: badoption.Listable[string]{"example.com"},
 				},
 				DNSRuleAction: option.DNSRuleAction{
-					Action:       C.RuleActionTypeEvaluate,
-					RouteOptions: option.DNSRouteActionOptions{Server: "upstream"},
+					Action:          C.RuleActionTypeEvaluate,
+					EvaluateOptions: option.DNSEvaluateActionOptions{Server: "upstream"},
 				},
 			},
 		},
@@ -1797,8 +1798,8 @@ func TestExchangeLegacyDNSModeDisabledRespondWithoutEvaluatedResponseReturnsErro
 					Domain: badoption.Listable[string]{"example.com"},
 				},
 				DNSRuleAction: option.DNSRuleAction{
-					Action:       C.RuleActionTypeEvaluate,
-					RouteOptions: option.DNSRouteActionOptions{Server: "upstream"},
+					Action:          C.RuleActionTypeEvaluate,
+					EvaluateOptions: option.DNSEvaluateActionOptions{Server: "upstream"},
 				},
 			},
 		},
@@ -2020,8 +2021,8 @@ func TestInitializeRejectsEvaluateFakeIPServerInDefaultRule(t *testing.T) {
 				Domain: badoption.Listable[string]{"example.com"},
 			},
 			DNSRuleAction: option.DNSRuleAction{
-				Action:       C.RuleActionTypeEvaluate,
-				RouteOptions: option.DNSRouteActionOptions{Server: "fake"},
+				Action:          C.RuleActionTypeEvaluate,
+				EvaluateOptions: option.DNSEvaluateActionOptions{Server: "fake"},
 			},
 		},
 	}})
@@ -2055,8 +2056,8 @@ func TestInitializeRejectsEvaluateFakeIPServerInLogicalRule(t *testing.T) {
 				}},
 			},
 			DNSRuleAction: option.DNSRuleAction{
-				Action:       C.RuleActionTypeEvaluate,
-				RouteOptions: option.DNSRouteActionOptions{Server: "fake"},
+				Action:          C.RuleActionTypeEvaluate,
+				EvaluateOptions: option.DNSEvaluateActionOptions{Server: "fake"},
 			},
 		},
 	}})
@@ -2215,8 +2216,8 @@ func TestInitializeRejectsEvaluateRuleWithResponseMatchWithoutPrecedingEvaluate(
 				},
 			},
 			DNSRuleAction: option.DNSRuleAction{
-				Action:       C.RuleActionTypeEvaluate,
-				RouteOptions: option.DNSRouteActionOptions{Server: "default"},
+				Action:          C.RuleActionTypeEvaluate,
+				EvaluateOptions: option.DNSEvaluateActionOptions{Server: "default"},
 			},
 		},
 	}})
@@ -2242,8 +2243,8 @@ func TestInitializeAllowsEvaluateRuleWithResponseMatchAfterPrecedingEvaluate(t *
 					Domain: badoption.Listable[string]{"bootstrap.example"},
 				},
 				DNSRuleAction: option.DNSRuleAction{
-					Action:       C.RuleActionTypeEvaluate,
-					RouteOptions: option.DNSRouteActionOptions{Server: "bootstrap"},
+					Action:          C.RuleActionTypeEvaluate,
+					EvaluateOptions: option.DNSEvaluateActionOptions{Server: "bootstrap"},
 				},
 			},
 		},
@@ -2273,8 +2274,8 @@ func TestInitializeAllowsEvaluateRuleWithResponseMatchAfterPrecedingEvaluate(t *
 					},
 				},
 				DNSRuleAction: option.DNSRuleAction{
-					Action:       C.RuleActionTypeEvaluate,
-					RouteOptions: option.DNSRouteActionOptions{Server: "default"},
+					Action:          C.RuleActionTypeEvaluate,
+					EvaluateOptions: option.DNSEvaluateActionOptions{Server: "default"},
 				},
 			},
 		},
@@ -2455,8 +2456,8 @@ func TestExchangeLegacyDNSModeDisabledLogicalMatchResponseIPCIDRFallsThrough(t *
 					Domain: badoption.Listable[string]{"example.com"},
 				},
 				DNSRuleAction: option.DNSRuleAction{
-					Action:       C.RuleActionTypeEvaluate,
-					RouteOptions: option.DNSRouteActionOptions{Server: "upstream"},
+					Action:          C.RuleActionTypeEvaluate,
+					EvaluateOptions: option.DNSEvaluateActionOptions{Server: "upstream"},
 				},
 			},
 		},
