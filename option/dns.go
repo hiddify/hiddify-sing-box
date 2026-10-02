@@ -209,7 +209,9 @@ type RemoteHTTPSDNSServerOptions struct {
 }
 
 type GroupDNSServerOptions struct {
-	Servers []string `json:"servers" reference:"dns_server"`
+	Servers      []string           `json:"servers" reference:"dns_server"`
+	Mode         string             `json:"mode,omitempty"`          //H
+	IgnoreRanges []badoption.Prefix `json:"ignore_ranges,omitempty"` //H
 }
 
 type FakeIPDNSServerOptions struct {
@@ -232,6 +234,7 @@ type SDNSDNSServerOptions struct { //H
 	Stamp string `json:"stamp"`
 }
 
+// Deprecated: use GroupDNSServerOptions.
 type MultiDNSServerOptions struct { //H
 	RawLocalDNSServerOptions
 	Servers      []string           `json:"servers,omitempty"`

@@ -2066,6 +2066,19 @@
                 "type": "string",
                 "x-tag-reference": "dns_server"
               }
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "parallel",
+                "sequential"
+              ]
+            },
+            "ignore_ranges": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/IPPrefix"
+              }
             }
           },
           "required": [

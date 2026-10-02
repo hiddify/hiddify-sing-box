@@ -36,6 +36,11 @@ const (
 )
 
 const (
+	DNSGroupModeParallel   = "parallel"   //H
+	DNSGroupModeSequential = "sequential" //H
+)
+
+const (
 	DNSProviderAliDNS     = "alidns"
 	DNSProviderCloudflare = "cloudflare"
 	DNSProviderACMEDNS    = "acmedns"
