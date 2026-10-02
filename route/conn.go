@@ -226,7 +226,7 @@ func (m *ConnectionManager) NewPacketConnection(ctx context.Context, this N.Dial
 					dialerString += "[" + metadata.GetRealOutbound() + "]"
 				}
 			}
-			err = E.Cause(err, "listen packet connection using ", dialerString)
+			err = E.Cause(err, "listen packet connection", dialerString)
 			N.CloseOnHandshakeFailure(conn, onClose, err)
 			m.logger.ErrorContext(ctx, err)
 			return
