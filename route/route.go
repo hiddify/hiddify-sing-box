@@ -181,6 +181,10 @@ func resolveOutbound(outbound adapter.Outbound, network string) ([]adapter.Outbo
 		if !isGroup {
 			break
 		}
+		// H: per-connection groups route connections themselves
+		if _, isPerConnection := group.(adapter.PerConnectionOutboundGroup); isPerConnection {
+			break
+		}
 		outbound = group.Selected(network)
 		if outbound == nil {
 			return nil, E.New(strings.ToUpper(network), " is not supported by outbound: ", group.Tag())

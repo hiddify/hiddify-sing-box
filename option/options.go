@@ -44,6 +44,7 @@ func (o *Options) UnmarshalJSONContext(ctx context.Context, content []byte) erro
 		return err
 	}
 	o.RawMessage = content
+	labelInvalidOptions(o)
 	return checkOptions(o)
 }
 

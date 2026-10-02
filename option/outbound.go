@@ -28,6 +28,9 @@ type _Outbound struct {
 type Outbound _Outbound
 
 func (h *Outbound) MarshalJSONContext(ctx context.Context) ([]byte, error) {
+	if raw, isRaw := rawInvalidConfig(h.Type, h.Options); isRaw {
+		return raw, nil
+	}
 	return badjson.MarshallObjectsContext(ctx, (*_Outbound)(h), h.Options)
 }
 
@@ -40,6 +43,16 @@ func (h *Outbound) UnmarshalJSONContext(ctx context.Context, content []byte) err
 	if registry == nil {
 		return E.New("missing outbound options registry in context")
 	}
+	// H: keep a broken outbound as an invalid placeholder instead of failing the whole config
+	err = h.unmarshalOptions(ctx, registry, content)
+	if err != nil {
+		h.Options = newInvalidOptions(h.Type, content, err)
+		h.Type = C.TypeHInvalidConfig
+	}
+	return nil
+}
+
+func (h *Outbound) unmarshalOptions(ctx context.Context, registry OutboundOptionsRegistry, content []byte) error {
 	switch h.Type {
 	case C.TypeDNS:
 		return E.New("dns outbound is deprecated in sing-box 1.11.0 and removed in sing-box 1.13.0, use rule actions instead")
@@ -48,7 +61,7 @@ func (h *Outbound) UnmarshalJSONContext(ctx context.Context, content []byte) err
 	if !loaded {
 		return E.New("unknown outbound type: ", h.Type)
 	}
-	err = badjson.UnmarshallExcludedContext(ctx, content, (*_Outbound)(h), options)
+	err := badjson.UnmarshallExcludedContext(ctx, content, (*_Outbound)(h), options)
 	if err != nil {
 		return err
 	}
