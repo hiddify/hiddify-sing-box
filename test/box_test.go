@@ -26,7 +26,11 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	goleak.VerifyTestMain(m)
+	goleak.VerifyTestMain(m,
+		// kcp-go (via dnstt -> vaydns) starts its global scheduler at package init.
+		goleak.IgnoreTopFunction("github.com/xtaci/kcp-go/v5.(*TimedSched).sched"),   //H
+		goleak.IgnoreTopFunction("github.com/xtaci/kcp-go/v5.(*TimedSched).prepend"), //H
+	)
 }
 
 var globalCtx context.Context
