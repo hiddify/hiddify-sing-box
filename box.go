@@ -21,11 +21,14 @@ import (
 	"github.com/sagernet/sing-box/common/monitoring"
 	"github.com/sagernet/sing-box/common/taskmonitor"
 	"github.com/sagernet/sing-box/common/tls"
+	"github.com/sagernet/sing-box/common/trafficcontrol"
 	"github.com/sagernet/sing-box/common/urltest"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/dns"
 	"github.com/sagernet/sing-box/experimental"
 	"github.com/sagernet/sing-box/experimental/cachefile"
+	clashtrafficontrol "github.com/sagernet/sing-box/experimental/clashapi/trafficontrol"
+	"github.com/sagernet/sing-box/experimental/clashmode"
 	"github.com/sagernet/sing-box/experimental/deprecated"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
@@ -232,6 +235,22 @@ func New(options Options) (*Box, error) {
 	err = router.Initialize(routeOptions.Rules, routeOptions.RuleSet)
 	if err != nil {
 		return nil, E.Cause(err, "initialize router")
+	}
+	if needClashAPI || options.PlatformLogWriter != nil {
+		trafficManager := trafficcontrol.NewManager()
+		service.MustRegisterPtr(ctx, trafficManager)
+		router.AppendTracker(trafficManager)
+		internalServices = append(internalServices, trafficManager)
+		var clashDefaultMode string
+		if experimentalOptions.ClashAPI != nil {
+			clashDefaultMode = experimentalOptions.ClashAPI.DefaultMode
+		}
+		clashMode := clashmode.NewManager(ctx, logFactory.NewLogger("clash-mode"), clashDefaultMode, clashmode.CalculateModeList(options.Options))
+		service.MustRegisterPtr(ctx, clashMode)
+		internalServices = append(internalServices, clashMode)
+	}
+	if needClashAPI { //H the hiddify clash server keeps its own per-outbound traffic manager
+		service.MustRegisterPtr(ctx, clashtrafficontrol.NewManager())
 	}
 	referenceManager := route.NewReferenceManager(ctx, logFactory.NewLogger("reference"), options.Options)
 	internalServices = append(internalServices, referenceManager)
