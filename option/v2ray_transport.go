@@ -226,6 +226,11 @@ func checkV2RayXHTTPBaseOptions(mode string, options *V2RayXHTTPBaseOptions) err
 			return E.New(`"headers" can't contain "host"`)
 		}
 	}
+	// H: unset/empty/zero x_padding_bytes means the Xray default 100-1000 (a zero Range marshals as "",
+	// so re-saved configs carry an empty value); only negative or half-zero ranges are rejected
+	if options.XPaddingBytes == (Xbadoption.Range{}) {
+		options.XPaddingBytes = Xbadoption.Range{From: 100, To: 1000}
+	}
 	if options.XPaddingBytes.From <= 0 || options.XPaddingBytes.To <= 0 {
 		return E.New("xPaddingBytes cannot be disabled")
 	}
