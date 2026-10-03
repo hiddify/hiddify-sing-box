@@ -47,10 +47,25 @@ func TestH_V2RayTransportXHTTPDefaults(t *testing.T) {
 }
 
 func TestH_V2RayTransportXHTTPMissingPadding(t *testing.T) {
-	t.Skip("BUG: minimal xhttp transport without x_padding_bytes is rejected ('xPaddingBytes cannot be disabled'); Xray only rejects explicit non-positive values, and GetNormalizedXPaddingBytes' 100-1000 default is unreachable (option/v2ray_transport.go:229)")
 	t.Parallel()
-	_, err := hUnmarshalTransport(t, `{"type":"xhttp"}`)
-	require.NoError(t, err)
+	for _, content := range []string{
+		`{"type":"xhttp"}`,
+		`{"type":"xhttp","x_padding_bytes":""}`,
+		`{"type":"xhttp","x_padding_bytes":"0"}`,
+		`{"type":"xhttp","x_padding_bytes":0}`,
+		`{"type":"xhttp","x_padding_bytes":"1-2","download":{"x_padding_bytes":""}}`,
+	} {
+		options, err := hUnmarshalTransport(t, content)
+		require.NoError(t, err, content)
+		if options.XHTTPOptions.Download != nil {
+			require.Equal(t, Xbadoption.Range{From: 100, To: 1000}, options.XHTTPOptions.Download.XPaddingBytes, content)
+		} else {
+			require.Equal(t, Xbadoption.Range{From: 100, To: 1000}, options.XHTTPOptions.XPaddingBytes, content)
+		}
+	}
+
+	_, err := hUnmarshalTransport(t, `{"type":"xhttp","x_padding_bytes":"-1"}`)
+	require.Error(t, err, "negative padding must still be rejected")
 }
 
 func TestH_V2RayTransportXHTTPPlacementKeys(t *testing.T) {
@@ -112,7 +127,7 @@ func TestH_V2RayTransportXHTTPInvalid(t *testing.T) {
 		"seq-placement":          `{"type":"xhttp","x_padding_bytes":"1-2","seq_placement":"body"}`,
 		"seq-with-session-path":  `{"type":"xhttp","x_padding_bytes":"1-2","seq_placement":"header"}`,
 		"xmux-conflict":          `{"type":"xhttp","x_padding_bytes":"1-2","xmux":{"max_connections":"1-2","max_concurrency":"1-2"}}`,
-		"download-padding":       `{"type":"xhttp","x_padding_bytes":"1-2","download":{"x_padding_bytes":"0"}}`,
+		"download-padding":       `{"type":"xhttp","x_padding_bytes":"1-2","download":{"x_padding_bytes":"-5"}}`,
 		"download-host-header":   `{"type":"xhttp","x_padding_bytes":"1-2","download":{"x_padding_bytes":"1-2","headers":{"host":"x"}}}`,
 		"unknown-transport-type": `{"type":"bogus"}`,
 	}
