@@ -33,6 +33,9 @@ import (
 
 var _ adapter.RuleSet = (*RemoteRuleSet)(nil)
 
+// H: retry delays after a failed rule-set fetch; the last one repeats until success
+var hRuleSetRetryDelays = []time.Duration{time.Second, 10 * time.Second, 30 * time.Second, time.Minute, 5 * time.Minute, 10 * time.Minute, 30 * time.Minute}
+
 type RemoteRuleSet struct {
 	ctx            context.Context
 	cancel         context.CancelFunc
@@ -51,7 +54,8 @@ type RemoteRuleSet struct {
 	lastUpdated    time.Time
 	lastEtag       string
 	updateTicker   *time.Ticker
-	startupTicker  *time.Ticker //H
+	fetchFailed    bool            //H: initial fetch failed, retry in background
+	retryDelays    []time.Duration //H: overrides hRuleSetRetryDelays (tests)
 	cacheFile      adapter.CacheFile
 	pauseManager   pause.Manager
 	callbacks      list.List[adapter.RuleSetUpdateCallback]
@@ -135,7 +139,9 @@ func (s *RemoteRuleSet) StartContext(ctx context.Context, startContext *adapter.
 	if s.lastUpdated.IsZero() && !loadedFromInitialPath {
 		err = s.fetch(ctx, true)
 		if err != nil {
-			return E.Cause(err, "initial rule-set: ", s.tag)
+			// H: do not block startup on an unreachable rule-set; loopUpdate retries it
+			s.logger.Warn("initial rule-set ", s.tag, " unavailable, will retry: ", err)
+			s.fetchFailed = true
 		}
 	}
 	s.updateTicker = time.NewTicker(s.updateInterval)
@@ -234,37 +240,57 @@ func (s *RemoteRuleSet) loadBytes(content []byte) error {
 }
 
 func (s *RemoteRuleSet) loopUpdate() {
-	if time.Since(s.lastUpdated) > s.updateInterval {
-		s.updateOnce()
+	// H: while the rule-set is missing or stale, retry with backoff (hRuleSetRetryDelays),
+	// keeping the cached rules (if any) in use; then fall back to the regular update interval.
+	retryDelays := s.retryDelays
+	if len(retryDelays) == 0 {
+		retryDelays = hRuleSetRetryDelays
 	}
-	for s.lastUpdated.IsZero() {
-		select {
-		case <-s.ctx.Done():
-			return
-		case <-s.startupTicker.C:
-			s.updateOnce()
-		}
-
+	retrying := s.fetchFailed || time.Since(s.lastUpdated) > s.updateInterval
+	retryIndex := 0
+	if retrying && !s.fetchFailed {
+		// stale cache: refresh immediately, back off only if that fails
+		retrying = s.updateOnce() != nil
 	}
-
 	for {
+		if retrying {
+			delay := retryDelays[min(retryIndex, len(retryDelays)-1)]
+			timer := time.NewTimer(delay)
+			select {
+			case <-s.ctx.Done():
+				timer.Stop()
+				return
+			case <-timer.C:
+			}
+			if s.updateOnce() == nil {
+				retrying = false
+				s.fetchFailed = false
+			} else {
+				retryIndex++
+			}
+			continue
+		}
 		runtime.GC()
 		select {
 		case <-s.ctx.Done():
 			return
 		case <-s.updateTicker.C:
-			s.updateOnce()
+			if s.updateOnce() != nil {
+				retrying = true
+				retryIndex = 0
+			}
 		}
 	}
 }
 
-func (s *RemoteRuleSet) updateOnce() {
+func (s *RemoteRuleSet) updateOnce() error {
 	err := s.fetch(s.ctx, false)
 	if err != nil {
 		s.logger.Error("fetch rule-set ", s.tag, ": ", err)
 	} else if s.refs.Load() == 0 {
 		s.rules = nil
 	}
+	return err
 }
 
 func (s *RemoteRuleSet) fetch(ctx context.Context, isStart bool) error {
@@ -360,9 +386,6 @@ func (s *RemoteRuleSet) resolveTransport() (adapter.HTTPTransport, error) {
 func (s *RemoteRuleSet) Close() error {
 	s.rules = nil
 	s.cancel()
-	if s.startupTicker != nil {
-		s.startupTicker.Stop()
-	}
 	if s.updateTicker != nil {
 		s.updateTicker.Stop()
 	}
