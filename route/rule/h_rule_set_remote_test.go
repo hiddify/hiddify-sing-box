@@ -81,7 +81,6 @@ func TestH_RemoteRuleSetLoopUpdateFetchesWhenStale(t *testing.T) {
 }
 
 func TestH_RemoteRuleSetLoopUpdateNeverUpdated(t *testing.T) {
-	t.Skip("BUG: RemoteRuleSet.loopUpdate dereferences nil startupTicker when lastUpdated is zero (startupTicker is never initialized)")
 	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
@@ -101,4 +100,68 @@ func TestH_RemoteRuleSetLoopUpdateNeverUpdated(t *testing.T) {
 	}
 	defer ruleSet.Close()
 	hRunLoopUpdate(t, ruleSet, cancel, 200*time.Millisecond)
+}
+
+func TestH_RemoteRuleSetRetriesFailedFetchUntilSuccess(t *testing.T) {
+	t.Parallel()
+	var hits atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if hits.Add(1) <= 3 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		_, _ = w.Write([]byte(`{"version":4,"rules":[{"domain":["example.org"]}]}`))
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	ruleSet := &RemoteRuleSet{
+		ctx:            ctx,
+		cancel:         cancel,
+		logger:         logger.NOP(),
+		tag:            "remote",
+		url:            server.URL,
+		options:        option.RuleSet{Format: C.RuleSetFormatSource},
+		httpClient:     server.Client(),
+		updateInterval: time.Hour,
+		updateTicker:   time.NewTicker(time.Hour),
+		fetchFailed:    true,
+		retryDelays:    []time.Duration{10 * time.Millisecond, 20 * time.Millisecond},
+	}
+	ruleSet.refs.Store(1)
+	defer ruleSet.Close()
+	hRunLoopUpdate(t, ruleSet, cancel, 300*time.Millisecond)
+	require.Equal(t, int32(4), hits.Load(), "should retry until the fetch succeeds, then stop")
+	require.False(t, ruleSet.lastUpdated.IsZero())
+	require.False(t, ruleSet.fetchFailed)
+	require.True(t, ruleSet.Match(&adapter.InboundContext{Domain: "example.org"}))
+}
+
+func TestH_RemoteRuleSetKeepsCachedRulesOnFailedRefresh(t *testing.T) {
+	t.Parallel()
+	var hits atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	ruleSet := &RemoteRuleSet{
+		ctx:            ctx,
+		cancel:         cancel,
+		logger:         logger.NOP(),
+		tag:            "remote",
+		url:            server.URL,
+		options:        option.RuleSet{Format: C.RuleSetFormatSource},
+		httpClient:     server.Client(),
+		updateInterval: time.Hour,
+		lastUpdated:    time.Now().Add(-2 * time.Hour),
+		updateTicker:   time.NewTicker(time.Hour),
+		retryDelays:    []time.Duration{10 * time.Millisecond},
+	}
+	ruleSet.refs.Store(1)
+	require.NoError(t, ruleSet.loadBytes([]byte(`{"version":4,"rules":[{"domain":["cached.example"]}]}`)))
+	defer ruleSet.Close()
+	hRunLoopUpdate(t, ruleSet, cancel, 200*time.Millisecond)
+	require.Greater(t, hits.Load(), int32(2), "failed refresh should be retried")
+	require.True(t, ruleSet.Match(&adapter.InboundContext{Domain: "cached.example"}), "cached rules must stay in use")
 }
