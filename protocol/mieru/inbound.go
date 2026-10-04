@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/netip"
 	"sync"
+	"time"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/inbound"
@@ -27,6 +28,14 @@ import (
 	mieruserver "github.com/enfein/mieru/v3/apis/server"
 	mierupb "github.com/enfein/mieru/v3/pkg/appctl/appctlpb"
 	"google.golang.org/protobuf/proto"
+)
+
+const (
+	// A failed Accept is retried after a short pause that grows up to
+	// acceptErrorBackoffMax, so a permanently failing listener costs a few
+	// calls per second instead of a whole core.
+	acceptErrorBackoffInitial = 100 * time.Millisecond
+	acceptErrorBackoffMax     = 5 * time.Second
 )
 
 func RegisterInbound(registry *inbound.Registry) {
@@ -102,6 +111,7 @@ func (h *Inbound) Close() error {
 }
 
 func (h *Inbound) acceptLoop() {
+	backoff := acceptErrorBackoffInitial
 	for {
 		conn, request, err := h.server.Accept()
 		if err != nil {
@@ -109,8 +119,22 @@ func (h *Inbound) acceptLoop() {
 				return
 			}
 			h.logger.Debug("failed to accept mieru connection: ", err)
+			// Accept reports per-connection handshake failures the same way it
+			// reports a broken listener, and a listener that stopped working
+			// keeps failing on every call. Retrying without a delay turns
+			// either case into a tight loop that pins a CPU core, so wait
+			// before asking again and give up entirely once the inbound is gone.
+			timer := time.NewTimer(backoff)
+			select {
+			case <-timer.C:
+			case <-h.ctx.Done():
+				timer.Stop()
+				return
+			}
+			backoff = min(backoff*2, acceptErrorBackoffMax)
 			continue
 		}
+		backoff = acceptErrorBackoffInitial
 		go h.handleConnection(conn, request)
 	}
 }
