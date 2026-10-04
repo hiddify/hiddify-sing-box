@@ -98,23 +98,27 @@ func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.Cont
 		if options.ServerOptions.ServerPort != 0 {
 			perrPort = options.ServerOptions.ServerPort
 		}
+		var innerEndpoint adapter.Endpoint
 		if options.AWG != nil && options.AWG.IsAvailble() {
-			warpEndpoint.endpoint, err = createWARPAwgEndpoint(ctx, router, logger, tag, options, config, peerAddr, perrPort, peer.PublicKey)
+			innerEndpoint, err = createWARPAwgEndpoint(ctx, router, logger, tag, options, config, peerAddr, perrPort, peer.PublicKey)
 		} else {
-			warpEndpoint.endpoint, err = createWARPWireGuardEndpoint(ctx, router, logger, tag, options, config, peerAddr, perrPort, peer.PublicKey)
+			innerEndpoint, err = createWARPWireGuardEndpoint(ctx, router, logger, tag, options, config, peerAddr, perrPort, peer.PublicKey)
 		}
 		if err != nil {
 			logger.ErrorContext(ctx, err)
 			return
 		}
-		if err = warpEndpoint.endpoint.Start(adapter.StartStateStart); err != nil {
-			logger.ErrorContext(ctx, err)
-			return
+		// run every start stage: the WireGuard device is only created in StartStateInitialize,
+		// so skipping it panics in Start (nil tun device)
+		for _, stage := range []adapter.StartStage{adapter.StartStateInitialize, adapter.StartStateStart, adapter.StartStatePostStart} {
+			if err = innerEndpoint.Start(stage); err != nil {
+				logger.ErrorContext(ctx, E.Cause(err, "start WARP endpoint (", stage, ")"))
+				innerEndpoint.Close()
+				return
+			}
 		}
-		if err = warpEndpoint.endpoint.Start(adapter.StartStatePostStart); err != nil {
-			logger.ErrorContext(ctx, err)
-			return
-		}
+		// publish only a fully started endpoint
+		warpEndpoint.endpoint = innerEndpoint
 	}
 	return warpEndpoint, nil
 }
