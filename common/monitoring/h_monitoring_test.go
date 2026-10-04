@@ -346,3 +346,40 @@ func TestH_MonitoringCycleEndToEnd(t *testing.T) {
 	require.Eventually(t, func() bool { return cache.LoadBinary("outbound_monitoring_history") != nil }, 2*time.Second, 10*time.Millisecond)
 	require.NoError(t, m.UnsubscribeGroup("grp", events))
 }
+
+// A selection change (Selector.SelectOutbound -> SignalChange) must reach every group containing
+// the selector and every group containing an outbound routed through it, re-test those
+// dependents, and never block.
+func TestH_MonitoringSignalChangePropagatesToDependents(t *testing.T) {
+	a := &fakeOutbound{tag: "a"}
+	b := &fakeOutbound{tag: "b"}
+	selector := &fakeGroup{fakeOutbound: fakeOutbound{tag: "select"}, all: []string{"a", "b"}, selected: a}
+	viaSelector := &fakeOutbound{tag: "c", deps: []string{"select"}}
+	outer := &fakeGroup{fakeOutbound: fakeOutbound{tag: "outer"}, all: []string{"c"}, selected: viaSelector}
+	m := newTestMonitor(t, nil, option.MonitoringOptions{}, a, b, selector, viaSelector, outer)
+	require.NoError(t, m.Start(adapter.StartStateInitialize))
+
+	done := make(chan error, 1)
+	go func() {
+		err := m.SignalChange("select")
+		if err == nil {
+			err = m.SignalChange("select") // notify channels already full: must not block
+		}
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("SignalChange blocked")
+	}
+
+	for _, groupTag := range []string{"select", "", "outer"} {
+		require.Len(t, m.groups[groupTag].notifyCh, 1, "group %q not notified", groupTag)
+	}
+	require.True(t, m.outbounds["c"].priorityQueued, "outbound routed through the selector is re-tested")
+	require.False(t, m.outbounds["a"].priorityQueued, "selector members did not change")
+	require.False(t, m.outbounds["b"].priorityQueued, "selector members did not change")
+
+	require.Error(t, m.SignalChange("missing"))
+}

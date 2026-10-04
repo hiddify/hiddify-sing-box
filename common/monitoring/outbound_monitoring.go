@@ -360,22 +360,35 @@ func (m *OutboundMonitoring) stopTimerWorkers() {
 	m.pause.UnregisterCallback(m.pauseCallback)
 }
 
+// SignalChange reports that an outbound changed without a URL test, e.g. a selector switched
+// to another outbound. Subscribers of every group containing it, or containing an outbound
+// that depends on it (detour chain), get an event; those dependents are re-tested because
+// their path changed. Non-blocking.
 func (m *OutboundMonitoring) SignalChange(outboundTag string) error {
-	if grp, ok := m.groups[outboundTag]; ok {
-		grp.notifyCh <- struct{}{}
-		return nil
+	if m.getState(outboundTag) == nil {
+		return errors.New("outbound not registered")
+	}
+	m.signalChange(outboundTag, make(map[string]bool))
+	m.testParents(outboundTag, true)
+	return nil
+}
+
+func (m *OutboundMonitoring) signalChange(outboundTag string, visited map[string]bool) {
+	if visited[outboundTag] {
+		return
+	}
+	visited[outboundTag] = true
+	if _, isGroup := m.groups[outboundTag]; isGroup {
+		m.emitGroupEvent([]string{outboundTag})
 	}
 	state := m.getState(outboundTag)
 	if state == nil {
-		return errors.New("outbound not registered")
+		return
 	}
-	for _, groupTag := range state.groupTags {
-		if grp, ok := m.groups[groupTag]; ok {
-			grp.notifyCh <- struct{}{}
-		}
+	m.emitGroupEvent(state.groupTags)
+	for _, dependent := range state.dependenciesInverse {
+		m.signalChange(dependent, visited)
 	}
-	return nil
-
 }
 func (m *OutboundMonitoring) TestNow(outboundTag string) error {
 	m.testParents(outboundTag, true)

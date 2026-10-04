@@ -8,6 +8,7 @@ import (
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/outbound"
 	"github.com/sagernet/sing-box/common/interrupt"
+	"github.com/sagernet/sing-box/common/monitoring"
 	"github.com/sagernet/sing-box/common/urltest"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
@@ -146,6 +147,12 @@ func (s *Selector) SelectOutbound(tag string) bool {
 	s.interruptGroup.Interrupt(s.interruptExternalConnections)
 	if s.history != nil {
 		s.history.NotifyUpdated()
+	}
+	// H: a selection changes this group and everything routed through it
+	if mon := monitoring.Get(s.ctx); mon != nil && s.Tag() != "" {
+		if err := mon.SignalChange(s.Tag()); err != nil {
+			s.logger.Debug("signal selection change: ", err)
+		}
 	}
 	return true
 }
