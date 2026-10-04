@@ -321,5 +321,5 @@ func (h *Outbound) IsReady() bool {
 
 func (h *Outbound) InterfaceUpdated(ctx context.Context) {
 	h.logger.Info("Network Changed... Restarting Psiphon Tunnel")
-	h.psiphon.controller.NetworkChanged()
+	h.psiphon.NetworkChanged()
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"sync/atomic"
 
 	"github.com/Psiphon-Labs/psiphon-tunnel-core/psiphon"
 	"github.com/sagernet/sing-box/common/monitoring"
@@ -57,7 +58,7 @@ type NoticeEvent struct {
 }
 
 type Psiphon struct {
-	controller      *psiphon.Controller
+	controller      atomic.Pointer[psiphon.Controller] // set by the async start; read from other goroutines
 	logger          logger.ContextLogger
 	config          *psiphon.Config
 	ctx             context.Context
@@ -68,7 +69,7 @@ type Psiphon struct {
 }
 
 func (p *Psiphon) Dial(address string, conn net.Conn) (net.Conn, error) {
-	if ctl := p.controller; ctl != nil {
+	if ctl := p.controller.Load(); ctl != nil {
 		return ctl.Dial(address, conn)
 	}
 	return nil, errors.New("controller not initialized")
@@ -99,23 +100,34 @@ func (p *Psiphon) closeDataStore() {
 }
 
 func (p *Psiphon) State() string {
-	if p.controller == nil || !p.connected {
+	if p.controller.Load() == nil || !p.connected {
 		return "connecting..."
 	}
 
 	return "connected"
 }
 func (p *Psiphon) IsConnected() bool {
-	if p.controller == nil || !p.connected {
+	if p.controller.Load() == nil || !p.connected {
 		return false
 	}
 	return true
 }
 
+// NetworkChanged tells the running controller that the network changed.
+// It is a no-op before the controller exists (still starting, or start failed).
+func (p *Psiphon) NetworkChanged() {
+	if ctl := p.controller.Load(); ctl != nil {
+		ctl.NetworkChanged()
+	}
+}
+
 func (p *Psiphon) Close() error {
+	p.controller.Store(nil)
 	p.connected = false
 	psiphon.ResetNoticeWriter()
-	p.cancel()
+	if p.cancel != nil { // nil until Start runs
+		p.cancel()
+	}
 	p.closeDataStore()
 	return nil
 }
@@ -181,7 +193,7 @@ func (p *Psiphon) Start() error {
 	if err != nil {
 		return errors.New("psiphon.NewController failed")
 	}
-	p.controller = controller
+	p.controller.Store(controller)
 
 	go func() {
 		controller.Run(ctx) // Run will block until the controller is stopped

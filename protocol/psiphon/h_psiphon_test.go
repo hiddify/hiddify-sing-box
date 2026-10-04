@@ -119,14 +119,12 @@ func TestH_PsiphonDefaultTimeout(t *testing.T) {
 }
 
 func TestH_PsiphonCloseBeforeStart(t *testing.T) {
-	t.Skip("BUG: Psiphon.Close calls p.cancel which is nil until Start runs, so closing an unstarted outbound panics (protocol/psiphon/psiphon.go:118)")
 	t.Parallel()
 	out := newTestOutbound(t, option.PsiphonOutboundOptions{})
 	require.NotPanics(t, func() { _ = out.Close() })
 }
 
 func TestH_PsiphonInterfaceUpdatedBeforeStart(t *testing.T) {
-	t.Skip("BUG: InterfaceUpdated dereferences psiphon.controller which is nil until Start succeeds (protocol/psiphon/outbound.go:324)")
 	t.Parallel()
 	out := newTestOutbound(t, option.PsiphonOutboundOptions{})
 	require.NotPanics(t, func() { out.InterfaceUpdated(context.Background()) })
