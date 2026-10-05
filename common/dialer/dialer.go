@@ -9,6 +9,7 @@ import (
 	"github.com/sagernet/sing-box/adapter"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/experimental/deprecated"
+	"github.com/sagernet/sing-box/hiddify/finalmask"
 	"github.com/sagernet/sing-box/option"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
@@ -67,6 +68,12 @@ func NewWithOptions(options Options) (N.Dialer, error) {
 			return nil, err
 		}
 	}
+	// H: Xray-style final mask, inside the resolve dialer so its interfaces stay visible
+	masks, err := finalmask.Build(dialOptions.FinalMask)
+	if err != nil {
+		return nil, err
+	}
+	dialer = newFinalMaskDialer(dialer, masks)
 	if options.RemoteIsDomain && (!hasDetour || options.ResolverOnDetour || dialOptions.DomainResolver != nil && dialOptions.DomainResolver.Server != "") {
 		networkManager := service.FromContext[adapter.NetworkManager](options.Context)
 		dnsTransport := service.FromContext[adapter.DNSTransportManager](options.Context)
