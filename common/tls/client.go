@@ -102,7 +102,7 @@ func NewClientWithOptions(options ClientOptions) (Config, error) {
 	}
 	if options.Options.Reality != nil && options.Options.Reality.Enabled {
 		return newRealityClient(options.Context, options.Logger, options.ServerAddress, options.Options, options.AllowEmptyServerName)
-	} else if options.Options.UTLS != nil && options.Options.UTLS.Enabled {
+	} else if options.Options.UTLS.UsesUTLS() {
 		return newUTLSClient(options.Context, options.Logger, options.ServerAddress, options.Options, options.AllowEmptyServerName)
 	}
 	return newSTDClient(options.Context, options.Logger, options.ServerAddress, options.Options, options.AllowEmptyServerName)

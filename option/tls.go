@@ -250,7 +250,21 @@ type OutboundECHOptions struct {
 
 type OutboundUTLSOptions struct {
 	Enabled     bool   `json:"enabled,omitempty"`
-	Fingerprint string `json:"fingerprint,omitempty" enum:"chrome_psk,chrome_psk_shuffle,chrome_padding_psk_shuffle,chrome_pq,chrome_pq_psk,chrome,firefox,edge,safari,360,qq,ios,android,random,randomized"`
+	Fingerprint string `json:"fingerprint,omitempty" enum:"chrome_psk,chrome_psk_shuffle,chrome_padding_psk_shuffle,chrome_pq,chrome_pq_psk,chrome,firefox,edge,safari,360,qq,ios,android,random,randomized,unsafe"`
+}
+
+// UTLSFingerprintUnsafe ("unsafe", as in Xray) disables uTLS: the standard Go TLS ClientHello is sent,
+// which is easy to fingerprint.
+const UTLSFingerprintUnsafe = "unsafe"
+
+// UsesUTLS reports whether uTLS is enabled with a real fingerprint (not "unsafe").
+func (o *OutboundUTLSOptions) UsesUTLS() bool {
+	return o != nil && o.Enabled && !o.IsUnsafe()
+}
+
+// IsUnsafe reports whether the "unsafe" fingerprint (no uTLS) was selected.
+func (o *OutboundUTLSOptions) IsUnsafe() bool {
+	return o != nil && o.Enabled && strings.EqualFold(strings.TrimSpace(o.Fingerprint), UTLSFingerprintUnsafe)
 }
 
 type OutboundRealityOptions struct {

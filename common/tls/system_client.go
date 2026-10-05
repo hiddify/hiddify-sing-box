@@ -25,7 +25,7 @@ func ValidateSystemTLSOptions(ctx context.Context, options option.OutboundTLSOpt
 	if options.Reality != nil && options.Reality.Enabled {
 		return SystemTLSValidated{}, E.New("reality is unsupported in ", engineName)
 	}
-	if options.UTLS != nil && options.UTLS.Enabled {
+	if options.UTLS.UsesUTLS() {
 		return SystemTLSValidated{}, E.New("utls is unsupported in ", engineName)
 	}
 	if options.ECH != nil && options.ECH.Enabled {
