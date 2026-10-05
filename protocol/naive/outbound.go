@@ -78,7 +78,7 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 	if options.TLS.KernelTx || options.TLS.KernelRx {
 		return nil, E.New("kernel TLS is not supported on naive outbound")
 	}
-	if options.TLS.UTLS != nil && options.TLS.UTLS.Enabled {
+	if options.TLS.UTLS.UsesUTLS() {
 		return nil, E.New("uTLS is not supported on naive outbound")
 	}
 	if options.TLS.Reality != nil && options.TLS.Reality.Enabled {

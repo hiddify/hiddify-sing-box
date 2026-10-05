@@ -56,7 +56,10 @@ func NewRealityClient(ctx context.Context, logger logger.ContextLogger, serverAd
 }
 
 func newRealityClient(ctx context.Context, logger logger.ContextLogger, serverAddress string, options option.OutboundTLSOptions, allowEmptyServerName bool) (Config, error) {
-	if options.UTLS == nil || !options.UTLS.Enabled {
+	if options.UTLS.IsUnsafe() {
+		return nil, E.New("fingerprint unsafe is not supported by reality: reality requires uTLS")
+	}
+	if !options.UTLS.UsesUTLS() {
 		return nil, E.New("uTLS is required by reality client")
 	}
 	if options.Spoof != "" || options.SpoofMethod != "" {
