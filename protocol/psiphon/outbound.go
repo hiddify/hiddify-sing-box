@@ -2,8 +2,10 @@ package psiphon
 
 import (
 	"context"
+	"encoding/base64"
 	"net"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -12,6 +14,7 @@ import (
 	"github.com/sagernet/sing-box/adapter/outbound"
 	"github.com/sagernet/sing-box/common/dialer"
 	C "github.com/sagernet/sing-box/constant"
+	"github.com/sagernet/sing-box/hiddify/secret"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -72,7 +75,13 @@ func NewOutbound(ctx context.Context, _ adapter.Router, logger log.ContextLogger
 	if timeout <= 0 {
 		timeout = defaultEstablishTunnelTimeout
 	}
-	config := buildConfig(options, timeout)
+	if strings.TrimSpace(options.Config) == hiddifyConfigName && embeddedHiddifyConfig == "" {
+		logger.Warn("this build has no embedded hiddify psiphon config, using the default psiphon config")
+	}
+	config, err := buildConfig(options, timeout)
+	if err != nil {
+		return nil, err
+	}
 	psiphon, err := NewPsiphon(ctx, logger, config, tag)
 	if err != nil {
 
@@ -177,67 +186,93 @@ func (h *Outbound) Close() error {
 	return nil
 }
 
-func buildConfig(options option.PsiphonOutboundOptions, timeout time.Duration) *psiphon.Config {
+// embeddedHiddifyConfig is the app's Psiphon config, encrypted at build time from the
+// CI secret PSIPHON_CONFIG; outbounds use it with config "hiddify".
+var embeddedHiddifyConfig string
+
+const hiddifyConfigName = "hiddify"
+
+// resolveConfig returns the Psiphon config JSON for options.Config: "hiddify" (the embedded app
+// config), a value encrypted with the build-time key, or plain base64. "{}" means use the defaults.
+func resolveConfig(value string) ([]byte, error) {
+	value = strings.TrimSpace(value)
+	if value == hiddifyConfigName {
+		value = embeddedHiddifyConfig
+	}
+	if value == "" {
+		return []byte("{}"), nil
+	}
+	if plaintext, ok := secret.TryDecrypt(value); ok {
+		return plaintext, nil
+	}
+	return decodeBase64Config(value) // not encrypted with this build's key
+
+}
+
+// buildConfig starts from options.Config (see resolveConfig), then
+// applies explicit outbound options and fills values left unset with the defaults. The data directory,
+// tunnel timeout and local proxies are always managed here.
+func buildConfig(options option.PsiphonOutboundOptions, timeout time.Duration) (*psiphon.Config, error) {
+	raw, err := resolveConfig(options.Config)
+	if err != nil {
+		return nil, E.Cause(err, "decode psiphon config")
+	}
+	config, err := psiphon.LoadConfig(raw)
+	if err != nil {
+		return nil, E.Cause(err, "parse psiphon config")
+	}
+
+	pick := func(explicit, fromConfig, fallback string) string {
+		if explicit != "" {
+			return explicit
+		}
+		if fromConfig != "" {
+			return fromConfig
+		}
+		return fallback
+	}
+	config.PropagationChannelId = pick(options.PropagationChannelID, config.PropagationChannelId, defaultPropagationChannelID)
+	config.SponsorId = pick(options.SponsorID, config.SponsorId, defaultSponsorID)
+	config.NetworkID = pick(options.NetworkID, config.NetworkID, defaultNetworkID)
+	config.ClientPlatform = pick(options.ClientPlatform, config.ClientPlatform, defaultClientPlatform)
+	config.ClientVersion = pick(options.ClientVersion, config.ClientVersion, "")
+	config.RemoteServerListUrl = pick(options.RemoteServerListURL, config.RemoteServerListUrl, defaultRemoteServerListURL)
+	config.RemoteServerListDownloadFilename = pick(options.RemoteServerListDownloadFilename, config.RemoteServerListDownloadFilename, defaultRemoteServerListFilename)
+	config.RemoteServerListSignaturePublicKey = pick(options.RemoteServerListSignaturePublicKey, config.RemoteServerListSignaturePublicKey, defaultSignaturePublicKey)
+	config.EgressRegion = pick(options.EgressRegion, config.EgressRegion, "")
+	config.UpstreamProxyURL = pick(options.UpstreamProxyURL, config.UpstreamProxyURL, "")
+
+	config.AllowDefaultDNSResolverWithBindToDevice = true
+	if options.AllowDefaultDNSResolverWithBindToDevice != nil {
+		config.AllowDefaultDNSResolverWithBindToDevice = *options.AllowDefaultDNSResolverWithBindToDevice
+	}
+	// the config's own value (0 = wait forever) would hang a failing chain hop
+	config.EstablishTunnelTimeoutSeconds = durationToSecondsPtr(timeout)
+
 	dataDir := options.DataDirectory
 	if dataDir == "" {
 		dataDir = defaultDataDirectory
 	}
-	allowDefaultDNS := true
-	if options.AllowDefaultDNSResolverWithBindToDevice != nil {
-		allowDefaultDNS = *options.AllowDefaultDNSResolverWithBindToDevice
+	config.DataRootDirectory = dataDir
+	config.MigrateDataStoreDirectory = dataDir
+	config.MigrateObfuscatedServerListDownloadDirectory = dataDir
+	config.MigrateRemoteServerListDownloadFilename = filepath.Join(dataDir, "server_list_compressed")
+	config.DisableLocalHTTPProxy = true
+	config.DisableLocalSocksProxy = true
+	return config, nil
+}
+
+// decodeBase64Config accepts standard or URL-safe base64, with or without padding.
+func decodeBase64Config(encoded string) ([]byte, error) {
+	encoded = strings.TrimSpace(encoded)
+	var err error
+	for _, encoding := range []*base64.Encoding{base64.StdEncoding, base64.RawStdEncoding, base64.URLEncoding, base64.RawURLEncoding} {
+		var decoded []byte
+		if decoded, err = encoding.DecodeString(encoded); err == nil {
+			return decoded, nil
+		}
 	}
-	remoteListFilename := options.RemoteServerListDownloadFilename
-	if remoteListFilename == "" {
-		remoteListFilename = defaultRemoteServerListFilename
-	}
-	remoteListURL := options.RemoteServerListURL
-	if remoteListURL == "" {
-		remoteListURL = defaultRemoteServerListURL
-	}
-	signatureKey := options.RemoteServerListSignaturePublicKey
-	if signatureKey == "" {
-		signatureKey = defaultSignaturePublicKey
-	}
-	propagationChannelID := options.PropagationChannelID
-	if propagationChannelID == "" {
-		propagationChannelID = defaultPropagationChannelID
-	}
-	sponsorID := options.SponsorID
-	if sponsorID == "" {
-		sponsorID = defaultSponsorID
-	}
-	networkID := options.NetworkID
-	if networkID == "" {
-		networkID = defaultNetworkID
-	}
-	clientPlatform := options.ClientPlatform
-	if clientPlatform == "" {
-		clientPlatform = defaultClientPlatform
-	}
-	establishTimeoutSeconds := durationToSecondsPtr(timeout)
-	config := &psiphon.Config{
-		DataRootDirectory:                            dataDir,
-		EgressRegion:                                 options.EgressRegion,
-		PropagationChannelId:                         propagationChannelID,
-		RemoteServerListDownloadFilename:             remoteListFilename,
-		RemoteServerListSignaturePublicKey:           signatureKey,
-		RemoteServerListUrl:                          remoteListURL,
-		SponsorId:                                    sponsorID,
-		NetworkID:                                    networkID,
-		ClientPlatform:                               clientPlatform,
-		ClientVersion:                                options.ClientVersion,
-		AllowDefaultDNSResolverWithBindToDevice:      allowDefaultDNS,
-		EstablishTunnelTimeoutSeconds:                establishTimeoutSeconds,
-		DisableLocalHTTPProxy:                        true,
-		DisableLocalSocksProxy:                       true,
-		MigrateDataStoreDirectory:                    dataDir,
-		MigrateObfuscatedServerListDownloadDirectory: dataDir,
-		MigrateRemoteServerListDownloadFilename:      filepath.Join(dataDir, "server_list_compressed"),
-	}
-	if options.UpstreamProxyURL != "" {
-		config.UpstreamProxyURL = options.UpstreamProxyURL
-	}
-	return config
+	return nil, err
 }
 
 func durationToSecondsPtr(duration time.Duration) *int {

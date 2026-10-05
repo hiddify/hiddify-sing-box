@@ -2,11 +2,13 @@ package psiphon
 
 import (
 	"context"
+	"encoding/base64"
 	"path/filepath"
 	"testing"
 	"time"
 
 	C "github.com/sagernet/sing-box/constant"
+	"github.com/sagernet/sing-box/hiddify/secret"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing/common/json/badoption"
@@ -17,7 +19,8 @@ import (
 
 func TestH_PsiphonBuildConfigDefaults(t *testing.T) {
 	t.Parallel()
-	config := buildConfig(option.PsiphonOutboundOptions{}, defaultEstablishTunnelTimeout)
+	config, err := buildConfig(option.PsiphonOutboundOptions{}, defaultEstablishTunnelTimeout)
+	require.NoError(t, err)
 	require.Equal(t, defaultDataDirectory, config.DataRootDirectory)
 	require.Equal(t, defaultPropagationChannelID, config.PropagationChannelId)
 	require.Equal(t, defaultSponsorID, config.SponsorId)
@@ -55,7 +58,8 @@ func TestH_PsiphonBuildConfigOverrides(t *testing.T) {
 		UpstreamProxyURL:                        "socks5://127.0.0.1:1080",
 		AllowDefaultDNSResolverWithBindToDevice: &allow,
 	}
-	config := buildConfig(options, 90*time.Second)
+	config, err := buildConfig(options, 90*time.Second)
+	require.NoError(t, err)
 	require.Equal(t, "/tmp/psi", config.DataRootDirectory)
 	require.Equal(t, "DE", config.EgressRegion)
 	require.Equal(t, "PC", config.PropagationChannelId)
@@ -77,9 +81,9 @@ func TestH_PsiphonDurationToSeconds(t *testing.T) {
 	t.Parallel()
 	require.Equal(t, 1, *durationToSecondsPtr(0))
 	require.Equal(t, 1, *durationToSecondsPtr(-time.Second))
-	require.Equal(t, 1, *durationToSecondsPtr(500*time.Millisecond))
-	require.Equal(t, 2, *durationToSecondsPtr(2900*time.Millisecond))
-	require.Equal(t, 300, *durationToSecondsPtr(5*time.Minute))
+	require.Equal(t, 1, *durationToSecondsPtr(500 * time.Millisecond))
+	require.Equal(t, 2, *durationToSecondsPtr(2900 * time.Millisecond))
+	require.Equal(t, 300, *durationToSecondsPtr(5 * time.Minute))
 }
 
 func newTestOutbound(t *testing.T, options option.PsiphonOutboundOptions) *Outbound {
@@ -128,4 +132,117 @@ func TestH_PsiphonInterfaceUpdatedBeforeStart(t *testing.T) {
 	t.Parallel()
 	out := newTestOutbound(t, option.PsiphonOutboundOptions{})
 	require.NotPanics(t, func() { out.InterfaceUpdated(context.Background()) })
+}
+
+// an example config
+const hTestPartnerConfig = `{
+	"PropagationChannelId": "AAAAAAAAAAAAAAAA",
+	"SponsorId": "BBBBBBBBBBBBBBBB",
+	"TargetApiProtocol": "ssh",
+	"EstablishTunnelTimeoutSeconds": 0,
+	"ServerEntrySignaturePublicKey": "server-entry-key",
+	"RemoteServerListSignaturePublicKey": "remote-list-key",
+	"AdditionalParameters": "encrypted-parameters"
+}`
+
+func TestH_PsiphonBuildConfigFromPartnerConfig(t *testing.T) {
+	t.Parallel()
+	config, err := buildConfig(option.PsiphonOutboundOptions{Config: base64.StdEncoding.EncodeToString([]byte(hTestPartnerConfig))}, 90*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, "AAAAAAAAAAAAAAAA", config.PropagationChannelId)
+	require.Equal(t, "BBBBBBBBBBBBBBBB", config.SponsorId)
+	require.Equal(t, "ssh", config.TargetAPIProtocol)
+	require.Equal(t, "server-entry-key", config.ServerEntrySignaturePublicKey)
+	require.Equal(t, "remote-list-key", config.RemoteServerListSignaturePublicKey)
+	require.Equal(t, "encrypted-parameters", config.AdditionalParameters)
+	// unset values still get the defaults; managed values are not taken from the config
+	require.Equal(t, defaultRemoteServerListURL, config.RemoteServerListUrl)
+	require.Equal(t, defaultDataDirectory, config.DataRootDirectory)
+	require.Equal(t, 90, *config.EstablishTunnelTimeoutSeconds, "a 0 (forever) timeout must not hang the outbound")
+	require.True(t, config.DisableLocalHTTPProxy)
+	require.True(t, config.DisableLocalSocksProxy)
+}
+
+func TestH_PsiphonExplicitOptionsOverridePartnerConfig(t *testing.T) {
+	t.Parallel()
+	config, err := buildConfig(option.PsiphonOutboundOptions{
+		Config:       base64.StdEncoding.EncodeToString([]byte(hTestPartnerConfig)),
+		SponsorID:    "CCCCCCCCCCCCCCCC",
+		EgressRegion: "DE",
+	}, defaultEstablishTunnelTimeout)
+	require.NoError(t, err)
+	require.Equal(t, "CCCCCCCCCCCCCCCC", config.SponsorId)
+	require.Equal(t, "AAAAAAAAAAAAAAAA", config.PropagationChannelId)
+	require.Equal(t, "DE", config.EgressRegion)
+}
+
+func TestH_PsiphonBuildConfigBase64Variants(t *testing.T) {
+	t.Parallel()
+	// URL-safe without padding, surrounded by whitespace
+	encoded := "  " + base64.RawURLEncoding.EncodeToString([]byte(hTestPartnerConfig)) + "\n"
+	config, err := buildConfig(option.PsiphonOutboundOptions{Config: encoded}, defaultEstablishTunnelTimeout)
+	require.NoError(t, err)
+	require.Equal(t, "BBBBBBBBBBBBBBBB", config.SponsorId)
+
+	_, err = buildConfig(option.PsiphonOutboundOptions{Config: "not base64!"}, defaultEstablishTunnelTimeout)
+	require.ErrorContains(t, err, "decode psiphon config")
+	_, err = buildConfig(option.PsiphonOutboundOptions{Config: base64.StdEncoding.EncodeToString([]byte("{not json"))}, defaultEstablishTunnelTimeout)
+	require.ErrorContains(t, err, "parse psiphon config")
+}
+
+// embedded config and key are package-level build-time values: these tests must not run in parallel
+func hWithEmbedded(t *testing.T, key, config string) {
+	oldKey, oldConfig := secret.Key, embeddedHiddifyConfig
+	secret.Key, embeddedHiddifyConfig = key, config
+	t.Cleanup(func() { secret.Key, embeddedHiddifyConfig = oldKey, oldConfig })
+}
+
+func hTestKey(t *testing.T) string {
+	t.Helper()
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i + 1)
+	}
+	return base64.StdEncoding.EncodeToString(key)
+}
+
+func TestH_PsiphonEncryptedConfig(t *testing.T) {
+	key := hTestKey(t)
+	hWithEmbedded(t, key, "")
+	encrypted, err := secret.Encrypt(key, []byte(hTestPartnerConfig))
+	require.NoError(t, err)
+
+	config, err := buildConfig(option.PsiphonOutboundOptions{Config: encrypted}, defaultEstablishTunnelTimeout)
+	require.NoError(t, err)
+	require.Equal(t, "BBBBBBBBBBBBBBBB", config.SponsorId)
+	require.Equal(t, "encrypted-parameters", config.AdditionalParameters)
+}
+
+func TestH_PsiphonHiddifyConfig(t *testing.T) {
+	key := hTestKey(t)
+	encrypted, err := secret.Encrypt(key, []byte(hTestPartnerConfig))
+	require.NoError(t, err)
+	hWithEmbedded(t, key, encrypted)
+
+	config, err := buildConfig(option.PsiphonOutboundOptions{Config: "hiddify", EgressRegion: "DE"}, defaultEstablishTunnelTimeout)
+	require.NoError(t, err)
+	require.Equal(t, "BBBBBBBBBBBBBBBB", config.SponsorId, "config hiddify uses the embedded config")
+	require.Equal(t, "DE", config.EgressRegion)
+}
+
+func TestH_PsiphonHiddifyConfigNotEmbedded(t *testing.T) {
+	hWithEmbedded(t, "", "")
+	config, err := buildConfig(option.PsiphonOutboundOptions{Config: "hiddify"}, defaultEstablishTunnelTimeout)
+	require.NoError(t, err, "builds without the secret fall back to the defaults")
+	require.Equal(t, defaultSponsorID, config.SponsorId)
+}
+
+func TestH_PsiphonEncryptedConfigWrongKey(t *testing.T) {
+	encrypted, err := secret.Encrypt(hTestKey(t), []byte(hTestPartnerConfig))
+	require.NoError(t, err)
+	other := make([]byte, 32)
+	hWithEmbedded(t, base64.StdEncoding.EncodeToString(other), "")
+	// not decryptable with this build's key: treated as plain base64, which is not a JSON config
+	_, err = buildConfig(option.PsiphonOutboundOptions{Config: encrypted}, defaultEstablishTunnelTimeout)
+	require.ErrorContains(t, err, "parse psiphon config")
 }

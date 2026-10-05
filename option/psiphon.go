@@ -6,6 +6,8 @@ type PsiphonOutboundOptions struct {
 	Network NetworkList `json:"network,omitempty"`
 	DialerOptions
 
+	Config string `json:"config,omitempty"`
+
 	DataDirectory                           string             `json:"data_directory,omitempty"`
 	EgressRegion                            string             `json:"egress_region,omitempty"`
 	PropagationChannelID                    string             `json:"propagation_channel_id,omitempty"`
