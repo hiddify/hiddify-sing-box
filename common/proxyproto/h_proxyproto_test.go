@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/netip"
+	"os"
 	"testing"
 	"time"
 
@@ -24,7 +25,9 @@ func hListen(t *testing.T, acceptNoHeader bool) (*Listener, string) {
 	tcpListener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	t.Cleanup(func() { tcpListener.Close() })
-	return &Listener{Listener: tcpListener, AcceptNoHeader: acceptNoHeader}, tcpListener.Addr().String()
+	listener := NewListener(tcpListener, acceptNoHeader)
+	t.Cleanup(func() { listener.Close() })
+	return listener, tcpListener.Addr().String()
 }
 
 type hAcceptResult struct {
@@ -57,6 +60,36 @@ func hAcceptWith(t *testing.T, listener *Listener, address string, payload []byt
 	case <-time.After(3 * time.Second):
 		t.Fatal("accept timeout")
 		return hAcceptResult{}
+	}
+}
+
+// hRejected sends payload and expects the connection to be closed without being accepted.
+func hRejected(t *testing.T, listener *Listener, address string, payload []byte) {
+	t.Helper()
+	acceptCh := make(chan net.Conn, 1)
+	go func() {
+		conn, err := listener.Accept()
+		if err == nil {
+			acceptCh <- conn
+		}
+	}()
+	client, err := net.DialTimeout("tcp", address, 2*time.Second)
+	require.NoError(t, err)
+	defer client.Close()
+	_, err = client.Write(payload)
+	require.NoError(t, err)
+	if tcpConn, ok := client.(*net.TCPConn); ok {
+		_ = tcpConn.CloseWrite()
+	}
+	_ = client.SetReadDeadline(time.Now().Add(3 * time.Second))
+	_, err = client.Read(make([]byte, 1))
+	require.Error(t, err, "the connection must be closed")
+	require.False(t, errors.Is(err, os.ErrDeadlineExceeded), "the connection was not closed")
+	select {
+	case conn := <-acceptCh:
+		conn.Close()
+		t.Fatal("a connection without a valid header was accepted")
+	case <-time.After(200 * time.Millisecond):
 	}
 }
 
@@ -120,11 +153,7 @@ func TestH_ListenerNoHeader(t *testing.T) {
 	require.Equal(t, "GET / HTTP/1.1\r\n\r\n", string(data))
 
 	strict, strictAddress := hListen(t, false)
-	result = hAcceptWith(t, strict, strictAddress, []byte("GET / HTTP/1.1\r\n\r\n"))
-	require.Error(t, result.err)
-	var proxyErr *Error
-	require.True(t, errors.As(result.err, &proxyErr))
-	require.ErrorIs(t, result.err, proxyproto.ErrNoProxyProtocol)
+	hRejected(t, strict, strictAddress, []byte("GET / HTTP/1.1\r\n\r\n"))
 }
 
 func TestH_ListenerMalformedHeaders(t *testing.T) {
@@ -150,12 +179,7 @@ func TestH_ListenerMalformedHeaders(t *testing.T) {
 			t.Parallel()
 			for _, acceptNoHeader := range []bool{false, true} {
 				listener, address := hListen(t, acceptNoHeader)
-				result := hAcceptWith(t, listener, address, payload)
-				require.Error(t, result.err, "acceptNoHeader=%v", acceptNoHeader)
-				var netErr net.Error
-				require.True(t, errors.As(result.err, &netErr))
-				require.False(t, netErr.Timeout())
-				require.True(t, netErr.Temporary())
+				hRejected(t, listener, address, payload)
 			}
 		})
 	}
@@ -223,27 +247,43 @@ func TestH_DialerWritesV1Header(t *testing.T) {
 	require.Equal(t, "[2001:db8::33]:4444", header.SourceAddr.String())
 }
 
-func TestH_DialerIPv4SourceIPv6Destination(t *testing.T) {
-	t.Skip("BUG: Dialer converts IPv4 source to 4in6 for IPv6 destination, but go-proxyproto classifies 4in6 as TCPv4 and fails with 'invalid address' (common/proxyproto/dialer.go:37-41)")
+// a client of another address family than the destination cannot be described: without a usable
+// local address the header is "unknown" (LOCAL), which receivers accept
+func TestH_DialerMixedFamilies(t *testing.T) {
 	t.Parallel()
+	for _, c := range []struct{ source, destination string }{
+		{"192.0.2.33", "2001:db8::1"},
+		{"2001:db8::33", "192.0.2.1"},
+	} {
+		ctx := adapter.WithContext(context.Background(), &adapter.InboundContext{
+			Source: M.SocksaddrFrom(netip.MustParseAddr(c.source), 4444),
+		})
+		header, err := hDialAndReadHeader(t, ctx, M.SocksaddrFrom(netip.MustParseAddr(c.destination), 443))
+		require.NoError(t, err, "%s -> %s", c.source, c.destination)
+		require.Equal(t, proxyproto.LOCAL, header.Command)
+		require.Equal(t, proxyproto.UNSPEC, header.TransportProtocol)
+	}
+}
+
+func TestH_DialerVersion2(t *testing.T) {
+	t.Parallel()
+	local, remote := net.Pipe()
+	t.Cleanup(func() { local.Close(); remote.Close() })
+	_ = remote.SetDeadline(time.Now().Add(2 * time.Second))
+	headerCh := make(chan *proxyproto.Header, 1)
+	go func() {
+		header, _ := proxyproto.Read(bufio.NewReader(remote))
+		headerCh <- header
+	}()
 	ctx := adapter.WithContext(context.Background(), &adapter.InboundContext{
 		Source: M.SocksaddrFrom(netip.MustParseAddr("192.0.2.33"), 4444),
 	})
-	header, err := hDialAndReadHeader(t, ctx, M.SocksaddrFrom(netip.MustParseAddr("2001:db8::1"), 443))
+	_, err := (&Dialer{Dialer: &hPipeDialer{conn: local}, Version: 2}).DialContext(ctx, N.NetworkTCP, M.SocksaddrFrom(netip.MustParseAddr("198.51.100.1"), 80))
 	require.NoError(t, err)
-	require.Equal(t, proxyproto.TCPv6, header.TransportProtocol)
-	require.Equal(t, "2001:db8::1", header.DestinationAddr.(*net.TCPAddr).IP.String())
-}
-
-func TestH_DialerIPv6SourceIPv4Destination(t *testing.T) {
-	t.Skip("BUG: Dialer writes a TCP6 v1 header with an IPv4 destination when source is IPv6 and destination IPv4; receivers reject it with 'invalid address' (common/proxyproto/dialer.go:37-40)")
-	t.Parallel()
-	ctx := adapter.WithContext(context.Background(), &adapter.InboundContext{
-		Source: M.SocksaddrFrom(netip.MustParseAddr("2001:db8::33"), 4444),
-	})
-	header, err := hDialAndReadHeader(t, ctx, M.SocksaddrFrom(netip.MustParseAddr("192.0.2.1"), 443))
-	require.NoError(t, err)
+	header := <-headerCh
 	require.NotNil(t, header)
+	require.Equal(t, byte(2), header.Version)
+	require.Equal(t, "192.0.2.33:4444", header.SourceAddr.String())
 }
 
 func TestH_DialerFallsBackToLocalAddr(t *testing.T) {
@@ -347,4 +387,32 @@ func TestH_DialerListenerRoundTrip(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("accept timeout")
 	}
+}
+
+// a client that never sends its header is closed after the timeout and does not block others
+func TestH_ListenerSilentClientDoesNotBlock(t *testing.T) {
+	tcpListener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	listener := newListener(tcpListener, false, 500*time.Millisecond)
+	t.Cleanup(func() { listener.Close() })
+	address := tcpListener.Addr().String()
+
+	silent, err := net.DialTimeout("tcp", address, 2*time.Second)
+	require.NoError(t, err)
+	defer silent.Close()
+	time.Sleep(50 * time.Millisecond) // the silent connection is accepted first
+
+	header := proxyproto.HeaderProxyFromAddrs(1,
+		&net.TCPAddr{IP: net.IPv4(192, 0, 2, 10), Port: 1000},
+		&net.TCPAddr{IP: net.IPv4(198, 51, 100, 20), Port: 443})
+	start := time.Now()
+	result := hAcceptWith(t, listener, address, append(hHeaderBytes(t, header), 'x'))
+	require.NoError(t, result.err)
+	require.Less(t, time.Since(start), 400*time.Millisecond, "accepting waited for the silent client")
+	require.Equal(t, "192.0.2.10:1000", result.conn.RemoteAddr().String())
+
+	_ = silent.SetReadDeadline(time.Now().Add(3 * time.Second))
+	_, err = silent.Read(make([]byte, 1))
+	require.Error(t, err)
+	require.False(t, errors.Is(err, os.ErrDeadlineExceeded), "the silent client was not closed after the header timeout")
 }

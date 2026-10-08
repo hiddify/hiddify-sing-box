@@ -20,8 +20,8 @@ type _DirectOutboundOptions struct {
 	OverrideAddress string `json:"override_address,omitempty" schema:"omit"`
 	// Deprecated: Use Route Action instead
 	OverridePort uint16 `json:"override_port,omitempty" schema:"omit"`
-	// Deprecated: removed
-	ProxyProtocol uint8 `json:"proxy_protocol,omitempty" schema:"omit"`
+	// H: restored; send a PROXY protocol header (version 1 or 2) on TCP connections
+	ProxyProtocol uint8 `json:"proxy_protocol,omitempty"`
 }
 
 type DirectOutboundOptions _DirectOutboundOptions
