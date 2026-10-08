@@ -3,7 +3,6 @@ package dialer
 import (
 	"context"
 	"net"
-	"sync"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -32,18 +31,23 @@ type ParallelInterfaceResolveDialer interface {
 }
 
 type resolveDialer struct {
-	transport     adapter.DNSTransportManager
-	router        adapter.DNSRouter
-	dialer        N.Dialer
-	parallel      bool
-	server        string
-	initOnce      sync.Once
-	initErr       error
+	transport adapter.DNSTransportManager
+	router    adapter.DNSRouter
+	dialer    N.Dialer
+	parallel  bool
+	server    string
+	// H: resolve the manager's default server on each use instead of keeping the one current at
+	// creation (hot reload replaces servers)
+	defaultServer bool
 	queryOptions  adapter.DNSQueryOptions
 	fallbackDelay time.Duration
 }
 
 func NewResolveDialer(ctx context.Context, dialer N.Dialer, parallel bool, server string, queryOptions adapter.DNSQueryOptions, fallbackDelay time.Duration) ResolveDialer {
+	return newResolveDialer(ctx, dialer, parallel, server, false, queryOptions, fallbackDelay)
+}
+
+func newResolveDialer(ctx context.Context, dialer N.Dialer, parallel bool, server string, defaultServer bool, queryOptions adapter.DNSQueryOptions, fallbackDelay time.Duration) ResolveDialer {
 	if parallelDialer, isParallel := dialer.(ParallelInterfaceDialer); isParallel {
 		return &resolveParallelNetworkDialer{
 			resolveDialer{
@@ -52,6 +56,7 @@ func NewResolveDialer(ctx context.Context, dialer N.Dialer, parallel bool, serve
 				dialer:        dialer,
 				parallel:      parallel,
 				server:        server,
+				defaultServer: defaultServer,
 				queryOptions:  queryOptions,
 				fallbackDelay: fallbackDelay,
 			},
@@ -64,6 +69,7 @@ func NewResolveDialer(ctx context.Context, dialer N.Dialer, parallel bool, serve
 		dialer:        dialer,
 		parallel:      parallel,
 		server:        server,
+		defaultServer: defaultServer,
 		queryOptions:  queryOptions,
 		fallbackDelay: fallbackDelay,
 	}
@@ -74,25 +80,24 @@ type resolveParallelNetworkDialer struct {
 	dialer ParallelInterfaceDialer
 }
 
-func (d *resolveDialer) initialize() error {
-	d.initOnce.Do(d.initServer)
-	return d.initErr
-}
-
-func (d *resolveDialer) initServer() {
-	if d.server == "" {
-		return
+// currentQueryOptions returns the query options with the server currently registered under the
+// configured tag (or the current default server). //H
+func (d *resolveDialer) currentQueryOptions() (adapter.DNSQueryOptions, error) {
+	options := d.queryOptions
+	if d.server != "" {
+		transport, loaded := d.transport.Transport(d.server)
+		if !loaded {
+			return options, E.New("domain resolver not found: " + d.server)
+		}
+		options.Transport = transport
+	} else if d.defaultServer {
+		options.Transport = d.transport.Default()
 	}
-	transport, loaded := d.transport.Transport(d.server)
-	if !loaded {
-		d.initErr = E.New("domain resolver not found: " + d.server)
-		return
-	}
-	d.queryOptions.Transport = transport
+	return options, nil
 }
 
 func (d *resolveDialer) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
-	err := d.initialize()
+	queryOptions, err := d.currentQueryOptions()
 	if err != nil {
 		return nil, err
 	}
@@ -100,19 +105,19 @@ func (d *resolveDialer) DialContext(ctx context.Context, network string, destina
 		return d.dialer.DialContext(ctx, network, destination)
 	}
 	ctx = log.ContextWithOverrideLevel(ctx, log.LevelDebug)
-	addresses, err := d.router.Lookup(ctx, destination.Fqdn, d.queryOptions)
+	addresses, err := d.router.Lookup(ctx, destination.Fqdn, queryOptions)
 	if err != nil {
 		return nil, err
 	}
 	if d.parallel {
-		return N.DialParallel(ctx, d.dialer, network, destination, addresses, d.queryOptions.Strategy == C.DomainStrategyPreferIPv6, d.fallbackDelay)
+		return N.DialParallel(ctx, d.dialer, network, destination, addresses, queryOptions.Strategy == C.DomainStrategyPreferIPv6, d.fallbackDelay)
 	} else {
 		return N.DialSerial(ctx, d.dialer, network, destination, addresses)
 	}
 }
 
 func (d *resolveDialer) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
-	err := d.initialize()
+	queryOptions, err := d.currentQueryOptions()
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +125,7 @@ func (d *resolveDialer) ListenPacket(ctx context.Context, destination M.Socksadd
 		return d.dialer.ListenPacket(ctx, destination)
 	}
 	ctx = log.ContextWithOverrideLevel(ctx, log.LevelDebug)
-	addresses, err := d.router.Lookup(ctx, destination.Fqdn, d.queryOptions)
+	addresses, err := d.router.Lookup(ctx, destination.Fqdn, queryOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +137,8 @@ func (d *resolveDialer) ListenPacket(ctx context.Context, destination M.Socksadd
 }
 
 func (d *resolveDialer) QueryOptions() adapter.DNSQueryOptions {
-	return d.queryOptions
+	queryOptions, _ := d.currentQueryOptions()
+	return queryOptions
 }
 
 func (d *resolveDialer) Upstream() any {
@@ -140,7 +146,7 @@ func (d *resolveDialer) Upstream() any {
 }
 
 func (d *resolveParallelNetworkDialer) DialParallelInterface(ctx context.Context, network string, destination M.Socksaddr, strategy *C.NetworkStrategy, interfaceType []C.InterfaceType, fallbackInterfaceType []C.InterfaceType, fallbackDelay time.Duration) (net.Conn, error) {
-	err := d.initialize()
+	queryOptions, err := d.currentQueryOptions()
 	if err != nil {
 		return nil, err
 	}
@@ -148,7 +154,7 @@ func (d *resolveParallelNetworkDialer) DialParallelInterface(ctx context.Context
 		return d.dialer.DialContext(ctx, network, destination)
 	}
 	ctx = log.ContextWithOverrideLevel(ctx, log.LevelDebug)
-	addresses, err := d.router.Lookup(ctx, destination.Fqdn, d.queryOptions)
+	addresses, err := d.router.Lookup(ctx, destination.Fqdn, queryOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -156,14 +162,14 @@ func (d *resolveParallelNetworkDialer) DialParallelInterface(ctx context.Context
 		fallbackDelay = d.fallbackDelay
 	}
 	if d.parallel {
-		return DialParallelNetwork(ctx, d.dialer, network, destination, addresses, d.queryOptions.Strategy == C.DomainStrategyPreferIPv6, strategy, interfaceType, fallbackInterfaceType, fallbackDelay)
+		return DialParallelNetwork(ctx, d.dialer, network, destination, addresses, queryOptions.Strategy == C.DomainStrategyPreferIPv6, strategy, interfaceType, fallbackInterfaceType, fallbackDelay)
 	} else {
 		return DialSerialNetwork(ctx, d.dialer, network, destination, addresses, strategy, interfaceType, fallbackInterfaceType, fallbackDelay)
 	}
 }
 
 func (d *resolveParallelNetworkDialer) ListenSerialInterfacePacket(ctx context.Context, destination M.Socksaddr, strategy *C.NetworkStrategy, interfaceType []C.InterfaceType, fallbackInterfaceType []C.InterfaceType, fallbackDelay time.Duration) (net.PacketConn, error) {
-	err := d.initialize()
+	queryOptions, err := d.currentQueryOptions()
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +177,7 @@ func (d *resolveParallelNetworkDialer) ListenSerialInterfacePacket(ctx context.C
 		return d.dialer.ListenPacket(ctx, destination)
 	}
 	ctx = log.ContextWithOverrideLevel(ctx, log.LevelDebug)
-	addresses, err := d.router.Lookup(ctx, destination.Fqdn, d.queryOptions)
+	addresses, err := d.router.Lookup(ctx, destination.Fqdn, queryOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -186,7 +192,8 @@ func (d *resolveParallelNetworkDialer) ListenSerialInterfacePacket(ctx context.C
 }
 
 func (d *resolveParallelNetworkDialer) QueryOptions() adapter.DNSQueryOptions {
-	return d.queryOptions
+	queryOptions, _ := d.currentQueryOptions()
+	return queryOptions
 }
 
 func (d *resolveParallelNetworkDialer) Upstream() any {

@@ -356,7 +356,7 @@ func (r *Router) PreMatch(metadata adapter.InboundContext, firstPacket []byte) a
 	if err != nil {
 		return continueResult
 	}
-	for currentRuleIndex, currentRule := range r.rules {
+	for currentRuleIndex, currentRule := range r.Rules() {
 		metadata.ResetRuleCache()
 		if !currentRule.Match(&metadata) {
 			continue
@@ -633,7 +633,7 @@ func (r *Router) matchRule(
 	}
 
 match:
-	for currentRuleIndex, currentRule := range r.rules {
+	for currentRuleIndex, currentRule := range r.Rules() {
 		metadata.ResetRuleCache()
 		if !currentRule.Match(metadata) {
 			continue

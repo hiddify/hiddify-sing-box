@@ -3,7 +3,7 @@ package dialer
 import (
 	"context"
 	"net"
-	"sync"
+	"sync/atomic"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing/common"
@@ -22,9 +22,15 @@ type DetourDialer struct {
 	defaultOutbound         bool
 	disableEmptyDirectCheck bool
 	legacyDNSDialer         bool
-	dialer                  N.Dialer
-	initOnce                sync.Once
-	initErr                 error
+	// H: the last resolution; redone when another outbound is registered under the tag
+	// (hot reload replaces outbounds), instead of keeping the first one forever
+	resolved atomic.Pointer[detourResolution]
+}
+
+type detourResolution struct {
+	outbound adapter.Outbound
+	dialer   N.Dialer
+	err      error
 }
 
 func NewDetour(outboundManager adapter.OutboundManager, detour string, disableEmptyDirectCheck bool) N.Dialer {
@@ -59,31 +65,36 @@ func InitializeDetour(dialer N.Dialer) error {
 }
 
 func (d *DetourDialer) Dialer() (N.Dialer, error) {
-	d.initOnce.Do(d.init)
-	return d.dialer, d.initErr
+	var current adapter.Outbound
+	if d.detour != "" {
+		current, _ = d.outboundManager.Outbound(d.detour)
+	} else {
+		current = d.outboundManager.Default()
+	}
+	if last := d.resolved.Load(); last != nil && last.outbound == current {
+		return last.dialer, last.err
+	}
+	resolution := &detourResolution{outbound: current}
+	resolution.dialer, resolution.err = d.check(current)
+	d.resolved.Store(resolution)
+	return resolution.dialer, resolution.err
 }
 
-func (d *DetourDialer) init() {
-	var dialer adapter.Outbound
-	if d.detour != "" {
-		var loaded bool
-		dialer, loaded = d.outboundManager.Outbound(d.detour)
-		if !loaded {
-			d.initErr = E.New("outbound detour not found: ", d.detour)
-			return
+func (d *DetourDialer) check(dialer adapter.Outbound) (N.Dialer, error) {
+	if dialer == nil {
+		if d.detour != "" {
+			return nil, E.New("outbound detour not found: ", d.detour)
 		}
-	} else {
-		dialer = d.outboundManager.Default()
+		return nil, E.New("missing default outbound")
 	}
 	if !d.defaultOutbound && !d.disableEmptyDirectCheck && !d.legacyDNSDialer {
 		if directDialer, isDirect := dialer.(DirectDialer); isDirect {
 			if directDialer.IsEmpty() {
-				d.initErr = E.New("detour to an empty direct outbound makes no sense")
-				return
+				return nil, E.New("detour to an empty direct outbound makes no sense")
 			}
 		}
 	}
-	d.dialer = dialer
+	return dialer, nil
 }
 
 func (d *DetourDialer) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {

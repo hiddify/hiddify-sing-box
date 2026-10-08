@@ -83,6 +83,7 @@ func NewWithOptions(options Options) (N.Dialer, error) {
 		}
 		var (
 			server               string
+			defaultServer        bool // H: follow the current default DNS server
 			dnsQueryOptions      adapter.DNSQueryOptions
 			resolveFallbackDelay time.Duration
 		)
@@ -126,11 +127,13 @@ func NewWithOptions(options Options) (N.Dialer, error) {
 					return nil, E.New("default domain resolver not found: " + defaultOptions.DomainResolver)
 				}
 				dnsQueryOptions.Transport = transport
+				server = defaultOptions.DomainResolver // H: looked up by tag on each use
 				resolveFallbackDelay = time.Duration(dialOptions.FallbackDelay)
 			} else {
 				transports := dnsTransport.Transports()
 				if len(transports) < 2 {
 					dnsQueryOptions.Transport = dnsTransport.Default()
+					defaultServer = true
 				} else if options.NewDialer {
 					return nil, E.New("missing domain resolver for domain server address")
 				} else {
@@ -145,11 +148,12 @@ func NewWithOptions(options Options) (N.Dialer, error) {
 				deprecated.Report(options.Context, deprecated.OptionLegacyDomainStrategyOptions)
 			}
 		}
-		dialer = NewResolveDialer(
+		dialer = newResolveDialer(
 			options.Context,
 			dialer,
 			dialOptions.Detour == "" && !dialOptions.TCPFastOpen,
 			server,
+			defaultServer,
 			dnsQueryOptions,
 			resolveFallbackDelay,
 		)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"runtime"
+	"sync"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -35,6 +36,8 @@ type Router struct {
 	network           adapter.NetworkManager
 	httpClientManager adapter.HTTPClientManager
 	rules             []adapter.Rule
+	rulesAccess       sync.RWMutex      // H: rules and rule-sets are replaced by hot reload
+	ruleSetContents   map[string][]byte // H: options of each rule-set, to reuse unchanged ones
 	needFindProcess   bool
 	needFindNeighbor  bool
 	leaseFiles        []string
@@ -63,6 +66,7 @@ func NewRouter(ctx context.Context, logFactory log.Factory, options option.Route
 		httpClientManager: service.FromContext[adapter.HTTPClientManager](ctx),
 		rules:             make([]adapter.Rule, 0, len(options.Rules)),
 		ruleSetMap:        make(map[string]adapter.RuleSet),
+		ruleSetContents:   make(map[string][]byte),
 		needFindProcess:   hasRule(options.Rules, isProcessRule) || hasDNSRule(dnsOptions.Rules, isProcessDNSRule) || options.FindProcess,
 		needFindNeighbor:  hasRule(options.Rules, isNeighborRule) || hasDNSRule(dnsOptions.Rules, isNeighborDNSRule) || hasLocalNeighborDNSServer(dnsOptions.Servers) || options.FindNeighbor,
 		leaseFiles:        options.DHCPLeaseFiles,
@@ -94,6 +98,7 @@ func (r *Router) Initialize(rules []option.Rule, ruleSets []option.RuleSet) erro
 			}
 			r.ruleSets = append(r.ruleSets, ruleSet)
 			r.ruleSetMap[tag] = ruleSet
+			r.ruleSetContents[tag] = ruleSetContent(options)
 		}
 	}
 	return nil
@@ -173,30 +178,7 @@ func (r *Router) Start(stage adapter.StartStage) error {
 			needFindProcess = true
 		}
 		r.needFindProcess = needFindProcess
-		if needFindProcess {
-			if r.platformInterface != nil && r.platformInterface.UsePlatformConnectionOwnerFinder() {
-				r.processSearcher = newPlatformSearcher(r.platformInterface)
-			} else {
-				monitor.Start("initialize process searcher")
-				searcher, err := process.NewSearcher(process.Config{
-					Logger:         r.logger,
-					PackageManager: r.network.PackageManager(),
-				})
-				monitor.Finish()
-				if err != nil {
-					if err != os.ErrInvalid {
-						r.logger.Warn(E.Cause(err, "create process searcher"))
-					}
-				} else {
-					r.processSearcher = searcher
-				}
-			}
-		}
-		if r.processSearcher != nil {
-			processCache := common.Must1(freelru.New[processCacheKey, processCacheEntry](256, maphash.NewHasher[processCacheKey]().Hash32, true))
-			processCache.SetLifetime(200 * time.Millisecond)
-			r.processCache = processCache
-		}
+		r.initProcessSearcher(monitor)
 		r.needFindNeighbor = needFindNeighbor
 		if needFindNeighbor {
 			monitor.Start("initialize neighbor resolver")
@@ -280,11 +262,15 @@ func (r *Router) Close() error {
 }
 
 func (r *Router) RuleSet(tag string) (adapter.RuleSet, bool) {
+	r.rulesAccess.RLock()
+	defer r.rulesAccess.RUnlock()
 	ruleSet, loaded := r.ruleSetMap[tag]
 	return ruleSet, loaded
 }
 
 func (r *Router) Rules() []adapter.Rule {
+	r.rulesAccess.RLock()
+	defer r.rulesAccess.RUnlock()
 	return r.rules
 }
 
@@ -313,5 +299,32 @@ func (r *Router) ResetNetwork() {
 	}
 	if r.processSearcher != nil {
 		r.processSearcher.ResetCache()
+	}
+}
+
+func (r *Router) initProcessSearcher(monitor *taskmonitor.Monitor) {
+	if r.needFindProcess && r.processSearcher == nil {
+		if r.platformInterface != nil && r.platformInterface.UsePlatformConnectionOwnerFinder() {
+			r.processSearcher = newPlatformSearcher(r.platformInterface)
+		} else {
+			monitor.Start("initialize process searcher")
+			searcher, err := process.NewSearcher(process.Config{
+				Logger:         r.logger,
+				PackageManager: r.network.PackageManager(),
+			})
+			monitor.Finish()
+			if err != nil {
+				if err != os.ErrInvalid {
+					r.logger.Warn(E.Cause(err, "create process searcher"))
+				}
+			} else {
+				r.processSearcher = searcher
+			}
+		}
+	}
+	if r.processSearcher != nil && r.processCache == nil {
+		processCache := common.Must1(freelru.New[processCacheKey, processCacheEntry](256, maphash.NewHasher[processCacheKey]().Hash32, true))
+		processCache.SetLifetime(200 * time.Millisecond)
+		r.processCache = processCache
 	}
 }

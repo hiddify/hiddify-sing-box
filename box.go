@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"runtime/debug"
+	"sync"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -66,6 +67,8 @@ type Box struct {
 	httpClientService   adapter.LifecycleService
 	internalService     []adapter.LifecycleService
 	done                chan struct{}
+	runningOptions      option.Options // H: base of a hot reload
+	reloadAccess        sync.Mutex     // H
 }
 
 type Options struct {
@@ -546,6 +549,7 @@ func New(options Options) (*Box, error) {
 		logger:              logFactory.Logger(),
 		internalService:     internalServices,
 		done:                make(chan struct{}),
+		runningOptions:      options.Options,
 	}, nil
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 
@@ -214,6 +215,16 @@ func (m *Manager) Default() adapter.Outbound {
 }
 
 func (m *Manager) Remove(tag string) error {
+	return m.remove(tag, false)
+}
+
+// RemoveForReload removes an outbound even while others still depend on it; used by hot reload,
+// which recreates those dependents in the same reload. //H
+func (m *Manager) RemoveForReload(tag string) error {
+	return m.remove(tag, true)
+}
+
+func (m *Manager) remove(tag string, ignoreDependents bool) error {
 	m.access.Lock()
 	defer m.access.Unlock()
 	outbound, found := m.outboundByTag[tag]
@@ -227,7 +238,7 @@ func (m *Manager) Remove(tag string) error {
 	if index == -1 {
 		panic("invalid inbound index")
 	}
-	m.outbounds = append(m.outbounds[:index], m.outbounds[index+1:]...)
+	m.outbounds = slices.Delete(slices.Clone(m.outbounds), index, index+1) // H: never change a slice already handed out
 	started := m.started
 	if m.defaultOutbound == outbound {
 		if len(m.outbounds) > 0 {
@@ -238,23 +249,27 @@ func (m *Manager) Remove(tag string) error {
 		}
 	}
 	dependBy := m.dependByTag[tag]
-	if len(dependBy) > 0 {
+	if len(dependBy) > 0 && !ignoreDependents {
 		return E.New("outbound[", tag, "] is depended by ", strings.Join(dependBy, ", "))
 	}
-	dependencies := outbound.Dependencies()
-	for _, dependency := range dependencies {
-		if len(m.dependByTag[dependency]) == 1 {
-			delete(m.dependByTag, dependency)
-		} else {
-			m.dependByTag[dependency] = common.Filter(m.dependByTag[dependency], func(it string) bool {
-				return it != tag
-			})
-		}
-	}
+	m.removeDependencies(tag, outbound.Dependencies())
 	if started {
 		return common.Close(outbound)
 	}
 	return nil
+}
+
+func (m *Manager) removeDependencies(tag string, dependencies []string) {
+	for _, dependency := range dependencies {
+		dependBy := common.Filter(m.dependByTag[dependency], func(it string) bool {
+			return it != tag
+		})
+		if len(dependBy) == 0 {
+			delete(m.dependByTag, dependency)
+		} else {
+			m.dependByTag[dependency] = dependBy
+		}
+	}
 }
 
 func (m *Manager) Create(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, inboundType string, options any) error {
@@ -291,7 +306,8 @@ func (m *Manager) Create(ctx context.Context, router adapter.Router, logger log.
 		if existsIndex == -1 {
 			panic("invalid inbound index")
 		}
-		m.outbounds = append(m.outbounds[:existsIndex], m.outbounds[existsIndex+1:]...)
+		m.outbounds = slices.Delete(slices.Clone(m.outbounds), existsIndex, existsIndex+1) // H: never change a slice already handed out
+		m.removeDependencies(tag, existsOutbound.Dependencies())                           // H: the replaced outbound no longer depends on them
 	}
 	m.outbounds = append(m.outbounds, outbound)
 	m.outboundByTag[tag] = outbound
@@ -304,6 +320,32 @@ func (m *Manager) Create(ctx context.Context, router adapter.Router, logger log.
 		if m.started {
 			m.logger.Info("updated default outbound to ", outbound.Tag())
 		}
+	}
+	return nil
+}
+
+// SetDefaultTag changes the default outbound (route.final); used by hot reload. //H
+func (m *Manager) SetDefaultTag(tag string) error {
+	m.access.Lock()
+	m.defaultTag = tag
+	if tag == "" {
+		m.access.Unlock()
+		return nil
+	}
+	outbound, loaded := m.outboundByTag[tag]
+	m.access.Unlock()
+	if !loaded {
+		endpoint, endpointLoaded := m.endpoint.Get(tag)
+		if !endpointLoaded {
+			return E.New("default outbound not found: ", tag)
+		}
+		outbound = endpoint
+	}
+	m.access.Lock()
+	defer m.access.Unlock()
+	if m.defaultOutbound != outbound {
+		m.defaultOutbound = outbound
+		m.logger.Info("updated default outbound to ", outbound.Tag())
 	}
 	return nil
 }
