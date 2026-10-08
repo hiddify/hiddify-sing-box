@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 
 	_ "embed"
 
@@ -18,7 +19,9 @@ var (
 	resolverCountry  map[string]string
 )
 
-func loadResolvers() {
+// loadResolvers runs once: registries are built for every new context, possibly concurrently,
+// and these maps are shared. //H
+var loadResolvers = sync.OnceFunc(func() {
 	json.Unmarshal(resolvers_bytes, &countryResolvers)
 	resolverCountry = make(map[string]string)
 	for country, resolvers := range countryResolvers {
@@ -26,7 +29,7 @@ func loadResolvers() {
 			resolverCountry[resolver] = country
 		}
 	}
-}
+})
 
 type ResolverS struct {
 	Resolver dnstt.Resolver
