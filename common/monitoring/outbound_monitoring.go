@@ -82,8 +82,9 @@ type OutboundMonitoring struct {
 	priorityQueue chan *testTask
 	normalQueue   chan *testTask
 
-	outbounds map[string]*outboundState
-	groups    map[string]*groupState
+	// H: outbounds and groups, replaced as a whole when outbounds are hot reloaded
+	registry     atomic.Pointer[monitoringRegistry]
+	reloadAccess sync.Mutex
 
 	cacheDirty atomic.Bool
 
@@ -109,7 +110,7 @@ func (m *OutboundMonitoring) OutboundsHistory(groupTag string) map[string]*adapt
 
 	histories := make(map[string]*adapter.URLTestHistory)
 
-	grp, ok := m.groups[groupTag]
+	grp, ok := m.reg().groups[groupTag]
 	if !ok {
 		return histories
 	}
@@ -123,12 +124,12 @@ func (m *OutboundMonitoring) OutboundsHistory(groupTag string) map[string]*adapt
 }
 
 func (m *OutboundMonitoring) getUrlTest(outboundTag string) *adapter.URLTestHistory {
-	state, ok := m.outbounds[outboundTag]
+	state, ok := m.reg().outbounds[outboundTag]
 	if !ok {
 		return nil
 	}
 
-	if grp, ok := m.groups[outboundTag]; ok {
+	if grp, ok := m.reg().groups[outboundTag]; ok {
 		realtag := RealTag(state.outbound)
 		//m.logger.Debug("outbound ", outboundTag, " is a group, checking group ", grp.tag, " with real tag ", realtag)
 		if realtag != "" && realtag != outboundTag {
@@ -147,7 +148,7 @@ func (m *OutboundMonitoring) getUrlTest(outboundTag string) *adapter.URLTestHist
 }
 
 func (m *OutboundMonitoring) getMinGroupOutboundHistory(groupTag string) *adapter.URLTestHistory {
-	grp, ok := m.groups[groupTag]
+	grp, ok := m.reg().groups[groupTag]
 	if !ok {
 		return nil
 	}
@@ -265,9 +266,8 @@ func NewOutboundMonitoring(ctx context.Context, logger log.ContextLogger, option
 
 		priorityQueue: make(chan *testTask, 1000),
 		normalQueue:   make(chan *testTask, 10000),
-		outbounds:     make(map[string]*outboundState),
-		groups:        make(map[string]*groupState),
 	}
+	m.registry.Store(newMonitoringRegistry())
 
 	return m, nil
 }
@@ -277,57 +277,22 @@ func (m *OutboundMonitoring) Start(stage adapter.StartStage) error {
 	switch stage {
 	case adapter.StartStateInitialize:
 		m.cache = service.FromContext[adapter.CacheFile](m.ctx)
-
-		for _, outbound := range m.outboundManager.Outbounds() {
-			// if _, ok := outbound.(adapter.OutboundGroup); !ok {
-			m.outbounds[outbound.Tag()] = &outboundState{groupTags: []string{}, invalid: true, outbound: outbound, dependencies: outbound.Dependencies()}
-			// }
-			//m.logger.Info("registered outbound for monitoring: ", outbound.Tag())
+		registry, err := m.buildRegistry(newMonitoringRegistry())
+		if err != nil {
+			return err
 		}
-		for _, outbound := range m.endpointManager.Endpoints() {
-			// if _, ok := outbound.(adapter.OutboundGroup); !ok {
-			m.outbounds[outbound.Tag()] = &outboundState{groupTags: []string{}, invalid: true, outbound: outbound, dependencies: outbound.Dependencies()}
-			// }
-			//m.logger.Info("registered outbound for monitoring: ", outbound.Tag())
-		}
-		for tag, outbound := range m.outbounds {
-			for _, dep := range outbound.dependencies {
-				m.outbounds[dep].dependenciesInverse = append(m.outbounds[dep].dependenciesInverse, tag)
-			}
-		}
-
-		m.logger.Info("registered ", len(m.outbounds), " outbounds for monitoring")
-		grp := m.makeGroup("")
-		for tag := range m.outbounds {
-			grp.outbounds[tag] = struct{}{}
-			m.outbounds[tag].groupTags = append(m.outbounds[tag].groupTags, "")
-		}
-		for _, outbound := range m.outboundManager.Outbounds() {
-			if og, ok := outbound.(adapter.OutboundGroup); ok {
-				groupTag := og.Tag()
-				grp := m.makeGroup(groupTag)
-				for _, tag := range og.All() {
-					if _, exists := m.outbounds[tag]; !exists {
-						return errors.New("outbound monitoring: outbound not found: " + tag + " in group " + groupTag)
-					}
-					grp.outbounds[tag] = struct{}{}
-					m.outbounds[tag].groupTags = append(m.outbounds[tag].groupTags, groupTag)
-				}
-
-				//m.logger.Info("registered outbound group for monitoring: ", groupTag, " with ", len(og.All()), " outbounds")
-
-			}
-		}
-		m.logger.Info("registered ", len(m.groups), " outbound groups for monitoring")
+		m.registry.Store(registry)
+		m.logger.Info("registered ", len(registry.outbounds), " outbounds for monitoring")
+		m.logger.Info("registered ", len(registry.groups), " outbound groups for monitoring")
 		m.loadHistory()
 	case adapter.StartStatePostStart:
 		for i := 0; i < m.workersCount; i++ {
 			m.workerWG.Add(1)
 			go m.workerLoop()
 		}
-		for groupTag := range m.groups {
+		for _, grp := range m.reg().groups {
 			m.schedulerWG.Add(1)
-			go m.groupNotifierLoop(m.groups[groupTag])
+			go m.groupNotifierLoop(grp)
 		}
 
 		m.started = true
@@ -345,9 +310,11 @@ func (m *OutboundMonitoring) startTimerWorkers() {
 
 	m.pauseCallback = pause.RegisterTicker(m.pause, m.mainTicker, m.mainInterval, nil)
 	m.schedulerWG.Add(1)
-	go m.scheduleLoop()
+	go m.scheduleLoop(m.mainTicker) // H: the field is cleared by stopTimerWorkers
 }
 func (m *OutboundMonitoring) stopTimerWorkers() {
+	m.access.Lock() // H: mainTicker is also read by Touch
+	defer m.access.Unlock()
 	if !m.workersRunning.CompareAndSwap(true, false) {
 		return
 	}
@@ -378,7 +345,7 @@ func (m *OutboundMonitoring) signalChange(outboundTag string, visited map[string
 		return
 	}
 	visited[outboundTag] = true
-	if _, isGroup := m.groups[outboundTag]; isGroup {
+	if _, isGroup := m.reg().groups[outboundTag]; isGroup {
 		m.emitGroupEvent([]string{outboundTag})
 	}
 	state := m.getState(outboundTag)
@@ -396,7 +363,7 @@ func (m *OutboundMonitoring) TestNow(outboundTag string) error {
 }
 func (m *OutboundMonitoring) testNow(outboundTag string, priority bool) error {
 	m.logger.Info("testing outbound ", outboundTag, " with priority: ", priority)
-	if grp, ok := m.groups[outboundTag]; ok {
+	if grp, ok := m.reg().groups[outboundTag]; ok {
 		for tag := range grp.outbounds {
 			m.testNow(tag, false)
 		}
@@ -424,7 +391,7 @@ func (m *OutboundMonitoring) testParents(outboundTag string, first bool) {
 	if state == nil {
 		return
 	}
-	if _, ok := m.groups[outboundTag]; !ok && !first {
+	if _, ok := m.reg().groups[outboundTag]; !ok && !first {
 		m.logger.Info("testing outbound ", outboundTag)
 		m.testNow(outboundTag, true)
 	}
@@ -455,13 +422,13 @@ func (m *OutboundMonitoring) InvalidateTest(outboundTag string) error {
 
 func (m *OutboundMonitoring) SubscribeGroup(groupTag string) (observer <-chan GroupEvent, err error) {
 
-	if g, ok := m.groups[groupTag]; ok {
+	if g, ok := m.reg().groups[groupTag]; ok {
 		return g.observer.Subscribe(1), nil
 	}
 	return nil, E.New("group not found ", groupTag)
 }
 func (m *OutboundMonitoring) UnsubscribeGroup(groupTag string, observer <-chan GroupEvent) (err error) {
-	if g, ok := m.groups[groupTag]; ok {
+	if g, ok := m.reg().groups[groupTag]; ok {
 		g.observer.Unsubscribe(observer)
 		return nil
 	}
@@ -474,7 +441,7 @@ func (m *OutboundMonitoring) Close() error {
 
 		// close(m.priorityQueue)
 		// close(m.normalQueue)
-		for _, g := range m.groups {
+		for _, g := range m.reg().groups {
 			if g.observer != nil {
 				g.observer.Close()
 			}
@@ -487,10 +454,9 @@ func (m *OutboundMonitoring) Close() error {
 	return nil
 }
 
-func (m *OutboundMonitoring) scheduleLoop() {
+func (m *OutboundMonitoring) scheduleLoop(ticker *time.Ticker) {
 	m.logger.Info("outbound monitoring schedule loop started")
 	m.startCycleOnce()
-	ticker := m.mainTicker
 	for {
 		select {
 		case <-m.ctx.Done():
@@ -537,7 +503,7 @@ func (m *OutboundMonitoring) executeTask(task *testTask) {
 	default:
 	}
 
-	state := m.outbounds[task.outboundTag]
+	state := m.reg().outbounds[task.outboundTag]
 	if state == nil {
 		return
 	}
@@ -601,7 +567,7 @@ func (m *OutboundMonitoring) executeTask(task *testTask) {
 }
 
 func (m *OutboundMonitoring) tester(parent context.Context, tag string) (adapter.URLTestHistory, error) {
-	out, ok := m.outbounds[tag]
+	out, ok := m.reg().outbounds[tag]
 	if !ok {
 		return adapter.URLTestHistory{Delay: 0}, errors.New("outbound not registered")
 	}
@@ -732,7 +698,7 @@ func (m *OutboundMonitoring) enqueueTask(task *testTask) bool {
 		return false
 	default:
 	}
-	state, ok := m.outbounds[task.outboundTag]
+	state, ok := m.reg().outbounds[task.outboundTag]
 	if !ok {
 		return false
 	}
@@ -776,7 +742,7 @@ func (m *OutboundMonitoring) applyResult(outcome testOutcome) *adapter.URLTestHi
 		return nil
 	default:
 	}
-	state, ok := m.outbounds[outcome.outboundTag]
+	state, ok := m.reg().outbounds[outcome.outboundTag]
 	if !ok {
 		return nil
 	}
@@ -822,12 +788,12 @@ func mergeIpInfo(old, new *ipinfo.IpInfo) *ipinfo.IpInfo {
 
 func (m *OutboundMonitoring) collectCycleTargets() []string {
 
-	tags := make([]string, 0, len(m.outbounds))
+	tags := make([]string, 0, len(m.reg().outbounds))
 
 	delays := make(map[string]uint16, len(tags))
 
-	for tag, state := range m.outbounds {
-		if _, ok := m.groups[tag]; ok {
+	for tag, state := range m.reg().outbounds {
+		if _, ok := m.reg().groups[tag]; ok {
 			continue
 		}
 		state.mu.Lock()
@@ -848,22 +814,6 @@ func (m *OutboundMonitoring) collectCycleTargets() []string {
 	return tags
 }
 
-func (m *OutboundMonitoring) makeGroup(tag string) *groupState {
-	grp, ok := m.groups[tag]
-	if ok {
-		return grp
-	}
-
-	grp = &groupState{
-		tag:       tag,
-		outbounds: make(map[string]struct{}),
-		observer:  NewBroadcaster[GroupEvent](m.ctx),
-		notifyCh:  make(chan struct{}, 1),
-	}
-	m.groups[tag] = grp
-	return grp
-}
-
 func (m *OutboundMonitoring) Touch() {
 	if !m.started {
 		return
@@ -880,7 +830,7 @@ func (m *OutboundMonitoring) Touch() {
 
 func (m *OutboundMonitoring) emitGroupEvent(groupTags []string) {
 	for _, groupTag := range groupTags {
-		grp, ok := m.groups[groupTag]
+		grp, ok := m.reg().groups[groupTag]
 		if !ok || grp.observer == nil {
 			continue
 		}
@@ -894,13 +844,13 @@ func (m *OutboundMonitoring) emitGroupEvent(groupTags []string) {
 
 func (m *OutboundMonitoring) emitGroupEventThrottled(groupTag string, since time.Time) {
 
-	grp, ok := m.groups[groupTag]
+	grp, ok := m.reg().groups[groupTag]
 	if !ok || grp.observer == nil {
 		return
 	}
 	tags := make([]string, 0, len(grp.outbounds))
 	for tag := range grp.outbounds {
-		state := m.outbounds[tag]
+		state := m.reg().outbounds[tag]
 		if state == nil {
 			continue
 		}
@@ -921,7 +871,7 @@ func (m *OutboundMonitoring) emitGroupEventThrottled(groupTag string, since time
 // func (m *OutboundMonitoring) OutboundsHistories() map[string]adapter.URLTestHistory {
 
 //		histories := make(map[string]adapter.URLTestHistory)
-//		outbounds := m.outbounds
+//		outbounds := m.reg().outbounds
 //		for outboundTag, state := range outbounds {
 //			state.mu.Lock()
 //			histories[outboundTag] = state.history
@@ -979,7 +929,7 @@ func (m *OutboundMonitoring) groupNotifierLoop(grp *groupState) {
 }
 
 func (m *OutboundMonitoring) getState(tag string) *outboundState {
-	return m.outbounds[tag]
+	return m.reg().outbounds[tag]
 }
 
 type testTask struct {
@@ -1044,7 +994,7 @@ func (m *OutboundMonitoring) saveHistory() error {
 	history := &History{
 		OutboundData: make(map[string]*adapter.URLTestHistory),
 	}
-	for tag, state := range m.outbounds {
+	for tag, state := range m.reg().outbounds {
 		state.mu.Lock()
 		h := state.history
 		state.mu.Unlock()
@@ -1076,8 +1026,8 @@ func (m *OutboundMonitoring) loadHistory() *History {
 		return history
 	}
 	for tag, his := range history.OutboundData {
-		if state, ok := m.outbounds[tag]; ok && his != nil {
-			if _, ok := m.groups[tag]; ok {
+		if state, ok := m.reg().outbounds[tag]; ok && his != nil {
+			if _, ok := m.reg().groups[tag]; ok {
 				continue
 			}
 			if his.Delay >= TimeoutDelay {

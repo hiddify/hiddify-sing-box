@@ -73,6 +73,7 @@ func NewWithOptions(options Options) (N.Dialer, error) {
 		var (
 			server          string
 			dnsQueryOptions adapter.DNSQueryOptions
+			defaultServer   bool // H: follow the current default DNS server
 		)
 		hasDomainResolver := dialOptions.DomainResolver != nil && dialOptions.DomainResolver.Server != ""
 		if options.DirectResolver {
@@ -85,6 +86,14 @@ func NewWithOptions(options Options) (N.Dialer, error) {
 			if err != nil {
 				return nil, err
 			}
+			// H: hot reload replaces DNS servers, so remember which one to look up again on each use
+			if !hasDomainResolver {
+				if defaultDomainResolver := service.FromContext[adapter.NetworkManager](options.Context).DefaultOptions().DomainResolver; defaultDomainResolver != "" {
+					server = defaultDomainResolver
+				} else if dnsQueryOptions.Transport != nil {
+					defaultServer = true
+				}
+			}
 		}
 		if hasDomainResolver {
 			server = dialOptions.DomainResolver.Server
@@ -96,11 +105,12 @@ func NewWithOptions(options Options) (N.Dialer, error) {
 			dnsQueryOptions.Strategy = C.DomainStrategy(dialOptions.DomainStrategy)
 			deprecated.Report(options.Context, deprecated.OptionLegacyDomainStrategyOptions)
 		}
-		dialer = NewResolveDialer(
+		dialer = newResolveDialer(
 			options.Context,
 			dialer,
 			dialOptions.Detour == "" && !dialOptions.TCPFastOpen,
 			server,
+			defaultServer,
 			dnsQueryOptions,
 			time.Duration(dialOptions.FallbackDelay),
 		)

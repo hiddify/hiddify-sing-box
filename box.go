@@ -3,6 +3,10 @@ package box
 import (
 	"context"
 	"io"
+	"net/http"
+	"os"
+	"runtime/debug"
+	"sync"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -62,6 +66,8 @@ type Box struct {
 	internalService     []adapter.LifecycleService
 	ntpService          *ntp.Service
 	scope               *adapter.Scope
+	runningOptions      option.Options // H: base of a hot reload
+	reloadAccess        sync.Mutex     // H
 }
 
 type Options struct {
@@ -556,6 +562,7 @@ func New(options Options) (*Box, error) {
 		internalService:     internalServices,
 		ntpService:          ntpService,
 		scope:               adapter.NewScope(ctx, logFactory.Logger()),
+		runningOptions:      options.Options,
 	}, nil
 }
 

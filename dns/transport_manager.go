@@ -3,6 +3,7 @@ package dns
 import (
 	"context"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 
@@ -152,6 +153,58 @@ func (m *TransportManager) FakeIP() adapter.FakeIPTransport {
 	return m.fakeIPTransport
 }
 
+func (m *TransportManager) Remove(tag string) error {
+	return m.remove(tag, false)
+}
+
+// RemoveForReload removes a server even while others still depend on it; used by hot reload,
+// which recreates those dependents in the same reload. //H
+func (m *TransportManager) RemoveForReload(tag string) error {
+	return m.remove(tag, true)
+}
+
+func (m *TransportManager) remove(tag string, ignoreDependents bool) error {
+	m.access.Lock()
+	defer m.access.Unlock()
+	transport, found := m.transportByTag[tag]
+	if !found {
+		return os.ErrInvalid
+	}
+	delete(m.transportByTag, tag)
+	index := common.Index(m.transports, func(it adapter.DNSTransport) bool {
+		return it == transport
+	})
+	if index == -1 {
+		panic("invalid inbound index")
+	}
+	m.transports = slices.Delete(slices.Clone(m.transports), index, index+1) // H: never change a slice already handed out
+	started := m.started
+	if m.defaultTransport == transport {
+		if len(m.transports) > 0 {
+			nextTransport := m.transports[0]
+			if nextTransport.Type() == C.DNSTypeFakeIP { // H: was inverted
+				return E.New("default server cannot be fakeip")
+			}
+			m.defaultTransport = nextTransport
+			m.logger.Info("updated default server to ", m.defaultTransport.Tag())
+		} else {
+			m.defaultTransport = nil
+		}
+	}
+	dependBy := m.dependByTag[tag]
+	if len(dependBy) > 0 && !ignoreDependents {
+		return E.New("server[", tag, "] is depended by ", strings.Join(dependBy, ", "))
+	}
+	m.removeDependencies(tag, transport.Dependencies())
+	if m.fakeIPTransport != nil && adapter.DNSTransport(m.fakeIPTransport) == transport {
+		m.fakeIPTransport = nil
+	}
+	if started {
+		transport.Close()
+	}
+	return nil
+}
+
 func (m *TransportManager) Create(ctx context.Context, logger log.ContextLogger, tag string, transportType string, options any) error {
 	if tag == "" {
 		return os.ErrInvalid
@@ -162,9 +215,33 @@ func (m *TransportManager) Create(ctx context.Context, logger log.ContextLogger,
 	}
 	m.access.Lock()
 	defer m.access.Unlock()
-	_, loaded := m.transportByTag[tag]
-	if loaded {
-		return E.New("duplicate DNS server tag: ", tag)
+	if m.started {
+		for _, stage := range adapter.ListStartStages {
+			err = adapter.LegacyStart(transport, stage)
+			if err != nil {
+				return E.Cause(err, stage, " dns/", transport.Type(), "[", transport.Tag(), "]")
+			}
+		}
+	}
+	if existsTransport, loaded := m.transportByTag[tag]; loaded {
+		if m.started {
+			err = common.Close(existsTransport)
+			if err != nil {
+				return E.Cause(err, "close dns/", existsTransport.Type(), "[", existsTransport.Tag(), "]")
+			}
+		}
+		existsIndex := common.Index(m.transports, func(it adapter.DNSTransport) bool {
+			return it == existsTransport
+		})
+		if existsIndex == -1 {
+			panic("invalid inbound index")
+		}
+		m.transports = slices.Delete(slices.Clone(m.transports), existsIndex, existsIndex+1) // H: never change a slice already handed out
+		// H: the replaced server no longer depends on anything, nor is it the fakeip server
+		m.removeDependencies(tag, existsTransport.Dependencies())
+		if m.fakeIPTransport != nil && adapter.DNSTransport(m.fakeIPTransport) == existsTransport {
+			m.fakeIPTransport = nil
+		}
 	}
 	m.transports = append(m.transports, transport)
 	m.transportByTag[tag] = transport
@@ -179,6 +256,41 @@ func (m *TransportManager) Create(ctx context.Context, logger log.ContextLogger,
 			return E.New("multiple fakeip server are not supported")
 		}
 		m.fakeIPTransport = transport.(adapter.FakeIPTransport)
+	}
+	return nil
+}
+
+func (m *TransportManager) removeDependencies(tag string, dependencies []string) {
+	for _, dependency := range dependencies {
+		dependBy := common.Filter(m.dependByTag[dependency], func(it string) bool {
+			return it != tag
+		})
+		if len(dependBy) == 0 {
+			delete(m.dependByTag, dependency)
+		} else {
+			m.dependByTag[dependency] = dependBy
+		}
+	}
+}
+
+// SetDefaultTag changes the default server (dns.final); used by hot reload. //H
+func (m *TransportManager) SetDefaultTag(tag string) error {
+	m.access.Lock()
+	defer m.access.Unlock()
+	m.defaultTag = tag
+	if tag == "" {
+		return nil
+	}
+	transport, loaded := m.transportByTag[tag]
+	if !loaded {
+		return E.New("default DNS server not found: ", tag)
+	}
+	if transport.Type() == C.DNSTypeFakeIP {
+		return E.New("default server cannot be fakeip")
+	}
+	if m.defaultTransport != transport {
+		m.defaultTransport = transport
+		m.logger.Info("updated default server to ", transport.Tag())
 	}
 	return nil
 }

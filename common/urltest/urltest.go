@@ -96,7 +96,10 @@ func (s *HistoryStorage) AddOnlyIpToHistory(tag string, history *adapter.URLTest
 }
 
 func (s *HistoryStorage) notifyUpdated() {
-	for _, updateHook := range s.updateHooks {
+	s.access.RLock() // H: hooks are added while tests already run
+	updateHooks := s.updateHooks
+	s.access.RUnlock()
+	for _, updateHook := range updateHooks {
 		updateHook.Emit(struct{}{})
 	}
 }

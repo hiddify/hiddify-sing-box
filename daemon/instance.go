@@ -34,6 +34,7 @@ type Instance struct {
 	pauseManager          pause.Manager
 	pauseCallback         *list.Element[pause.Callback]
 	urlTestHistoryStorage *urltest.HistoryStorage
+	overrideOptions       *OverrideOptions // H: applied again to hot reloaded options
 	outboundManager       adapter.OutboundManager
 	endpointManager       adapter.EndpointManager
 	logFactory            log.Factory
@@ -93,36 +94,14 @@ func (s *StartedService) newInstance(ctx context.Context, profileContent string,
 		cancel()
 		return nil, err
 	}
-	if overrideOptions != nil {
-		for _, inbound := range options.Inbounds {
-			if tunInboundOptions, isTUN := inbound.Options.(*option.TunInboundOptions); isTUN {
-				tunInboundOptions.AutoRedirect = overrideOptions.AutoRedirect && tunInboundOptions.AutoRoute
-				tunInboundOptions.IncludePackage = append(tunInboundOptions.IncludePackage, overrideOptions.IncludePackage...)
-				tunInboundOptions.ExcludePackage = append(tunInboundOptions.ExcludePackage, overrideOptions.ExcludePackage...)
-				break
-			}
-		}
-	}
-	if s.oomKillerEnabled {
-		if !common.Any(options.Services, func(it option.Service) bool {
-			return it.Type == C.TypeOOMKiller
-		}) {
-			oomOptions := &option.OOMKillerServiceOptions{
-				KillerDisabled:      s.oomKillerDisabled,
-				MemoryLimitOverride: s.oomMemoryLimit,
-			}
-			options.Services = append(options.Services, option.Service{
-				Type:    C.TypeOOMKiller,
-				Options: oomOptions,
-			})
-		}
-	}
+	s.applyServiceOptions(&options, overrideOptions)
 	urlTestHistoryStorage := urltest.NewHistoryStorage()
 	ctx = service.ContextWithPtr(ctx, urlTestHistoryStorage)
 	i := &Instance{
 		ctx:                   ctx,
 		cancel:                cancel,
 		urlTestHistoryStorage: urlTestHistoryStorage,
+		overrideOptions:       overrideOptions,
 	}
 	boxInstance, err := box.New(box.Options{
 		Context:           ctx,
@@ -214,4 +193,33 @@ func parseConfig(ctx context.Context, configContent string) (option.Options, err
 		return option.Options{}, E.Cause(err, "decode config")
 	}
 	return options, nil
+}
+
+// applyServiceOptions adds what the service adds to every config: the platform overrides of the
+// TUN inbound and the OOM killer. //H
+func (s *StartedService) applyServiceOptions(options *option.Options, overrideOptions *OverrideOptions) {
+	if overrideOptions != nil {
+		for _, inbound := range options.Inbounds {
+			if tunInboundOptions, isTUN := inbound.Options.(*option.TunInboundOptions); isTUN {
+				tunInboundOptions.AutoRedirect = overrideOptions.AutoRedirect && tunInboundOptions.AutoRoute
+				tunInboundOptions.IncludePackage = append(tunInboundOptions.IncludePackage, overrideOptions.IncludePackage...)
+				tunInboundOptions.ExcludePackage = append(tunInboundOptions.ExcludePackage, overrideOptions.ExcludePackage...)
+				break
+			}
+		}
+	}
+	if s.oomKillerEnabled {
+		if !common.Any(options.Services, func(it option.Service) bool {
+			return it.Type == C.TypeOOMKiller
+		}) {
+			oomOptions := &option.OOMKillerServiceOptions{
+				KillerDisabled:      s.oomKillerDisabled,
+				MemoryLimitOverride: s.oomMemoryLimit,
+			}
+			options.Services = append(options.Services, option.Service{
+				Type:    C.TypeOOMKiller,
+				Options: oomOptions,
+			})
+		}
+	}
 }

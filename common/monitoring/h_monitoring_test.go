@@ -112,7 +112,7 @@ func newTestMonitor(t *testing.T, cache adapter.CacheFile, options option.Monito
 }
 
 func setHistory(m *OutboundMonitoring, tag string, delay uint16, fromCache bool, info *ipinfo.IpInfo) {
-	s := m.outbounds[tag]
+	s := m.reg().outbounds[tag]
 	s.mu.Lock()
 	s.history = adapter.URLTestHistory{Delay: delay, Time: time.Now(), IpInfo: info}
 	s.from_cache = fromCache
@@ -189,10 +189,10 @@ func TestH_MonitoringGroupsAndHistory(t *testing.T) {
 	require.Equal(t, "outbound-monitoring", m.Name())
 	require.NoError(t, m.Start(adapter.StartStateInitialize))
 
-	require.Len(t, m.groups, 3)
-	require.Len(t, m.groups[""].outbounds, 5)
-	require.ElementsMatch(t, []string{"", "auto"}, m.outbounds["a"].groupTags)
-	require.Equal(t, []string{"c"}, m.outbounds["a"].dependenciesInverse)
+	require.Len(t, m.reg().groups, 3)
+	require.Len(t, m.reg().groups[""].outbounds, 5)
+	require.ElementsMatch(t, []string{"", "auto"}, m.reg().outbounds["a"].groupTags)
+	require.Equal(t, []string{"c"}, m.reg().outbounds["a"].dependenciesInverse)
 
 	_, err := m.SubscribeGroup("missing")
 	require.Error(t, err)
@@ -254,7 +254,7 @@ func TestH_MonitoringQueueAndApplyResult(t *testing.T) {
 	stored := m.applyResult(testOutcome{outboundTag: "a", history: adapter.URLTestHistory{Delay: 42, Time: time.Now(), IpInfo: &ipinfo.IpInfo{IP: "4.4.4.4"}}})
 	require.Equal(t, uint16(42), stored.Delay)
 	require.True(t, m.cacheDirty.Load())
-	state := m.outbounds["a"]
+	state := m.reg().outbounds["a"]
 	require.False(t, state.queued)
 	require.False(t, state.priorityQueued)
 	require.False(t, state.invalid)
@@ -263,11 +263,11 @@ func TestH_MonitoringQueueAndApplyResult(t *testing.T) {
 	m.applyResult(testOutcome{outboundTag: "a", history: adapter.URLTestHistory{Delay: TimeoutDelay, Time: time.Now()}, err: errors.New("x")})
 	require.True(t, state.invalid)
 	require.Equal(t, "4.4.4.4", state.history.IpInfo.IP, "ip info survives a failed test")
-	require.Len(t, m.groups["grp"].notifyCh, 1)
+	require.Len(t, m.reg().groups["grp"].notifyCh, 1)
 
 	require.NoError(t, m.InvalidateTest("b"))
-	require.True(t, m.outbounds["b"].invalid)
-	require.True(t, m.outbounds["b"].priorityQueued)
+	require.True(t, m.reg().outbounds["b"].invalid)
+	require.True(t, m.reg().outbounds["b"].priorityQueued)
 
 	require.Contains(t, m.collectCycleTargets(), "a")
 }
@@ -375,11 +375,11 @@ func TestH_MonitoringSignalChangePropagatesToDependents(t *testing.T) {
 	}
 
 	for _, groupTag := range []string{"select", "", "outer"} {
-		require.Len(t, m.groups[groupTag].notifyCh, 1, "group %q not notified", groupTag)
+		require.Len(t, m.reg().groups[groupTag].notifyCh, 1, "group %q not notified", groupTag)
 	}
-	require.True(t, m.outbounds["c"].priorityQueued, "outbound routed through the selector is re-tested")
-	require.False(t, m.outbounds["a"].priorityQueued, "selector members did not change")
-	require.False(t, m.outbounds["b"].priorityQueued, "selector members did not change")
+	require.True(t, m.reg().outbounds["c"].priorityQueued, "outbound routed through the selector is re-tested")
+	require.False(t, m.reg().outbounds["a"].priorityQueued, "selector members did not change")
+	require.False(t, m.reg().outbounds["b"].priorityQueued, "selector members did not change")
 
 	require.Error(t, m.SignalChange("missing"))
 }
