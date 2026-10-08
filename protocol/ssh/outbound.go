@@ -257,7 +257,11 @@ func (s *Outbound) PostStart() error {
 
 // keepConnected connects in the background and reconnects after the connection drops, retrying
 // with a growing delay, so the outbound becomes ready (and gets tested) without waiting for
-// traffic; monitoring skips it while it is not ready. //H
+// traffic; monitoring skips it while it is not ready.
+//
+// An idle close is not a drop. The URL test opens two channels and the second one does not
+// keep the session, so releaseStream closes an unreferenced connection. Reconnecting here
+// would test again and close again, which is a loop of SSH handshakes and probes. //H
 func (s *Outbound) keepConnected() {
 	const (
 		minRetryDelay = time.Second
@@ -265,31 +269,60 @@ func (s *Outbound) keepConnected() {
 	)
 	delay := minRetryDelay
 	for {
+		if !s.holdingConnection() && !s.IsReady() {
+			if !s.waitSignal(0) {
+				return
+			}
+			continue
+		}
 		if !s.IsReady() {
 			if _, err := s.connect(s.ctx); err != nil {
 				s.logger.Debug("connect to ssh server: ", err, ", retry in ", delay)
-				select {
-				case <-time.After(delay):
-				case <-s.done:
-					return
-				case <-s.ctx.Done():
+				if !s.waitSignal(delay) {
 					return
 				}
 				delay = min(delay*2, maxRetryDelay)
 				continue
 			}
 			delay = minRetryDelay
+			if !s.holdingConnection() {
+				s.CloseIdleConnections()
+				continue
+			}
 			if monitor := monitoring.Get(s.ctx); monitor != nil {
 				monitor.TestNow(s.Tag())
 			}
 		}
-		select {
-		case <-s.disconnected:
-		case <-s.done:
-			return
-		case <-s.ctx.Done():
+		if !s.waitSignal(0) {
 			return
 		}
+	}
+}
+
+// holdingConnection reports whether this outbound should keep its SSH session open.
+func (s *Outbound) holdingConnection() bool {
+	s.clientAccess.Lock()
+	hold := !s.closeIdle
+	s.clientAccess.Unlock()
+	return hold
+}
+
+// waitSignal waits for the session to drop, for idle-keeping to change, or for shutdown.
+// A positive delay also returns when that time elapses. false means the outbound is closing.
+func (s *Outbound) waitSignal(delay time.Duration) bool {
+	var timer <-chan time.Time
+	if delay > 0 {
+		timer = time.After(delay)
+	}
+	select {
+	case <-timer:
+		return true
+	case <-s.disconnected:
+		return true
+	case <-s.done:
+		return false
+	case <-s.ctx.Done():
+		return false
 	}
 }
 
@@ -310,6 +343,10 @@ func (s *Outbound) SetKeepIdleConnections(keep bool) {
 	s.clientAccess.Unlock()
 	if !keep {
 		s.CloseIdleConnections()
+	}
+	select { // wake keepConnected so it connects again, or stops retrying
+	case s.disconnected <- struct{}{}:
+	default:
 	}
 }
 
@@ -429,7 +466,6 @@ func (s *Outbound) IsReady() bool {
 func (s *Outbound) DisplayType() string {
 	name := C.ProxyDisplayName(s.Type())
 	if s.IsReady() {
-		s.logger.Info("SSH Is Ready")
 		return name
 	}
 	if connectionErr := s.connectionErr.Load(); connectionErr != "" {
