@@ -14,6 +14,7 @@ import (
 	"github.com/sagernet/sing-box/common/monitoring"
 	"github.com/sagernet/sing-box/constant"
 	C "github.com/sagernet/sing-box/constant"
+	"github.com/sagernet/sing-box/hiddify/peeruser"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-box/transport/awg"
@@ -35,6 +36,7 @@ type Endpoint struct {
 	*awg.Device
 	endpoint.Adapter
 	address   []netip.Prefix
+	peerUsers *peeruser.Users //H
 	router    adapter.Router
 	logger    log.ContextLogger
 	dnsRouter adapter.DNSRouter
@@ -116,10 +118,14 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 		return nil, err
 	}
 
+	peerUsers := peeruser.New(common.Map(options.Peers, func(it option.AwgPeerOptions) peeruser.Peer {
+		return peeruser.Peer{User: it.Username, AllowedIPs: it.AllowedIPs}
+	}))
 	return &Endpoint{
 		Device:    dev,
 		Adapter:   endpoint.NewAdapterWithDialerOptions("awg", tag, []string{N.NetworkTCP, N.NetworkUDP}, options.DialerOptions),
 		address:   options.Address,
+		peerUsers: peerUsers,
 		router:    router,
 		logger:    logger,
 		dnsRouter: service.FromContext[adapter.DNSRouter](ctx),
@@ -230,6 +236,7 @@ func (e *Endpoint) NewPacketConnectionEx(ctx context.Context, conn N.PacketConn,
 	metadata.Inbound = e.Tag()
 	metadata.InboundType = e.Type()
 	metadata.Source = source
+	metadata.User = e.peerUsers.Lookup(source.Addr) //H
 	metadata.Destination = destination
 	for _, addr := range e.address {
 		if addr.Contains(destination.Addr) {
@@ -287,6 +294,7 @@ func (w *Endpoint) NewConnectionEx(ctx context.Context, conn net.Conn, source M.
 	metadata.Inbound = w.Tag()
 	metadata.InboundType = w.Type()
 	metadata.Source = source
+	metadata.User = w.peerUsers.Lookup(source.Addr) //H
 	for _, addr := range w.address {
 		if addr.Contains(destination.Addr) {
 			metadata.OriginDestination = destination

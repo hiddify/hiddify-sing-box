@@ -13,6 +13,7 @@ import (
 	"github.com/sagernet/sing-box/common/dialer"
 	"github.com/sagernet/sing-box/common/iponly"
 	C "github.com/sagernet/sing-box/constant"
+	"github.com/sagernet/sing-box/hiddify/peeruser"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-box/service/oomkiller"
@@ -46,6 +47,7 @@ type Endpoint struct {
 	dnsRouter      adapter.DNSRouter
 	logger         logger.ContextLogger
 	localAddresses []netip.Prefix
+	peerUsers      *peeruser.Users //H
 	endpoint       *wireguard.Endpoint
 	onDemand       bool
 	bindAccess     sync.Mutex
@@ -62,6 +64,9 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 		localAddresses: options.Address,
 		onDemand:       options.OnDemand,
 	}
+	ep.peerUsers = peeruser.New(common.Map(options.Peers, func(it option.WireGuardPeer) peeruser.Peer { //H
+		return peeruser.Peer{User: it.Username, AllowedIPs: it.AllowedIPs}
+	}))
 	if options.Detour != "" && options.ListenPort != 0 {
 		return nil, E.New("`listen_port` is conflict with `detour`")
 	}
@@ -254,6 +259,7 @@ func (w *Endpoint) NewConnectionEx(ctx context.Context, conn net.Conn, source M.
 	metadata.Inbound = w.Tag()
 	metadata.InboundType = w.Type()
 	metadata.Source = source
+	metadata.User = w.peerUsers.Lookup(source.Addr) //H
 	for _, localPrefix := range w.localAddresses {
 		if localPrefix.Contains(destination.Addr) {
 			metadata.OriginDestination = destination
@@ -276,6 +282,7 @@ func (w *Endpoint) NewPacketConnectionEx(ctx context.Context, conn N.PacketConn,
 	metadata.Inbound = w.Tag()
 	metadata.InboundType = w.Type()
 	metadata.Source = source
+	metadata.User = w.peerUsers.Lookup(source.Addr) //H
 	metadata.Destination = destination
 	for _, localPrefix := range w.localAddresses {
 		if localPrefix.Contains(destination.Addr) {

@@ -12,6 +12,7 @@ import (
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/endpoint"
 	C "github.com/sagernet/sing-box/constant"
+	"github.com/sagernet/sing-box/hiddify/peeruser"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	transportAwg "github.com/sagernet/sing-box/transport/awg"
@@ -265,4 +266,21 @@ func TestH_RegisterEndpoint(t *testing.T) {
 	options, loaded := registry.CreateOptions(C.TypeAwg)
 	require.True(t, loaded)
 	require.IsType(t, &option.AwgEndpointOptions{}, options)
+}
+
+func TestH_EndpointSetsPeerUser(t *testing.T) {
+	router := &hRecordingRouter{}
+	ep := hTestEndpoint(router)
+	ep.peerUsers = peeruser.New([]peeruser.Peer{
+		{User: "alice", AllowedIPs: []netip.Prefix{netip.MustParsePrefix("10.8.0.10/32")}},
+	})
+
+	ep.NewConnectionEx(context.Background(), nil, M.ParseSocksaddr("10.8.0.10:40000"), M.ParseSocksaddr("1.1.1.1:443"), nil)
+	require.Equal(t, "alice", router.metadata.User)
+
+	ep.NewPacketConnectionEx(context.Background(), nil, M.ParseSocksaddr("10.8.0.10:40000"), M.ParseSocksaddr("1.1.1.1:53"), nil)
+	require.Equal(t, "alice", router.metadata.User)
+
+	ep.NewConnectionEx(context.Background(), nil, M.ParseSocksaddr("10.8.0.11:40000"), M.ParseSocksaddr("1.1.1.1:443"), nil)
+	require.Empty(t, router.metadata.User, "a peer without user")
 }
