@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
+	M "github.com/sagernet/sing/common/metadata"
 	"net"
 	"slices"
 	"strings"
@@ -125,6 +126,12 @@ func newSTDClient(ctx context.Context, logger logger.ContextLogger, serverAddres
 	}
 	if serverName == "" && !options.Insecure && !allowEmptyServerName {
 		return nil, errMissingServerName
+	}
+	// H: an IP address is never sent as SNI, and the normal verification checks IP addresses, so
+	// disable_sni changes nothing then; skipping it keeps the standard verification, which QUIC
+	// parrots (no VerifyConnection support) need.
+	if options.DisableSNI && M.ParseAddr(serverName).IsValid() {
+		options.DisableSNI = false
 	}
 
 	var tlsConfig tls.Config
