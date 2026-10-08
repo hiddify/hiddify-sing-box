@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -60,7 +61,12 @@ type Outbound struct {
 	streams           int
 	closeIdle         bool
 	uotClient         *uot.Client
-	connectionErr     string
+	// H: connection state shown in the UI and used by monitoring
+	ready         atomic.Bool
+	connectionErr common.TypedValue[string]
+	disconnected  chan struct{}
+	done          chan struct{}
+	closeOnce     sync.Once
 }
 
 func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.SSHOutboundOptions) (adapter.Outbound, error) {
@@ -81,7 +87,10 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 		mac:               options.MAC,
 		kexAlgorithm:      options.KexAlgorithm,
 		clientVersion:     options.ClientVersion,
+		disconnected:      make(chan struct{}, 1),
+		done:              make(chan struct{}),
 	}
+	outbound.ready.Store(false)
 	if outbound.serverAddr.Port == 0 {
 		outbound.serverAddr.Port = 22
 	}
@@ -147,16 +156,20 @@ func randomVersion() string {
 }
 
 func (s *Outbound) connect(ctx context.Context) (client *ssh.Client, err error) {
-	if s.client != nil {
-		return s.client, nil
-	}
-
 	s.clientAccess.Lock()
 	defer s.clientAccess.Unlock()
 
 	if s.client != nil {
 		return s.client, nil
 	}
+
+	defer func() { // H: the result is shown in the UI
+		if err != nil {
+			s.connectionErr.Store(err.Error())
+		} else {
+			s.connectionErr.Store("")
+		}
+	}()
 
 	conn, err := s.dialer.DialContext(ctx, N.NetworkTCP, s.serverAddr)
 	if err != nil {
@@ -215,29 +228,76 @@ func (s *Outbound) connect(ctx context.Context) (client *ssh.Client, err error) 
 	s.clientConn = conn
 	s.client = client
 	s.streams = 0
+	s.logger.InfoContext(ctx, "connected to ssh server ", s.serverAddr)
+	s.ready.Store(true)
 
 	go func() {
 		client.Wait()
 		conn.Close()
 		s.clientAccess.Lock()
-		s.client = nil
-		s.clientConn = nil
+		if s.client == client {
+			s.client = nil
+			s.clientConn = nil
+			s.ready.Store(false)
+		}
 		s.clientAccess.Unlock()
+		select { // H: reconnect in the background
+		case s.disconnected <- struct{}{}:
+		default:
+		}
 	}()
 
 	return client, nil
 }
 
 func (s *Outbound) PostStart() error {
-	s.connect(s.ctx)
-	if s.IsReady() {
-		monitoring.Get(s.ctx).TestNow(s.Tag())
-	}
+	go s.keepConnected()
 	return nil
 }
 
+// keepConnected connects in the background and reconnects after the connection drops, retrying
+// with a growing delay, so the outbound becomes ready (and gets tested) without waiting for
+// traffic; monitoring skips it while it is not ready. //H
+func (s *Outbound) keepConnected() {
+	const (
+		minRetryDelay = time.Second
+		maxRetryDelay = time.Minute
+	)
+	delay := minRetryDelay
+	for {
+		if !s.IsReady() {
+			if _, err := s.connect(s.ctx); err != nil {
+				s.logger.Debug("connect to ssh server: ", err, ", retry in ", delay)
+				select {
+				case <-time.After(delay):
+				case <-s.done:
+					return
+				case <-s.ctx.Done():
+					return
+				}
+				delay = min(delay*2, maxRetryDelay)
+				continue
+			}
+			delay = minRetryDelay
+			if monitor := monitoring.Get(s.ctx); monitor != nil {
+				monitor.TestNow(s.Tag())
+			}
+		}
+		select {
+		case <-s.disconnected:
+		case <-s.done:
+			return
+		case <-s.ctx.Done():
+			return
+		}
+	}
+}
+
 func (s *Outbound) InterfaceUpdated(ctx context.Context) {
-	common.Close(s.clientConn)
+	s.clientAccess.Lock()
+	clientConn := s.clientConn
+	s.clientAccess.Unlock()
+	common.Close(clientConn) // the background loop reconnects
 }
 
 func (s *Outbound) MultiplexEnabled() bool {
@@ -281,7 +341,11 @@ func (s *Outbound) releaseStream(client *ssh.Client, keepSession bool) {
 }
 
 func (s *Outbound) Close() error {
-	return common.Close(s.clientConn)
+	s.closeOnce.Do(func() { close(s.done) })
+	s.clientAccess.Lock()
+	clientConn := s.clientConn
+	s.clientAccess.Unlock()
+	return common.Close(clientConn)
 }
 
 func (s *Outbound) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
@@ -290,10 +354,8 @@ func (s *Outbound) DialContext(ctx context.Context, network string, destination 
 	metadata.Destination = destination
 	client, err := s.connect(ctx)
 	if err != nil {
-		s.connectionErr = err.Error()
 		return nil, err
 	}
-	s.connectionErr = ""
 	s.clientAccess.Lock()
 	if s.client == client {
 		s.streams++
@@ -360,17 +422,18 @@ func (c *chanConnWrapper) SetWriteDeadline(t time.Time) error {
 }
 
 func (s *Outbound) IsReady() bool {
-	return s.client != nil
+	return s.ready.Load()
 }
-func (s *Outbound) ProxyDisplayName() string {
-	str := C.ProxyDisplayName(s.Type())
-	if !s.IsReady() {
-		if s.connectionErr != "" {
-			str += " ❌ "
-			str += s.connectionErr
-		} else {
-			str += " ⚠️ Connecting..."
-		}
+
+// ProxyDisplayName is the protocol name, with the connection state while not connected.
+func (s *Outbound) DisplayType() string {
+	name := C.ProxyDisplayName(s.Type())
+	if s.IsReady() {
+		s.logger.Info("SSH Is Ready")
+		return name
 	}
-	return s.connectionErr
+	if connectionErr := s.connectionErr.Load(); connectionErr != "" {
+		return name + " ❌ " + connectionErr
+	}
+	return name + " ⚠️ Connecting..."
 }
