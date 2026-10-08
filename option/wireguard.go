@@ -29,6 +29,8 @@ type WireGuardEndpointOptions struct {
 }
 
 type WireGuardPeer struct {
+	// H: connections from this peer are accounted to this user (metadata.User)
+	Username                    string                           `json:"name,omitempty"`
 	Address                     string                           `json:"address,omitempty"`
 	Port                        uint16                           `json:"port,omitempty"`
 	PublicKey                   string                           `json:"public_key,omitempty"`
