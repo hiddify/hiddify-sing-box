@@ -2,6 +2,7 @@ package wireguard
 
 import (
 	"context"
+	"github.com/sagernet/sing-box/service/oomkiller"
 	"net"
 	"net/netip"
 
@@ -108,6 +109,9 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 
 func (o *Outbound) Start(stage adapter.StartStage) error {
 	switch stage {
+	case adapter.StartStateInitialize:
+		// H: creates the WireGuard device; without it Start dereferences a nil device
+		return o.endpoint.Initialize(oomkiller.MemoryPressure(o.ctx))
 	case adapter.StartStateStart:
 		return o.endpoint.Start(false)
 	case adapter.StartStatePostStart:
