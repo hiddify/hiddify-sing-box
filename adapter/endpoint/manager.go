@@ -136,6 +136,7 @@ func (m *Manager) Create(ctx context.Context, router adapter.Router, logger log.
 			}
 		}
 	}
+	var replaced bool
 	if existsEndpoint, loaded := m.endpointByTag[tag]; loaded {
 		if m.started {
 			err = existsEndpoint.Close()
@@ -149,9 +150,15 @@ func (m *Manager) Create(ctx context.Context, router adapter.Router, logger log.
 		if existsIndex == -1 {
 			panic("invalid endpoint index")
 		}
-		m.endpoints = slices.Delete(slices.Clone(m.endpoints), existsIndex, existsIndex+1) // H: never change a slice already handed out
+		// H: the replacement takes the old one's place (callers rely on the order, e.g. the main group
+		// comes first); a copy, so a slice already handed out never changes
+		m.endpoints = slices.Clone(m.endpoints)
+		m.endpoints[existsIndex] = endpoint
+		replaced = true
 	}
-	m.endpoints = append(m.endpoints, endpoint)
+	if !replaced {
+		m.endpoints = append(m.endpoints, endpoint)
+	}
 	m.endpointByTag[tag] = endpoint
 	return nil
 }

@@ -293,6 +293,7 @@ func (m *Manager) Create(ctx context.Context, router adapter.Router, logger log.
 	}
 	m.access.Lock()
 	defer m.access.Unlock()
+	var replaced bool
 	if existsOutbound, loaded := m.outboundByTag[tag]; loaded {
 		if m.started {
 			err = common.Close(existsOutbound)
@@ -306,10 +307,16 @@ func (m *Manager) Create(ctx context.Context, router adapter.Router, logger log.
 		if existsIndex == -1 {
 			panic("invalid inbound index")
 		}
-		m.outbounds = slices.Delete(slices.Clone(m.outbounds), existsIndex, existsIndex+1) // H: never change a slice already handed out
-		m.removeDependencies(tag, existsOutbound.Dependencies())                           // H: the replaced outbound no longer depends on them
+		// H: the replacement takes the old one's place (callers rely on the order, e.g. the main group
+		// comes first); a copy, so a slice already handed out never changes
+		m.outbounds = slices.Clone(m.outbounds)
+		m.outbounds[existsIndex] = outbound
+		replaced = true
+		m.removeDependencies(tag, existsOutbound.Dependencies()) // H: the replaced outbound no longer depends on them
 	}
-	m.outbounds = append(m.outbounds, outbound)
+	if !replaced {
+		m.outbounds = append(m.outbounds, outbound)
+	}
 	m.outboundByTag[tag] = outbound
 	dependencies := outbound.Dependencies()
 	for _, dependency := range dependencies {

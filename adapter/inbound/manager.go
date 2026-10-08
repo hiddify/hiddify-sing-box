@@ -138,6 +138,7 @@ func (m *Manager) Create(ctx context.Context, router adapter.Router, logger log.
 			}
 		}
 	}
+	var replaced bool
 	if existsInbound, loaded := m.inboundByTag[tag]; loaded {
 		if m.started {
 			err = existsInbound.Close()
@@ -151,9 +152,15 @@ func (m *Manager) Create(ctx context.Context, router adapter.Router, logger log.
 		if existsIndex == -1 {
 			panic("invalid inbound index")
 		}
-		m.inbounds = slices.Delete(slices.Clone(m.inbounds), existsIndex, existsIndex+1) // H: never change a slice already handed out
+		// H: the replacement takes the old one's place (callers rely on the order, e.g. the main group
+		// comes first); a copy, so a slice already handed out never changes
+		m.inbounds = slices.Clone(m.inbounds)
+		m.inbounds[existsIndex] = inbound
+		replaced = true
 	}
-	m.inbounds = append(m.inbounds, inbound)
+	if !replaced {
+		m.inbounds = append(m.inbounds, inbound)
+	}
 	m.inboundByTag[tag] = inbound
 	return nil
 }

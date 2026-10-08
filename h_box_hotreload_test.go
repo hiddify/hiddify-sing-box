@@ -98,6 +98,11 @@ func TestH_HotReloadOutbounds(t *testing.T) {
 	require.Equal(t, []string{"gone"}, result.Outbounds.Removed)
 
 	require.Same(t, keep, hOutbound(t, instance, "keep"), "unchanged outbounds keep running")
+	order := make([]string, 0)
+	for _, outbound := range instance.Outbound().Outbounds() {
+		order = append(order, outbound.Tag())
+	}
+	require.Equal(t, []string{"select", "a", "b", "keep", "c"}, order, "replaced outbounds keep their place, new ones are appended")
 	require.NotSame(t, b, hOutbound(t, instance, "b"))
 	newSelect := hOutbound(t, instance, "select")
 	require.NotSame(t, oldSelect, newSelect)

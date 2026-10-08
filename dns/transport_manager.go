@@ -264,6 +264,7 @@ func (m *TransportManager) Create(ctx context.Context, logger log.ContextLogger,
 			}
 		}
 	}
+	var replaced bool
 	if existsTransport, loaded := m.transportByTag[tag]; loaded {
 		if m.started {
 			err = common.Close(existsTransport)
@@ -277,14 +278,20 @@ func (m *TransportManager) Create(ctx context.Context, logger log.ContextLogger,
 		if existsIndex == -1 {
 			panic("invalid inbound index")
 		}
-		m.transports = slices.Delete(slices.Clone(m.transports), existsIndex, existsIndex+1) // H: never change a slice already handed out
+		// H: the replacement takes the old one's place (callers rely on the order, e.g. the main group
+		// comes first); a copy, so a slice already handed out never changes
+		m.transports = slices.Clone(m.transports)
+		m.transports[existsIndex] = transport
+		replaced = true
 		// H: the replaced server no longer depends on anything, nor is it the fakeip server
 		m.removeDependencies(tag, existsTransport.Dependencies())
 		if m.fakeIPTransport != nil && adapter.DNSTransport(m.fakeIPTransport) == existsTransport {
 			m.fakeIPTransport = nil
 		}
 	}
-	m.transports = append(m.transports, transport)
+	if !replaced {
+		m.transports = append(m.transports, transport)
+	}
 	m.transportByTag[tag] = transport
 	dependencies := transport.Dependencies()
 	for _, dependency := range dependencies {
