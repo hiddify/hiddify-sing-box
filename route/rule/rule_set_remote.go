@@ -33,6 +33,12 @@ import (
 
 var _ adapter.RuleSet = (*RemoteRuleSet)(nil)
 
+// H: limits of rule-set downloads
+var (
+	hRuleSetInitialFetchTimeout = 15 * time.Second
+	hRuleSetFetchTimeout        = 2 * time.Minute
+)
+
 // H: retry delays after a failed rule-set fetch; the last one repeats until success
 var hRuleSetRetryDelays = []time.Duration{time.Second, 10 * time.Second, 30 * time.Second, time.Minute, 5 * time.Minute, 10 * time.Minute, 30 * time.Minute}
 
@@ -106,7 +112,7 @@ func (s *RemoteRuleSet) StartContext(ctx context.Context, startContext *adapter.
 		return E.Cause(err, "create rule-set http client")
 	}
 	startContext.Register(transport)
-	s.httpClient = &http.Client{Transport: transport}
+	s.httpClient = &http.Client{Transport: transport, Timeout: hRuleSetFetchTimeout} // H: a stalled download must not hang
 	if s.cacheFile != nil {
 		savedSet := s.cacheFile.LoadRuleSet(s.tag)
 		if savedSet != nil {
@@ -137,15 +143,23 @@ func (s *RemoteRuleSet) StartContext(ctx context.Context, startContext *adapter.
 		}
 	}
 	if s.lastUpdated.IsZero() && !loadedFromInitialPath {
-		err = s.fetch(ctx, true)
-		if err != nil {
-			// H: do not block startup on an unreachable rule-set; loopUpdate retries it
-			s.logger.Warn("initial rule-set ", s.tag, " unavailable, will retry: ", err)
-			s.fetchFailed = true
-		}
+		s.initialFetch(ctx)
 	}
 	s.updateTicker = time.NewTicker(s.updateInterval)
 	return nil
+}
+
+// initialFetch downloads a rule-set that has no cached copy, for at most hRuleSetInitialFetchTimeout:
+// startup (and with it the TUN) waits for it, and a download through a stalled outbound would
+// otherwise never end. On failure the rule-set starts empty and loopUpdate retries it. //H
+func (s *RemoteRuleSet) initialFetch(ctx context.Context) {
+	fetchCtx, cancel := context.WithTimeout(ctx, hRuleSetInitialFetchTimeout)
+	defer cancel()
+	err := s.fetch(fetchCtx, true)
+	if err != nil {
+		s.logger.Warn("initial rule-set ", s.tag, " unavailable, will retry: ", err)
+		s.fetchFailed = true
+	}
 }
 
 func (s *RemoteRuleSet) PostStart() error {
