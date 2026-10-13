@@ -93,7 +93,7 @@ type DialerOptionsWrapper interface {
 type DialerOptions struct {
 	Detour string `json:"detour,omitempty" reference:"outbound"`
 	// H: Xray-style finalmask applied to the connections this dialer opens
-	FinalMask *FinalMaskOptions `json:"final_mask,omitempty"`
+	FinalMask *FinalMaskOptions `json:"finalmask,omitempty"`
 	AbstractDialerOptions
 }
 

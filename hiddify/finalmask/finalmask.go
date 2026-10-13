@@ -32,11 +32,11 @@ func Build(options *option.FinalMaskOptions) (*Masks, error) {
 		for i, item := range options.TCP {
 			config, err := buildMask(item, true)
 			if err != nil {
-				return nil, E.Cause(err, "final_mask.tcp[", i, "] ", item.Type)
+				return nil, E.Cause(err, "finalmask.tcp[", i, "] ", item.Type)
 			}
 			mask, ok := config.(xfinalmask.Tcpmask)
 			if !ok {
-				return nil, E.New("final_mask.tcp[", i, "]: ", item.Type, " is not a tcp mask")
+				return nil, E.New("finalmask.tcp[", i, "]: ", item.Type, " is not a tcp mask")
 			}
 			tcpmasks = append(tcpmasks, mask)
 		}
@@ -47,11 +47,11 @@ func Build(options *option.FinalMaskOptions) (*Masks, error) {
 		for i, item := range options.UDP {
 			config, err := buildMask(item, false)
 			if err != nil {
-				return nil, E.Cause(err, "final_mask.udp[", i, "] ", item.Type)
+				return nil, E.Cause(err, "finalmask.udp[", i, "] ", item.Type)
 			}
 			mask, ok := config.(xfinalmask.Udpmask)
 			if !ok {
-				return nil, E.New("final_mask.udp[", i, "]: ", item.Type, " is not a udp mask")
+				return nil, E.New("finalmask.udp[", i, "]: ", item.Type, " is not a udp mask")
 			}
 			udpmasks = append(udpmasks, mask)
 		}
