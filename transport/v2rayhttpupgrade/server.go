@@ -2,6 +2,8 @@ package v2rayhttpupgrade
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/base64"
 	"net"
 	"net/http"
 	"os"
@@ -89,12 +91,13 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		s.invalidRequest(writer, request, http.StatusNotFound, E.New("not a websocket request"))
 		return
 	}
-	if request.Header.Get("Sec-WebSocket-Key") != "" {
-		s.invalidRequest(writer, request, http.StatusNotFound, E.New("real websocket request received"))
-		return
-	}
 	writer.Header().Set("Connection", "upgrade")
 	writer.Header().Set("Upgrade", "websocket")
+	// Xray clients send a Sec-WebSocket-Key to look like a real websocket handshake; answer it
+	// with a valid Sec-WebSocket-Accept, as the Xray server does
+	if wsKey := request.Header.Get("Sec-WebSocket-Key"); wsKey != "" {
+		writer.Header().Set("Sec-WebSocket-Accept", secWebSocketAccept(wsKey))
+	}
 	writer.WriteHeader(http.StatusSwitchingProtocols)
 	if flusher, isFlusher := writer.(httpFlusher); isFlusher {
 		err := flusher.FlushError()
@@ -113,6 +116,12 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	s.handler.NewConnectionEx(v2rayhttp.DupContext(request.Context()), conn, badhttp.SourceAddress(request), M.Socksaddr{}, nil)
+}
+
+// secWebSocketAccept computes the Sec-WebSocket-Accept value for key (RFC 6455 section 4.2.2).
+func secWebSocketAccept(key string) string {
+	accept := sha1.Sum([]byte(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
+	return base64.StdEncoding.EncodeToString(accept[:])
 }
 
 func (s *Server) invalidRequest(writer http.ResponseWriter, request *http.Request, statusCode int, err error) {
