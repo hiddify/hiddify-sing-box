@@ -216,12 +216,12 @@ func (c *HeaderCustomTCP) Build() (proto.Message, error) {
 }
 
 type FragmentMask struct {
-	Packets  string       `json:"packets"`
-	Length   Int32Range   `json:"length"`
-	Delay    Int32Range   `json:"delay"`
-	Lengths  []Int32Range `json:"lengths"`
-	Delays   []Int32Range `json:"delays"`
-	MaxSplit Int32Range   `json:"maxSplit"`
+	Packets  string         `json:"packets"`
+	Length   Int32Range     `json:"length"`
+	Delay    Int32Range     `json:"delay"`
+	Lengths  Int32RangeList `json:"lengths"`
+	Delays   Int32RangeList `json:"delays"`
+	MaxSplit Int32Range     `json:"maxSplit"`
 }
 
 func (c *FragmentMask) Build() (proto.Message, error) {

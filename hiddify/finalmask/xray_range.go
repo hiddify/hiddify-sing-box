@@ -3,6 +3,7 @@
 package finalmask
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -19,6 +20,36 @@ type Int32Range struct {
 	Right int32
 	From  int32
 	To    int32
+}
+
+// Int32RangeList accepts Xray-style arrays (["1-2","3"]) and the compact single-value
+// form used by some panels/clients ("1-104" or 0) for fields like lengths/delays.
+type Int32RangeList []Int32Range
+
+func (v Int32RangeList) MarshalJSON() ([]byte, error) {
+	return json.Marshal([]Int32Range(v))
+}
+
+func (v *Int32RangeList) UnmarshalJSON(data []byte) error {
+	data = bytes.TrimSpace(data)
+	if len(data) == 0 || string(data) == "null" {
+		*v = nil
+		return nil
+	}
+	if data[0] == '[' {
+		var list []Int32Range
+		if err := json.Unmarshal(data, &list); err != nil {
+			return err
+		}
+		*v = list
+		return nil
+	}
+	var one Int32Range
+	if err := one.UnmarshalJSON(data); err != nil {
+		return errors.New("Invalid integer range list, expected a string/number or an array of ranges").Base(err)
+	}
+	*v = Int32RangeList{one}
+	return nil
 }
 
 // MarshalJSON implements encoding/json.Marshaler.MarshalJSON
