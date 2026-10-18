@@ -20,6 +20,7 @@ type ClientService struct {
 	ctx    context.Context
 	logger log.ContextLogger
 	inner  *usbip.ClientService
+	detour string
 }
 
 func NewClientService(ctx context.Context, logger log.ContextLogger, tag string, options option.USBIPClientServiceOptions) (adapter.Service, error) {
@@ -47,16 +48,25 @@ func NewClientService(ctx context.Context, logger log.ContextLogger, tag string,
 		ctx:     ctx,
 		logger:  logger,
 		inner:   inner,
+		detour:  options.Detour,
 	}, nil
 }
 
-func (s *ClientService) Start(stage adapter.StartStage) error {
+func (s *ClientService) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage != adapter.StartStateStart {
 		return nil
 	}
-	return s.inner.Start()
+	err := s.inner.Start()
+	if err != nil {
+		return err
+	}
+	scope.Add(s.inner.Close)
+	return nil
 }
 
-func (s *ClientService) Close() error {
-	return s.inner.Close()
+func (s *ClientService) References() []string {
+	if s.detour == "" {
+		return nil
+	}
+	return []string{s.detour}
 }

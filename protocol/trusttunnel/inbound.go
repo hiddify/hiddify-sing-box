@@ -84,10 +84,11 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 	return inbound, nil
 }
 
-func (h *Inbound) Start(stage adapter.StartStage) error {
+func (h *Inbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage != adapter.StartStateStart {
 		return nil
 	}
+	scope.Add(h.listener.Close)
 	var err error
 	if common.Contains(h.network, N.NetworkTCP) {
 		h.httpTLSConfig, err = tls.NewServer(h.ctx, h.logger, common.PtrValueOrDefault(h.options.TLS))
@@ -113,6 +114,8 @@ func (h *Inbound) Start(stage adapter.StartStage) error {
 		if err != nil {
 			return err
 		}
+		scope.Add(h.httpTLSConfig.Close)
+		scope.Add(h.httpServer.Close)
 		listener = aTLS.NewListener(listener, h.httpTLSConfig)
 		go func() {
 			sErr := h.httpServer.Serve(listener)
@@ -133,6 +136,7 @@ func (h *Inbound) Start(stage adapter.StartStage) error {
 		if err != nil {
 			return err
 		}
+		scope.Add(h.http3TLSConfig.Close)
 		udpConn, err := h.listener.ListenUDP()
 		if err != nil {
 			return err
@@ -160,21 +164,12 @@ func (h *Inbound) Start(stage adapter.StartStage) error {
 		if err != nil {
 			return err
 		}
+		scope.Add(h.http3Server.Close)
 		go func() {
 			_ = h.http3Server.ServeListener(quicListener)
 		}()
 	}
 	return nil
-}
-
-func (h *Inbound) Close() error {
-	return common.Close(
-		h.listener,
-		common.PtrOrNil(h.httpServer),
-		common.PtrOrNil(h.http3Server),
-		h.httpTLSConfig,
-		h.http3TLSConfig,
-	)
 }
 
 func (h *Inbound) UpdateUsers(users []option.TrustTunnelUser) {

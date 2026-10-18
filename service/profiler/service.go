@@ -43,7 +43,7 @@ func NewService(ctx context.Context, logger log.ContextLogger, tag string, optio
 	}, nil
 }
 
-func (s *Service) Start(stage adapter.StartStage) error {
+func (s *Service) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage != adapter.StartStateStart {
 		return nil
 	}
@@ -74,6 +74,8 @@ func (s *Service) Start(stage adapter.StartStage) error {
 	if err != nil {
 		return err
 	}
+	scope.Add(s.listener.Close)
+	scope.Add(s.server.Close)
 	s.logger.Info("profiler listening at ", tcpListener.Addr())
 	go func() {
 		err := s.server.Serve(tcpListener)
@@ -82,12 +84,4 @@ func (s *Service) Start(stage adapter.StartStage) error {
 		}
 	}()
 	return nil
-}
-
-func (s *Service) Close() error {
-	if s.server != nil {
-		_ = s.server.Close()
-		s.server = nil
-	}
-	return s.listener.Close()
 }

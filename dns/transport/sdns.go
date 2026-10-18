@@ -53,11 +53,7 @@ func (t *SDNSTransport) Name() string {
 	return t.name
 }
 
-func (t *SDNSTransport) Start(adapter.StartStage) error {
-	return nil
-}
-
-func (t *SDNSTransport) Close() error {
+func (t *SDNSTransport) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	return nil
 }
 

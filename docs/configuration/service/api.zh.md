@@ -10,8 +10,7 @@ sing-box API 服务是用于观察与控制正在运行的 sing-box 实例的 gR
 
 它可以由 iOS、macOS 和 Android 上的 [sing-box 图形客户端](/zh/clients/)（通过 Remote Control 功能）或 [sing-box dashboard](https://github.com/SagerNet/sing-box-dashboard) 访问。
 
-服务器同时接受 [gRPC-Web](https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-WEB.md) 请求,
-包括用于双向流方法的 [@improbable-eng/grpc-web](https://github.com/improbable-eng/grpc-web) WebSocket 传输。
+服务器同时接受 [gRPC-Web](https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-WEB.md) 请求。
 
 ### 结构
 
@@ -76,8 +75,7 @@ API 密钥。
 
 默认使用工作目录下的 `dashboard`。
 
-如果目录为空，将下载仪表板，并在其中存放 `.etag` 文件以跳过未变更的更新。
-非空且不含 `.etag` 文件的目录将按原样提供，且不会自动更新。
+如果目录中包含非 sing-box 下载的文件，将按原样提供。
 
 ##### download_url
 
@@ -87,17 +85,9 @@ API 密钥。
 
 ##### http_client
 
-用于下载仪表板的 HTTP 客户端，行为与远程规则集相同。
+用于下载仪表板的 HTTP 客户端。
 
 参阅 [HTTP 客户端字段](/zh/configuration/shared/http-client/)。
-
-留空时使用默认 HTTP 客户端：即由 [`default_http_client`](/zh/configuration/route/#default_http_client)
-指定的客户端，或当 `default_http_client` 为空时使用顶级 `http_clients` 的第一项。
-
-!!! failure "隐式默认已在 sing-box 1.14.0 废弃"
-
-    当 `http_clients` 与 `default_http_client` 均未配置时，将使用通过默认出站连接的隐式 HTTP 客户端。
-    该隐式默认已在 sing-box 1.14.0 废弃，并将在 sing-box 1.16.0 移除；请改为定义 `http_clients`。
 
 ##### update_interval
 

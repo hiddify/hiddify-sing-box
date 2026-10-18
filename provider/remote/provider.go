@@ -105,7 +105,11 @@ func NewProviderRemote(ctx context.Context, router adapter.Router, logFactory lo
 	return p, nil
 }
 
-func (s *ProviderRemote) Start() error {
+func (s *ProviderRemote) Start(stage adapter.StartStage, scope *adapter.Scope) error {
+	if stage != adapter.StartStateStart {
+		return nil
+	}
+	scope.Add(s.Close)
 	s.cacheFile = service.FromContext[adapter.CacheFile](s.ctx)
 	if s.cacheFile != nil && s.cacheFile.StoreSubscriptions() {
 		if saveSub := s.cacheFile.LoadSubscription(s.Tag()); saveSub != nil {

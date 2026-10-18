@@ -7,13 +7,17 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/force_close"
 	"github.com/sagernet/sing-box/common/tls"
+	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
+	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
@@ -22,18 +26,19 @@ import (
 	"golang.org/x/net/http2"
 )
 
-var _ adapter.V2RayClientTransport = (*Client)(nil)
+var _ adapter.V2RayMultiplexClientTransport = (*Client)(nil)
 
 type Client struct {
 	ctx        context.Context
 	dialer     N.Dialer
 	serverAddr M.Socksaddr
-	transport  http.RoundTripper
+	transport  common.TypedValue[http.RoundTripper]
 	http2      bool
 	requestURL url.URL
 	host       []string
 	method     string
 	headers    http.Header
+	closeIdle  atomic.Bool
 }
 
 func NewClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr, options option.V2RayHTTPOptions, tlsConfig tls.Config) (adapter.V2RayClientTransport, error) {
@@ -75,7 +80,7 @@ func NewClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr, opt
 	if !strings.HasPrefix(requestURL.Path, "/") {
 		requestURL.Path = "/" + requestURL.Path
 	}
-	return &Client{
+	client := &Client{
 		ctx:        ctx,
 		dialer:     dialer,
 		serverAddr: serverAddr,
@@ -83,9 +88,10 @@ func NewClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr, opt
 		host:       options.Host,
 		method:     options.Method,
 		headers:    options.Headers.Build(),
-		transport:  transport,
 		http2:      tlsConfig != nil,
-	}, nil
+	}
+	client.transport.Store(transport)
+	return client, nil
 }
 
 func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
@@ -121,13 +127,14 @@ func (c *Client) dialHTTP(ctx context.Context) (net.Conn, error) {
 
 func (c *Client) dialHTTP2(ctx context.Context) (net.Conn, error) {
 	pipeInReader, pipeInWriter := io.Pipe()
+	requestCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	request := &http.Request{
 		Method: c.method,
 		Body:   pipeInReader,
 		URL:    &c.requestURL,
 		Header: c.headers.Clone(),
 	}
-	request = request.WithContext(ctx)
+	request = request.WithContext(requestCtx)
 	switch hostLen := len(c.host); hostLen {
 	case 0:
 		// https://github.com/v2fly/v2ray-core/blob/master/transport/internet/http/config.go#L13
@@ -137,10 +144,29 @@ func (c *Client) dialHTTP2(ctx context.Context) (net.Conn, error) {
 	default:
 		request.Host = c.host[rand.Intn(hostLen)]
 	}
-	conn := NewLateHTTPConn(pipeInWriter)
+	conn := NewLateHTTPConn(pipeInWriter, cancel)
+	keepSession := adapter.KeepSessionFromContext(ctx)
+	conn.onClose = func() {
+		if c.closeIdle.Load() && !keepSession {
+			CloseIdleConnections(c.transport.Load())
+		}
+	}
+	handshakeTimeout := C.TCPTimeout
+	if deadline, hasDeadline := ctx.Deadline(); hasDeadline {
+		handshakeTimeout = time.Until(deadline)
+	}
+	var handshakeTimedOut atomic.Bool
+	handshakeTimer := time.AfterFunc(handshakeTimeout, func() {
+		handshakeTimedOut.Store(true)
+		cancel()
+	})
 	go func() {
-		response, err := c.transport.RoundTrip(request)
+		response, err := c.transport.Load().RoundTrip(request)
+		handshakeTimer.Stop()
 		if err != nil {
+			if handshakeTimedOut.Load() {
+				err = os.ErrDeadlineExceeded
+			}
 			conn.Setup(nil, err)
 		} else if response.StatusCode != 200 {
 			response.Body.Close()
@@ -152,7 +178,22 @@ func (c *Client) dialHTTP2(ctx context.Context) (net.Conn, error) {
 	return conn, nil
 }
 
+func (c *Client) MultiplexEnabled() bool {
+	return c.http2
+}
+
+func (c *Client) SetKeepIdleConnections(keep bool) {
+	c.closeIdle.Store(!keep)
+	if !keep {
+		c.CloseIdleConnections()
+	}
+}
+
+func (c *Client) CloseIdleConnections() {
+	CloseIdleConnections(c.transport.Load())
+}
+
 func (c *Client) Close() error {
-	c.transport = force_close.ResetTransport(c.transport)
+	c.transport.Store(force_close.ResetTransport(c.transport.Load()))
 	return nil
 }

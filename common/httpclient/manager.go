@@ -9,11 +9,13 @@ import (
 	"github.com/sagernet/sing-box/option"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
+	"github.com/sagernet/sing/service"
 )
 
 var (
 	_ adapter.HTTPClientManager = (*Manager)(nil)
 	_ adapter.LifecycleService  = (*Manager)(nil)
+	_ adapter.Referrer          = (*Manager)(nil)
 )
 
 type Manager struct {
@@ -59,7 +61,7 @@ func (m *Manager) Name() string {
 	return "http-client"
 }
 
-func (m *Manager) Start(stage adapter.StartStage) error {
+func (m *Manager) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage != adapter.StartStateStart {
 		return nil
 	}
@@ -70,6 +72,7 @@ func (m *Manager) Start(stage adapter.StartStage) error {
 		}
 		m.defaultTransport = sharedTransport
 	}
+	scope.Add(m.close)
 	return nil
 }
 
@@ -161,12 +164,9 @@ func (m *Manager) ResetNetwork() {
 	}
 }
 
-func (m *Manager) Close() error {
+func (m *Manager) close() error {
 	m.access.Lock()
 	defer m.access.Unlock()
-	if m.managedTransports == nil {
-		return nil
-	}
 	var err error
 	for _, transport := range m.managedTransports {
 		err = E.Append(err, transport.close(), func(err error) error {
@@ -176,4 +176,28 @@ func (m *Manager) Close() error {
 	m.managedTransports = nil
 	m.sharedTransports = nil
 	return err
+}
+
+func (m *Manager) References() []string {
+	m.access.Lock()
+	defer m.access.Unlock()
+	var references []string
+	var needDefault bool
+	for _, transport := range m.managedTransports {
+		if transport.detour != "" {
+			references = append(references, transport.detour)
+		} else if transport.defaultOutbound {
+			needDefault = true
+		}
+	}
+	if needDefault {
+		outboundManager := service.FromContext[adapter.OutboundManager](m.ctx)
+		if outboundManager != nil {
+			defaultOutbound := outboundManager.Default()
+			if defaultOutbound != nil {
+				references = append(references, defaultOutbound.Tag())
+			}
+		}
+	}
+	return references
 }

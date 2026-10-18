@@ -71,10 +71,14 @@ func NewClient(ctx context.Context, logger log.ContextLogger, tag string, option
 	}, nil
 }
 
-func (s *Client) Start(stage adapter.StartStage) error { return nil }
-
-func (s *Client) Close() error {
-	s.httpClient.CloseIdleConnections()
+func (s *Client) Start(stage adapter.StartStage, scope *adapter.Scope) error {
+	if stage != adapter.StartStateInitialize {
+		return nil
+	}
+	scope.Add(func() error {
+		s.httpClient.CloseIdleConnections()
+		return nil
+	})
 	return nil
 }
 

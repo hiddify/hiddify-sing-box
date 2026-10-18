@@ -909,12 +909,14 @@ func (s *Service) AddTrafficUsage(limiterId int, n uint64) (uint64, error) {
 	return trafficStat.used, nil
 }
 
-func (s *Service) Start(stage adapter.StartStage) error {
-	return nil
-}
-
-func (s *Service) Close() error {
-	s.broadcastPool.Stop()
+func (s *Service) Start(stage adapter.StartStage, scope *adapter.Scope) error {
+	if stage != adapter.StartStateInitialize {
+		return nil
+	}
+	scope.Add(func() error {
+		s.broadcastPool.Stop()
+		return nil
+	})
 	return nil
 }
 

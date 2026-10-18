@@ -65,9 +65,13 @@ func NewFailover(ctx context.Context, router adapter.Router, logger log.ContextL
 	return outbound, nil
 }
 
-func (f *Failover) Start(stage adapter.StartStage) error {
+func (f *Failover) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	for _, outbound := range f.outbounds {
-		err := adapter.LegacyStart(outbound, stage)
+		lifecycle, isLifecycle := outbound.(adapter.Lifecycle)
+		if !isLifecycle {
+			continue
+		}
+		err := scope.Start("outbound/"+outbound.Type()+"["+outbound.Tag()+"]", lifecycle, stage)
 		if err != nil {
 			return err
 		}

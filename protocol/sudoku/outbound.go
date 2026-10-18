@@ -146,9 +146,15 @@ func (h *Outbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (n
 	return bufio.NewBindPacketConn(sudoku.NewUoTPacketConn(conn), destination), nil
 }
 
-func (h *Outbound) Close() error {
-	h.client.Close()
-	return common.Close(h.tlsConfig)
+func (h *Outbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
+	if stage != adapter.StartStateInitialize {
+		return nil
+	}
+	scope.Add(func() error {
+		h.client.Close()
+		return common.Close(h.tlsConfig)
+	})
+	return nil
 }
 
 func (h *Outbound) InterfaceUpdated() {

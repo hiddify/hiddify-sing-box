@@ -12,7 +12,6 @@ import (
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
-	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
@@ -76,9 +75,14 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 	return outbound, nil
 }
 
-func (h *Outbound) Start(stage adapter.StartStage) error {
+func (h *Outbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	for _, outbound := range h.outbounds {
-		if err := adapter.LegacyStart(outbound, stage); err != nil {
+		lifecycle, isLifecycle := outbound.(adapter.Lifecycle)
+		if !isLifecycle {
+			continue
+		}
+		err := scope.Start("outbound/"+outbound.Type()+"["+outbound.Tag()+"]", lifecycle, stage)
+		if err != nil {
 			return err
 		}
 	}
@@ -144,18 +148,4 @@ func (h *Outbound) DialContext(ctx context.Context, network string, destination 
 
 func (h *Outbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
 	return h.uotClient.ListenPacket(ctx, destination)
-}
-
-func (h *Outbound) Close() error {
-	errs := make([]error, 0)
-	for _, outbound := range h.outbounds {
-		err := common.Close(outbound)
-		if err != nil {
-			errs = append(errs, err)
-		}
-	}
-	if len(errs) != 0 {
-		return errors.Join(errs...)
-	}
-	return nil
 }

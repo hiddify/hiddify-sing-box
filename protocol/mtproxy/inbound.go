@@ -13,7 +13,6 @@ import (
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
-	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
 	N "github.com/sagernet/sing/common/network"
@@ -89,22 +88,21 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 	return inbound, nil
 }
 
-func (n *Inbound) Start(stage adapter.StartStage) error {
+func (n *Inbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage != adapter.StartStateStart {
 		return nil
 	}
+	scope.Add(func() error {
+		n.proxy.Shutdown()
+		return nil
+	})
 	listener, err := n.listener.ListenTCP()
 	if err != nil {
 		return err
 	}
+	scope.Add(n.listener.Close)
 	go n.proxy.Serve(listener)
 	return nil
-}
-
-func (n *Inbound) Close() error {
-	err := common.Close(&n.listener)
-	n.proxy.Shutdown()
-	return err
 }
 
 func (h *Inbound) UpdateUsers(users []option.MTProxyUser) {

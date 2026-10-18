@@ -41,7 +41,6 @@ type InboundManager interface {
 	Lifecycle
 	Inbounds() []Inbound
 	Get(tag string) (Inbound, bool)
-	Remove(tag string) error
 	Create(ctx context.Context, router Router, logger log.ContextLogger, tag string, inboundType string, options any) error
 }
 
@@ -189,6 +188,16 @@ func ContextWithDNSTransportTag(ctx context.Context, transportTag string) contex
 func DNSTransportTagFromContext(ctx context.Context) (string, bool) {
 	transportTag, loaded := ctx.Value((*dnsTransportTagKey)(nil)).(string)
 	return transportTag, loaded
+}
+
+func ContextForMultiplexSession(ctx context.Context) context.Context {
+	var sessionContext InboundContext
+	metadata := ContextFrom(ctx)
+	if metadata != nil {
+		sessionContext.Outbound = metadata.Outbound
+	}
+	ctx = ContextWithDNSTransportTag(ctx, "")
+	return WithContext(ctx, &sessionContext)
 }
 
 func WithContext(ctx context.Context, inboundContext *InboundContext) context.Context {

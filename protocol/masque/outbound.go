@@ -211,19 +211,18 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 	return outbound, nil
 }
 
-func (w *Outbound) Start(stage adapter.StartStage) error {
+func (w *Outbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage != adapter.StartStatePostStart {
 		return nil
 	}
+	scope.Add(func() error {
+		if err := w.isTunnelInitialized(w.ctx); err != nil {
+			return err
+		}
+		return w.tunnel.Close()
+	})
 	go w.startHandler()
 	return nil
-}
-
-func (w *Outbound) Close() error {
-	if err := w.isTunnelInitialized(w.ctx); err != nil {
-		return err
-	}
-	return w.tunnel.Close()
 }
 
 func (w *Outbound) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {

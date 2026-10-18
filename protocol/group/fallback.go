@@ -59,7 +59,10 @@ func NewFallback(ctx context.Context, router adapter.Router, logger log.ContextL
 	return outbound, nil
 }
 
-func (s *Fallback) Start() error {
+func (s *Fallback) Start(stage adapter.StartStage, scope *adapter.Scope) error {
+	if stage != adapter.StartStateStart {
+		return nil
+	}
 	for i, tag := range s.tags {
 		outbound, loaded := s.outbound.Outbound(tag)
 		if !loaded {

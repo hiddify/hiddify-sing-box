@@ -153,11 +153,7 @@ func (s *APIClient) AddTrafficUsage(limiterId int, n uint64) (uint64, error) {
 	return reply.Remaining, nil
 }
 
-func (s *APIClient) Start(stage adapter.StartStage) error {
-	return nil
-}
-
-func (s *APIClient) Close() error {
+func (s *APIClient) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	return nil
 }
 

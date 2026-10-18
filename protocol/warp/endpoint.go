@@ -16,7 +16,6 @@ import (
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-box/protocol/wireguard"
-	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/json/badoption"
 	M "github.com/sagernet/sing/common/metadata"
@@ -32,9 +31,10 @@ func RegisterEndpoint(registry *endpoint.Registry) {
 type Endpoint struct {
 	endpoint.Adapter
 	ctx          context.Context
+	logger       log.ContextLogger
 	options      option.WARPEndpointOptions
 	endpoint     adapter.Endpoint
-	startHandler func()
+	startHandler func(scope *adapter.Scope)
 
 	await chan struct{}
 }
@@ -50,10 +50,11 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 	endpoint := &Endpoint{
 		Adapter: endpoint.NewAdapter(C.TypeWARP, tag, []string{N.NetworkTCP, N.NetworkUDP}, dependencies),
 		ctx:     ctx,
+		logger:  logger,
 		options: options,
 		await:   make(chan struct{}),
 	}
-	endpoint.startHandler = func() {
+	endpoint.startHandler = func(scope *adapter.Scope) {
 		defer close(endpoint.await)
 		cacheFile := service.FromContext[adapter.CacheFile](ctx)
 		var config *Config
@@ -154,31 +155,31 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 			logger.ErrorContext(ctx, err)
 			return
 		}
-		if err = endpoint.endpoint.Start(adapter.StartStateStart); err != nil {
-			logger.ErrorContext(ctx, err)
-			return
-		}
-		if err = endpoint.endpoint.Start(adapter.StartStatePostStart); err != nil {
-			logger.ErrorContext(ctx, err)
-			return
+		for _, stage := range []adapter.StartStage{adapter.StartStateInitialize, adapter.StartStateStart, adapter.StartStatePostStart} {
+			err = scope.Start("endpoint/"+endpoint.endpoint.Type()+"["+endpoint.endpoint.Tag()+"]", endpoint.endpoint, stage)
+			if err != nil {
+				logger.ErrorContext(ctx, err)
+				return
+			}
 		}
 	}
 	return endpoint, nil
 }
 
-func (w *Endpoint) Start(stage adapter.StartStage) error {
+func (w *Endpoint) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage != adapter.StartStatePostStart {
 		return nil
 	}
-	go w.startHandler()
+	endpointScope := adapter.NewScope(w.ctx, w.logger)
+	scope.Add(func() error {
+		select {
+		case <-w.await:
+		case <-w.ctx.Done():
+		}
+		return endpointScope.Close()
+	})
+	go w.startHandler(endpointScope)
 	return nil
-}
-
-func (w *Endpoint) Close() error {
-	if err := w.isEndpointInitialized(w.ctx); err != nil {
-		return err
-	}
-	return common.Close(w.endpoint)
 }
 
 func (w *Endpoint) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {

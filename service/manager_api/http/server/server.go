@@ -60,7 +60,7 @@ func NewAPIServer(ctx context.Context, logger log.ContextLogger, tag string, opt
 	}, nil
 }
 
-func (s *APIServer) Start(stage adapter.StartStage) error {
+func (s *APIServer) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage != adapter.StartStateStart {
 		return nil
 	}
@@ -87,11 +87,13 @@ func (s *APIServer) Start(stage adapter.StartStage) error {
 		if err != nil {
 			return E.Cause(err, "create TLS config")
 		}
+		scope.Add(s.tlsConfig.Close)
 	}
 	tcpListener, err := s.listener.ListenTCP()
 	if err != nil {
 		return err
 	}
+	scope.Add(s.listener.Close)
 	if s.tlsConfig != nil {
 		if !common.Contains(s.tlsConfig.NextProtos(), http2.NextProtoTLS) {
 			s.tlsConfig.SetNextProtos(append([]string{"h2"}, s.tlsConfig.NextProtos()...))
@@ -101,6 +103,7 @@ func (s *APIServer) Start(stage adapter.StartStage) error {
 	s.httpServer = &http.Server{
 		Handler: chiRouter,
 	}
+	scope.Add(s.httpServer.Close)
 	go func() {
 		err = s.httpServer.Serve(tcpListener)
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -108,14 +111,6 @@ func (s *APIServer) Start(stage adapter.StartStage) error {
 		}
 	}()
 	return nil
-}
-
-func (s *APIServer) Close() error {
-	return common.Close(
-		common.PtrOrNil(s.httpServer),
-		common.PtrOrNil(s.listener),
-		s.tlsConfig,
-	)
 }
 
 func (s *APIServer) Route(r chi.Router) {

@@ -42,7 +42,14 @@ func NewConnectionManager(logger logger.ContextLogger) *ConnectionManager {
 	}
 }
 
-func (m *ConnectionManager) Start(stage adapter.StartStage) error {
+func (m *ConnectionManager) Start(stage adapter.StartStage, scope *adapter.Scope) error {
+	if stage != adapter.StartStateInitialize {
+		return nil
+	}
+	scope.Add(func() error {
+		m.CloseAll()
+		return nil
+	})
 	return nil
 }
 
@@ -63,11 +70,6 @@ func (m *ConnectionManager) CloseAll() {
 	for _, closer := range closers {
 		common.Close(closer)
 	}
-}
-
-func (m *ConnectionManager) Close() error {
-	m.CloseAll()
-	return nil
 }
 
 func (m *ConnectionManager) TrackConn(conn net.Conn) net.Conn {
@@ -274,13 +276,17 @@ func (m *ConnectionManager) connectionCopy(ctx context.Context, source net.Conn,
 	_, err := bufio.CopyWithIncreateBuffer(destination, source, bufio.DefaultIncreaseBufferAfter, bufio.DefaultBatchSize)
 	if err != nil {
 		common.Close(source, destination)
-	} else if duplexDst, isDuplex := destination.(N.WriteCloser); isDuplex {
-		err = duplexDst.CloseWrite()
-		if err != nil {
-			common.Close(source, destination)
-		}
 	} else {
-		destination.Close()
+		destinationWriter, _ := N.UnwrapCountWriter(destination, nil)
+		duplexDst, isDuplex := N.UnwrapWriter(destinationWriter).(N.WriteCloser)
+		if isDuplex {
+			err = duplexDst.CloseWrite()
+			if err != nil {
+				common.Close(source, destination)
+			}
+		} else {
+			destination.Close()
+		}
 	}
 	if done.Swap(true) {
 		if onClose != nil {

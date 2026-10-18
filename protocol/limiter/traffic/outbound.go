@@ -65,7 +65,7 @@ func (h *Outbound) Network() []string {
 	return []string{N.NetworkTCP, N.NetworkUDP}
 }
 
-func (h *Outbound) Start(stage adapter.StartStage) error {
+func (h *Outbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage == adapter.StartStateStart {
 		detour, loaded := h.outbound.Outbound(h.outboundTag)
 		if !loaded {
@@ -73,11 +73,7 @@ func (h *Outbound) Start(stage adapter.StartStage) error {
 		}
 		h.detour = detour
 	}
-	return h.router.Start(stage)
-}
-
-func (h *Outbound) Close() error {
-	return h.router.Close()
+	return h.router.Start(stage, scope)
 }
 
 func (h *Outbound) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {

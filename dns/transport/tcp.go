@@ -22,7 +22,10 @@ import (
 	mDNS "github.com/miekg/dns"
 )
 
-var _ adapter.DNSTransport = (*TCPTransport)(nil)
+var (
+	_ adapter.DNSTransport         = (*TCPTransport)(nil)
+	_ adapter.IdleConnectionKeeper = (*TCPTransport)(nil)
+)
 
 func RegisterTCP(registry *dns.TransportRegistry) {
 	dns.RegisterTransport[option.RemoteDNSServerOptions](registry, C.DNSTypeTCP, NewTCP)
@@ -76,19 +79,24 @@ func NewTCPRaw(adapter dns.TransportAdapter, dialer N.Dialer, serverAddr M.Socks
 	return t
 }
 
-func (t *TCPTransport) Start(stage adapter.StartStage) error {
+func (t *TCPTransport) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage != adapter.StartStateStart {
 		return nil
 	}
+	scope.Add(t.multiplexer.Close)
 	return dialer.InitializeDetour(t.dialer)
-}
-
-func (t *TCPTransport) Close() error {
-	return t.multiplexer.Close()
 }
 
 func (t *TCPTransport) Reset() {
 	t.multiplexer.Reset()
+}
+
+func (t *TCPTransport) SetKeepIdleConnections(keep bool) {
+	t.multiplexer.SetKeepIdleConnections(keep)
+}
+
+func (t *TCPTransport) CloseIdleConnections() {
+	t.multiplexer.CloseIdleConnections()
 }
 
 func (t *TCPTransport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error) {

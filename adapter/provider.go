@@ -10,6 +10,7 @@ import (
 )
 
 type Provider interface {
+	Lifecycle
 	Type() string
 	Tag() string
 	Outbounds() []Outbound

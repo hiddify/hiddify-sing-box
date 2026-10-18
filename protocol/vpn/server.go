@@ -2,7 +2,6 @@ package vpn
 
 import (
 	"context"
-	"errors"
 	"net"
 	"net/netip"
 	"time"
@@ -98,9 +97,9 @@ func NewServerEndpoint(ctx context.Context, router adapter.Router, logger log.Co
 	return server, nil
 }
 
-func (s *ServerEndpoint) Start(stage adapter.StartStage) error {
+func (s *ServerEndpoint) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	for _, inbound := range s.inbounds {
-		err := inbound.Start(stage)
+		err := scope.Start("inbound/"+inbound.Type()+"["+inbound.Tag()+"]", inbound, stage)
 		if err != nil {
 			return err
 		}
@@ -176,20 +175,6 @@ func (s *ServerEndpoint) DialContext(ctx context.Context, network string, destin
 
 func (s *ServerEndpoint) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
 	return s.uotClient.ListenPacket(ctx, destination)
-}
-
-func (s *ServerEndpoint) Close() error {
-	errs := make([]error, 0)
-	for _, inbound := range s.inbounds {
-		err := inbound.Close()
-		if err != nil {
-			errs = append(errs, err)
-		}
-	}
-	if len(errs) != 0 {
-		return errors.Join(errs...)
-	}
-	return nil
 }
 
 func (s *ServerEndpoint) connHandler(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) error {

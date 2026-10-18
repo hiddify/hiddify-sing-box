@@ -2,7 +2,6 @@ package failover
 
 import (
 	"context"
-	"errors"
 	"net"
 	"sync"
 
@@ -60,26 +59,12 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 	return inbound, nil
 }
 
-func (h *Inbound) Start(stage adapter.StartStage) error {
+func (h *Inbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	for _, inbound := range h.inbounds {
-		err := inbound.Start(stage)
+		err := scope.Start("inbound/"+inbound.Type()+"["+inbound.Tag()+"]", inbound, stage)
 		if err != nil {
 			return err
 		}
-	}
-	return nil
-}
-
-func (h *Inbound) Close() error {
-	errs := make([]error, 0)
-	for _, inbound := range h.inbounds {
-		err := inbound.Close()
-		if err != nil {
-			errs = append(errs, err)
-		}
-	}
-	if len(errs) != 0 {
-		return errors.Join(errs...)
 	}
 	return nil
 }

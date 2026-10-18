@@ -61,7 +61,7 @@ func NewServer(ctx context.Context, logger log.ContextLogger, tag string, option
 	}, nil
 }
 
-func (s *Server) Start(stage adapter.StartStage) error {
+func (s *Server) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage != adapter.StartStateStart {
 		return nil
 	}
@@ -85,11 +85,13 @@ func (s *Server) Start(stage adapter.StartStage) error {
 		if err := s.tlsConfig.Start(); err != nil {
 			return E.Cause(err, "create TLS config")
 		}
+		scope.Add(s.tlsConfig.Close)
 	}
 	tcpListener, err := s.listener.ListenTCP()
 	if err != nil {
 		return err
 	}
+	scope.Add(s.listener.Close)
 	if s.tlsConfig != nil {
 		if !common.Contains(s.tlsConfig.NextProtos(), http2.NextProtoTLS) {
 			s.tlsConfig.SetNextProtos(append([]string{"h2"}, s.tlsConfig.NextProtos()...))
@@ -101,22 +103,16 @@ func (s *Server) Start(stage adapter.StartStage) error {
 		grpc.StreamInterceptor(s.streamAuthInterceptor),
 	)
 	pb.RegisterManagerServer(s.grpcServer, s)
+	scope.Add(func() error {
+		s.grpcServer.GracefulStop()
+		return nil
+	})
 	go func() {
 		if err := s.grpcServer.Serve(tcpListener); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
 			s.logger.Error("serve error: ", err)
 		}
 	}()
 	return nil
-}
-
-func (s *Server) Close() error {
-	if s.grpcServer != nil {
-		s.grpcServer.GracefulStop()
-	}
-	return common.Close(
-		common.PtrOrNil(s.listener),
-		s.tlsConfig,
-	)
 }
 
 func (s *Server) unaryAuthInterceptor(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {

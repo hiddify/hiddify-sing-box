@@ -12,9 +12,7 @@ It can be accessed by the [sing-box graphical clients](/clients/) for iOS, macOS
 Android (via the Remote Control feature), or the
 [sing-box dashboard](https://github.com/SagerNet/sing-box-dashboard).
 
-The server also accepts [gRPC-Web](https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-WEB.md) requests,
-including the WebSocket transport of [@improbable-eng/grpc-web](https://github.com/improbable-eng/grpc-web)
-for bidirectional streaming methods.
+The server also accepts [gRPC-Web](https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-WEB.md) requests.
 
 ### Structure
 
@@ -80,9 +78,7 @@ Directory the dashboard files are stored in.
 
 `dashboard` in the working directory will be used by default.
 
-If the directory is empty, the dashboard is downloaded and an `.etag` file is stored inside
-it to skip unchanged updates. A non-empty directory without an `.etag` file is served as-is
-and never updated automatically.
+If the directory contains files not downloaded by sing-box, they are served as-is.
 
 ##### download_url
 
@@ -92,20 +88,9 @@ Download URL of the dashboard archive (zip).
 
 ##### http_client
 
-HTTP client used to download the dashboard, with the same behavior as remote rule-sets.
+HTTP client used to download the dashboard.
 
 See [HTTP Client Fields](/configuration/shared/http-client/) for details.
-
-When empty, the default HTTP client is used: the one named by
-[`default_http_client`](/configuration/route/#default_http_client), or the first top-level
-`http_clients` entry when `default_http_client` is empty.
-
-!!! failure "Implicit default deprecated in sing-box 1.14.0"
-
-    When neither `http_clients` nor `default_http_client` is configured, an implicit HTTP
-    client connecting through the default outbound is used. This implicit default is
-    deprecated in sing-box 1.14.0 and will be removed in sing-box 1.16.0; define
-    `http_clients` instead.
 
 ##### update_interval
 

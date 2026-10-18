@@ -100,7 +100,7 @@ func (s *APIServer) AddTrafficUsage(ctx context.Context, request *pb.TrafficUsag
 	return &pb.TrafficUsageReply{Remaining: remaining}, nil
 }
 
-func (s *APIServer) Start(stage adapter.StartStage) error {
+func (s *APIServer) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage != adapter.StartStateStart {
 		return nil
 	}
@@ -159,10 +159,6 @@ func (s *APIServer) Start(stage adapter.StartStage) error {
 			s.logger.Error("serve error: ", err)
 		}
 	}()
-	return nil
-}
-
-func (s *APIServer) Close() error {
 	return nil
 }
 

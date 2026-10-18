@@ -49,10 +49,11 @@ func NewService(ctx context.Context, logger log.ContextLogger, tag string, optio
 	}, nil
 }
 
-func (s *Service) Start(stage adapter.StartStage) error {
+func (s *Service) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage != adapter.StartStateStart {
 		return nil
 	}
+	scope.Add(s.Close)
 	boxManager := service.FromContext[adapter.ServiceManager](s.ctx)
 	serviceManager, ok := boxManager.Get(s.options.Manager)
 	if !ok {

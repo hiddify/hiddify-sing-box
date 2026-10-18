@@ -55,7 +55,7 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 	}, nil
 }
 
-func (o *Outbound) Start(stage adapter.StartStage) error {
+func (o *Outbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage != adapter.StartStatePostStart {
 		return nil
 	}
@@ -80,6 +80,9 @@ func (o *Outbound) Start(stage adapter.StartStage) error {
 	}
 	o.logger.NoticeContext(o.ctx, "mieru client is started")
 	o.client = c
+	scope.Add(func() error {
+		return common.Close(o.client)
+	})
 	return nil
 }
 
@@ -128,10 +131,6 @@ func (o *Outbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (n
 		return nil, err
 	}
 	return mierucommon.NewUDPAssociateWrapper(mierucommon.NewPacketOverStreamTunnel(streamConn)), nil
-}
-
-func (o *Outbound) Close() error {
-	return common.Close(o.client)
 }
 
 // mieruDialer is an adapter to mieru dialer interface.

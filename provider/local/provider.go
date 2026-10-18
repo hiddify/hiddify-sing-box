@@ -92,7 +92,11 @@ func NewProviderLocal(ctx context.Context, router adapter.Router, logFactory log
 	return provider, nil
 }
 
-func (s *ProviderLocal) Start() error {
+func (s *ProviderLocal) Start(stage adapter.StartStage, scope *adapter.Scope) error {
+	if stage != adapter.StartStateStart {
+		return nil
+	}
+	scope.Add(s.Close)
 	err := s.reloadFile(s.path)
 	if err != nil {
 		return err

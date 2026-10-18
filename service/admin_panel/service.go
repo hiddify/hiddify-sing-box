@@ -90,7 +90,7 @@ func NewService(ctx context.Context, logger log.ContextLogger, tag string, optio
 	}, nil
 }
 
-func (s *Service) Start(stage adapter.StartStage) error {
+func (s *Service) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage != adapter.StartStateStart {
 		return nil
 	}
@@ -108,11 +108,13 @@ func (s *Service) Start(stage adapter.StartStage) error {
 		if err != nil {
 			return E.Cause(err, "create TLS config")
 		}
+		scope.Add(s.tlsConfig.Close)
 	}
 	tcpListener, err := s.listener.ListenTCP()
 	if err != nil {
 		return err
 	}
+	scope.Add(s.listener.Close)
 	if s.tlsConfig != nil {
 		if !common.Contains(s.tlsConfig.NextProtos(), http2.NextProtoTLS) {
 			s.tlsConfig.SetNextProtos(append([]string{"h2"}, s.tlsConfig.NextProtos()...))
@@ -126,6 +128,12 @@ func (s *Service) Start(stage adapter.StartStage) error {
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       2 * time.Minute,
 	}
+	scope.Add(func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = s.httpServer.Shutdown(ctx)
+		return nil
+	})
 	go func() {
 		err := s.httpServer.Serve(tcpListener)
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -133,18 +141,6 @@ func (s *Service) Start(stage adapter.StartStage) error {
 		}
 	}()
 	return nil
-}
-
-func (s *Service) Close() error {
-	if s.httpServer != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = s.httpServer.Shutdown(ctx)
-	}
-	return common.Close(
-		common.PtrOrNil(s.listener),
-		s.tlsConfig,
-	)
 }
 
 func (s *Service) Route(r chi.Router) {

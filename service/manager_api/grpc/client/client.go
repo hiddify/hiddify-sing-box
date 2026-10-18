@@ -60,16 +60,20 @@ func NewClient(ctx context.Context, logger log.ContextLogger, tag string, option
 	}, nil
 }
 
-func (s *Client) Start(stage adapter.StartStage) error { return nil }
-func (s *Client) Close() error {
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
-	if s.conn != nil {
-		return s.conn.Close()
+func (s *Client) Start(stage adapter.StartStage, scope *adapter.Scope) error {
+	if stage != adapter.StartStateInitialize {
+		return nil
 	}
+	scope.Add(func() error {
+		s.mtx.Lock()
+		defer s.mtx.Unlock()
+		if s.conn != nil {
+			return s.conn.Close()
+		}
+		return nil
+	})
 	return nil
 }
-
 func (s *Client) client() (pb.ManagerClient, error) {
 	conn, err := s.getConn()
 	if err != nil {
