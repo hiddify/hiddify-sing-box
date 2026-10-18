@@ -312,14 +312,14 @@ func (g *URLTestGroup) Select(network string) (adapter.Outbound, bool) {
 	switch network {
 	case N.NetworkTCP:
 		if g.selectedOutboundTCP != nil {
-			if history := g.history.LoadURLTestHistory(RealTag(g.selectedOutboundTCP, N.NetworkTCP)); history != nil {
+			if history := g.history.LoadURLTestHistory(RealTag(g.selectedOutboundTCP, N.NetworkTCP)); history != nil && history.Delay != urltest.FailedDelay {
 				minOutbound = g.selectedOutboundTCP
 				minDelay = history.Delay
 			}
 		}
 	case N.NetworkUDP:
 		if g.selectedOutboundUDP != nil {
-			if history := g.history.LoadURLTestHistory(RealTag(g.selectedOutboundUDP, N.NetworkUDP)); history != nil {
+			if history := g.history.LoadURLTestHistory(RealTag(g.selectedOutboundUDP, N.NetworkUDP)); history != nil && history.Delay != urltest.FailedDelay {
 				minOutbound = g.selectedOutboundUDP
 				minDelay = history.Delay
 			}
@@ -330,10 +330,12 @@ func (g *URLTestGroup) Select(network string) (adapter.Outbound, bool) {
 			continue
 		}
 		history := g.history.LoadURLTestHistory(RealTag(detour, network))
-		if history == nil {
+		// Failed tests are stored as FailedDelay (65535). Skip them so they
+		// cannot win Select via uint16 overflow of Delay+tolerance.
+		if history == nil || history.Delay == urltest.FailedDelay {
 			continue
 		}
-		if minDelay == 0 || minDelay > history.Delay+g.tolerance {
+		if minDelay == 0 || uint32(minDelay) > uint32(history.Delay)+uint32(g.tolerance) {
 			minDelay = history.Delay
 			minOutbound = detour
 		}
