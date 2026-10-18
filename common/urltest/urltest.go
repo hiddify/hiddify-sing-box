@@ -22,6 +22,10 @@ import (
 	"github.com/sagernet/sing/common/observable"
 )
 
+// FailedDelay is stored instead of deleting history when a URL test fails.
+// Select must skip this value; adding tolerance in uint16 wraps around.
+const FailedDelay uint16 = 65535
+
 type HistoryStorage struct {
 	access       sync.RWMutex
 	delayHistory map[string]*adapter.URLTestHistory
@@ -61,7 +65,7 @@ func (s *HistoryStorage) LoadURLTestHistory(tag string) *adapter.URLTestHistory 
 
 func (s *HistoryStorage) DeleteURLTestHistory(tag string) {
 	s.StoreURLTestHistory(tag, &adapter.URLTestHistory{
-		Delay: 65535,
+		Delay: FailedDelay,
 		Time:  time.Now(),
 	})
 	// s.access.Lock()
