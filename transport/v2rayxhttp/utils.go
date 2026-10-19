@@ -14,24 +14,10 @@ import (
 	"github.com/sagernet/sing-box/option"
 )
 
-// PredefinedTable maps named charsets to their alphabets for session ID generation.
-
-var PredefinedTable = map[string]string{
-	"ALPHABET": "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
-	"Alphabet": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
-	"BASE36":   "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ",
-	"Base62":   "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
-	"HEX":      "0123456789ABCDEF",
-	"alphabet": "abcdefghijklmnopqrstuvwxyz",
-	"base36":   "0123456789abcdefghijklmnopqrstuvwxyz",
-	"hex":      "0123456789abcdef",
-	"number":   "0123456789",
-}
-
 func GenerateSessionID(options *option.V2RayXHTTPBaseOptions) string {
 	length := options.SessionIDLength.Rand()
 	table := options.SessionIDTable
-	if predefined, ok := PredefinedTable[table]; ok {
+	if predefined, ok := option.V2RayXHTTPPredefinedSessionIDTable[table]; ok {
 		table = predefined
 	}
 	if table != "" && length > 0 {

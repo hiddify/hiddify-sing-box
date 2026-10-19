@@ -22,7 +22,6 @@ import (
 	"github.com/sagernet/sing-box/common/kmutex"
 	"github.com/sagernet/sing-box/common/tls"
 	"github.com/sagernet/sing-box/common/xray/buf"
-	xnet "github.com/sagernet/sing-box/common/xray/net"
 	"github.com/sagernet/sing-box/common/xray/signal/done"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
@@ -35,7 +34,6 @@ import (
 	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/common/ntp"
 	aTLS "github.com/sagernet/sing/common/tls"
-	sHttp "github.com/sagernet/sing/protocol/http"
 )
 
 var _ adapter.V2RayServerTransport = (*Server)(nil)
@@ -143,6 +141,7 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		writer.WriteHeader(http.StatusBadRequest)
 		return
 	}
+	obfsPaddingAccepted := s.options.XPaddingObfsMode && paddingValue != ""
 	sessionId, seqStr := ExtractMetaFromRequest(s.options, request, s.path)
 	if s.options.Mode != "" && s.options.Mode != "auto" {
 		if sessionId == "" {
@@ -159,17 +158,6 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 			}
 		}
 	}
-	var forwardedAddrs []xnet.Address
-	if len(s.options.TrustedXForwardedFor) > 0 {
-		for _, key := range s.options.TrustedXForwardedFor {
-			if len(request.Header.Values(key)) > 0 {
-				forwardedAddrs = parseXForwardedFor(request.Header)
-				break
-			}
-		}
-	} else {
-		forwardedAddrs = parseXForwardedFor(request.Header)
-	}
 	var remoteAddr net.Addr
 	var err error
 	remoteAddr, err = net.ResolveTCPAddr("tcp", request.RemoteAddr)
@@ -185,10 +173,20 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 			Port: remoteAddr.(*net.TCPAddr).Port,
 		}
 	}
-	if len(forwardedAddrs) > 0 && forwardedAddrs[0].Family().IsIP() {
-		remoteAddr = &net.TCPAddr{
-			IP:   forwardedAddrs[0].IP(),
-			Port: 0,
+	if forwardedFor := request.Header.Get("X-Forwarded-For"); forwardedFor != "" {
+		if slices.ContainsFunc(s.options.TrustedXForwardedFor, func(key string) bool {
+			return len(request.Header.Values(key)) > 0
+		}) {
+			if forwardedAddress := parseXForwardedFor(request.Header)[0]; forwardedAddress.Family().IsIP() {
+				remoteAddr = &net.TCPAddr{
+					IP:   forwardedAddress.IP(),
+					Port: 0,
+				}
+			}
+		} else if len(s.options.TrustedXForwardedFor) == 0 {
+			s.logger.WarnContext(request.Context(), "received \"X-Forwarded-For\" from ", remoteAddr, " but \"trusted_x_forwarded_for\" is not configured; ignoring it and using the real remote address")
+		} else {
+			s.logger.ErrorContext(request.Context(), "ignored potentially forged \"X-Forwarded-For\" from ", remoteAddr, ": ", forwardedFor)
 		}
 	}
 	var currentSession *httpSession
@@ -228,8 +226,7 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 				writer.Header().Set("Cache-Control", "no-store")
 				writer.WriteHeader(http.StatusOK)
 				scStreamUpServerSecs := s.options.GetNormalizedScStreamUpServerSecs()
-				referrer := request.Header.Get("Referer")
-				if referrer != "" && scStreamUpServerSecs.To > 0 {
+				if (request.Header.Get("Referer") != "" || obfsPaddingAccepted) && scStreamUpServerSecs.To > 0 {
 					go func() {
 						timer := time.NewTimer(0)
 						if !timer.Stop() {
@@ -384,16 +381,20 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 			Reader:         request.Body,
 			ResponseWriter: writer,
 		}
+		localAddress := s.localAddr
+		if requestLocalAddress, ok := request.Context().Value(http.LocalAddrContextKey).(net.Addr); ok && requestLocalAddress != nil {
+			localAddress = requestLocalAddress
+		}
 		conn := splitConn{
 			writer:     httpSC,
 			reader:     httpSC,
 			remoteAddr: remoteAddr,
-			localAddr:  s.localAddr,
+			localAddr:  localAddress,
 		}
 		if sessionId != "" { // if not stream-one
 			conn.reader = currentSession.uploadQueue
 		}
-		s.handler.NewConnectionEx(v2rayhttp.HWIDContext(request.Context(), request.Header), &conn, sHttp.SourceAddress(request), M.Socksaddr{}, func(it error) {})
+		s.handler.NewConnectionEx(v2rayhttp.HWIDContext(request.Context(), request.Header), &conn, M.SocksaddrFromNet(remoteAddr).Unwrap(), M.Socksaddr{}, func(it error) {})
 		// "A ResponseWriter may not be used after [Handler.ServeHTTP] has returned."
 		select {
 		case <-request.Context().Done():

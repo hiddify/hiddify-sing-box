@@ -1,6 +1,7 @@
 package option
 
 import (
+	"math/big"
 	"net/http"
 	"reflect"
 	"strings"
@@ -186,6 +187,18 @@ const (
 	PlacementAuto          = "auto"
 )
 
+var V2RayXHTTPPredefinedSessionIDTable = map[string]string{
+	"ALPHABET": "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+	"Alphabet": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
+	"BASE36":   "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+	"Base62":   "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
+	"HEX":      "0123456789ABCDEF",
+	"alphabet": "abcdefghijklmnopqrstuvwxyz",
+	"base36":   "0123456789abcdefghijklmnopqrstuvwxyz",
+	"hex":      "0123456789abcdef",
+	"number":   "0123456789",
+}
+
 func (c V2RayXHTTPOptions) MarshalJSON() ([]byte, error) {
 	return json.Marshal((*_V2RayXHTTPOptions)(&c))
 }
@@ -201,6 +214,9 @@ func (c *V2RayXHTTPOptions) UnmarshalJSON(bytes []byte) error {
 	case "auto", "packet-up", "stream-up", "stream-one":
 	default:
 		return E.New("unsupported mode: " + c.Mode)
+	}
+	if c.Download != nil && c.Mode == "stream-one" {
+		return E.New(`can not use "download" in "stream-one" mode`)
 	}
 	err = checkV2RayXHTTPBaseOptions(c.Mode, &c.V2RayXHTTPBaseOptions)
 	if err != nil {
@@ -297,6 +313,27 @@ func checkV2RayXHTTPBaseOptions(mode string, options *V2RayXHTTPBaseOptions) err
 		}
 	}
 
+	if options.SessionIDTable != "" {
+		if predefined, ok := V2RayXHTTPPredefinedSessionIDTable[options.SessionIDTable]; ok {
+			options.SessionIDTable = predefined
+		}
+		if options.SessionIDLength.From <= 0 {
+			return E.New("session_id_length.from must be greater than 0")
+		}
+		room := new(big.Int)
+		for length := options.SessionIDLength.From; length <= options.SessionIDLength.To; length++ {
+			room.Add(room, new(big.Int).Exp(big.NewInt(int64(len(options.SessionIDTable))), big.NewInt(int64(length)), nil))
+		}
+		if room.Cmp(big.NewInt(2<<30)) < 0 {
+			return E.New("session_id_table or session_id_length is too small")
+		}
+		for i := 0; i < len(options.SessionIDTable); i++ {
+			if options.SessionIDTable[i] >= 0x80 {
+				return E.New("session_id_table must contain only ASCII characters")
+			}
+		}
+	}
+
 	if options.SeqPlacement != "path" && options.SeqKey == "" {
 		switch options.SeqPlacement {
 		case "cookie", "query":
@@ -325,14 +362,17 @@ func checkV2RayXHTTPBaseOptions(mode string, options *V2RayXHTTPBaseOptions) err
 
 	if options.Xmux == nil {
 		options.Xmux = &V2RayXHTTPXmuxOptions{}
-		options.Xmux.MaxConcurrency.From = 1
-		options.Xmux.MaxConcurrency.To = 1
+	}
+	if options.Xmux.MaxConnections.To > 0 && options.Xmux.MaxConcurrency.To > 0 {
+		return E.New("max_connections cannot be specified together with max_concurrency")
+	}
+	if *options.Xmux == (V2RayXHTTPXmuxOptions{}) {
+		options.Xmux.MaxConnections.From = 3
+		options.Xmux.MaxConnections.To = 3
 		options.Xmux.HMaxRequestTimes.From = 600
 		options.Xmux.HMaxRequestTimes.To = 900
 		options.Xmux.HMaxReusableSecs.From = 1800
 		options.Xmux.HMaxReusableSecs.To = 3000
-	} else if options.Xmux.MaxConnections.To > 0 && options.Xmux.MaxConcurrency.To > 0 {
-		return E.New("max_connections cannot be specified together with max_concurrency")
 	}
 	return nil
 }
@@ -343,8 +383,10 @@ func (c *V2RayXHTTPBaseOptions) GetNormalizedPath() string {
 	if path == "" || path[0] != '/' {
 		path = "/" + path
 	}
-	if path[len(path)-1] != '/' {
-		path = path + "/"
+	if c.GetNormalizedSessionPlacement() == PlacementPath || c.GetNormalizedSeqPlacement() == PlacementPath {
+		if path[len(path)-1] != '/' {
+			path = path + "/"
+		}
 	}
 	return path
 }
@@ -385,7 +427,7 @@ func (c *V2RayXHTTPBaseOptions) GetNormalizedUplinkHTTPMethod() string {
 }
 
 func (c *V2RayXHTTPBaseOptions) GetNormalizedScMaxEachPostBytes() badoption.Range[int] {
-	if c.ScMaxEachPostBytes == nil {
+	if c.ScMaxEachPostBytes == nil || c.ScMaxEachPostBytes.To == 0 {
 		return badoption.Range[int]{
 			From: 1000000,
 			To:   1000000,
@@ -395,7 +437,7 @@ func (c *V2RayXHTTPBaseOptions) GetNormalizedScMaxEachPostBytes() badoption.Rang
 }
 
 func (c *V2RayXHTTPBaseOptions) GetNormalizedScMinPostsIntervalMs() badoption.Range[int] {
-	if c.ScMinPostsIntervalMs == nil {
+	if c.ScMinPostsIntervalMs == nil || c.ScMinPostsIntervalMs.To == 0 {
 		return badoption.Range[int]{
 			From: 30,
 			To:   30,
@@ -413,7 +455,7 @@ func (c *V2RayXHTTPBaseOptions) GetNormalizedScMaxBufferedPosts() int {
 }
 
 func (c *V2RayXHTTPBaseOptions) GetNormalizedScStreamUpServerSecs() badoption.Range[int] {
-	if c.ScStreamUpServerSecs == nil {
+	if c.ScStreamUpServerSecs == nil || c.ScStreamUpServerSecs.To == 0 {
 		return badoption.Range[int]{
 			From: 20,
 			To:   80,
