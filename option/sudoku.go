@@ -11,6 +11,7 @@ type SudokuOutboundOptions struct {
 	EnablePureDownlink *bool           `json:"enable_pure_downlink,omitempty"`
 	CustomTable        string          `json:"custom_table,omitempty"`
 	CustomTables       []string        `json:"custom_tables,omitempty"`
+	Multiplex          string          `json:"multiplex,omitempty"`
 	HTTPMask           *SudokuHTTPMask `json:"http_mask,omitempty"`
 }
 

@@ -6,6 +6,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/sagernet/sing-box/common/tls"
 	"github.com/sagernet/sing-box/transport/sudoku/obfs/httpmask"
@@ -26,33 +27,39 @@ type Client struct {
 	tlsConfig tls.Config
 	baseConf  ProtocolConfig
 
-	muxMu     sync.Mutex
-	muxClient *MultiplexClient
+	muxDialer atomic.Pointer[MultiplexDialer]
 
 	httpMaskMu     sync.Mutex
 	httpMaskClient *httpmask.TunnelClient
 	httpMaskKey    string
 }
 
-func NewClient(options ClientOptions) *Client {
-	return &Client{
+func NewClient(options ClientOptions) (*Client, error) {
+	client := &Client{
 		dialer:    options.Dialer,
 		tlsConfig: options.TLSConfig,
 		baseConf:  options.Config,
 	}
+	if client.baseConf.SessionMuxEnabled() {
+		muxDialer, err := NewMultiplexDialer(client.dialMultiplexBase)
+		if err != nil {
+			return nil, err
+		}
+		client.muxDialer.Store(muxDialer)
+	}
+	return client, nil
 }
 
 func (c *Client) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
 	cfg := c.baseConf
 	cfg.TargetAddress = destination.String()
 
-	muxMode := normalizeHTTPMaskMultiplex(cfg.HTTPMaskMultiplex)
-	if muxMode == "on" && !cfg.DisableHTTPMask && httpTunnelModeEnabled(cfg.HTTPMaskMode) {
-		stream, err := c.dialMultiplex(ctx, cfg.TargetAddress)
-		if err == nil {
-			return stream, nil
+	if cfg.SessionMuxEnabled() && N.NetworkName(network) != N.NetworkUDP {
+		muxDialer := c.muxDialer.Load()
+		if muxDialer == nil {
+			return nil, E.New("multiplex dialer is unavailable")
 		}
-		return nil, err
+		return muxDialer.Dial(ctx, cfg.TargetAddress)
 	}
 
 	conn, err := c.dialAndHandshake(ctx, &cfg)
@@ -82,8 +89,24 @@ func (c *Client) DialContext(ctx context.Context, network string, destination M.
 }
 
 func (c *Client) Close() {
-	c.resetMuxClient()
+	if muxDialer := c.muxDialer.Swap(nil); muxDialer != nil {
+		muxDialer.Close()
+	}
 	c.resetHTTPMaskClient()
+}
+
+func (c *Client) ResetConnections() error {
+	if c.baseConf.SessionMuxEnabled() {
+		muxDialer, err := NewMultiplexDialer(c.dialMultiplexBase)
+		if err != nil {
+			return err
+		}
+		if previous := c.muxDialer.Swap(muxDialer); previous != nil {
+			previous.Close()
+		}
+	}
+	c.resetHTTPMaskClient()
+	return nil
 }
 
 func (c *Client) dialAndHandshake(ctx context.Context, cfg *ProtocolConfig) (net.Conn, error) {
@@ -101,7 +124,7 @@ func (c *Client) dialAndHandshake(ctx context.Context, cfg *ProtocolConfig) (net
 	var handshakeDone bool
 
 	if !cfg.DisableHTTPMask && httpTunnelModeEnabled(cfg.HTTPMaskMode) {
-		muxMode := normalizeHTTPMaskMultiplex(cfg.HTTPMaskMultiplex)
+		muxMode := cfg.MultiplexMode()
 		if muxMode == "auto" && strings.ToLower(strings.TrimSpace(cfg.HTTPMaskMode)) != "ws" {
 			if client, cerr := c.getOrCreateHTTPMaskClient(cfg); cerr == nil && client != nil {
 				conn, err = client.DialTunnel(ctx, httpmask.TunnelDialOptions{
@@ -111,7 +134,6 @@ func (c *Client) dialAndHandshake(ctx context.Context, cfg *ProtocolConfig) (net
 					PathRoot:     cfg.HTTPMaskPathRoot,
 					AuthKey:      ClientAEADSeed(cfg.Key),
 					Upgrade:      upgrade,
-					Multiplex:    cfg.HTTPMaskMultiplex,
 					DialContext:  c.dialRaw,
 				})
 				if err != nil {
@@ -144,6 +166,11 @@ func (c *Client) dialAndHandshake(ctx context.Context, cfg *ProtocolConfig) (net
 	return conn, nil
 }
 
+func (c *Client) dialMultiplexBase(ctx context.Context) (net.Conn, error) {
+	cfg := c.baseConf
+	return c.dialAndHandshake(ctx, &cfg)
+}
+
 func (c *Client) dialRaw(ctx context.Context, network, addr string) (net.Conn, error) {
 	return c.dialer.DialContext(ctx, network, M.ParseSocksaddr(addr))
 }
@@ -165,7 +192,6 @@ func (c *Client) dialHTTPMaskTunnel(ctx context.Context, cfg *ProtocolConfig, up
 		AuthKey:        ClientAEADSeed(cfg.Key),
 		EarlyHandshake: earlyHandshake,
 		Upgrade:        upgrade,
-		Multiplex:      cfg.HTTPMaskMultiplex,
 		DialContext:    c.dialRaw,
 	})
 }
@@ -175,54 +201,6 @@ func (c *Client) httpMaskTLSConfig() tls.Config {
 		return nil
 	}
 	return c.tlsConfig
-}
-
-func (c *Client) dialMultiplex(ctx context.Context, targetAddress string) (net.Conn, error) {
-	for attempt := 0; attempt < 2; attempt++ {
-		client, err := c.getOrCreateMuxClient(ctx)
-		if err != nil {
-			return nil, err
-		}
-		stream, err := client.Dial(ctx, targetAddress)
-		if err != nil {
-			c.resetMuxClient()
-			continue
-		}
-		return stream, nil
-	}
-	return nil, fmt.Errorf("multiplex open stream failed")
-}
-
-func (c *Client) getOrCreateMuxClient(ctx context.Context) (*MultiplexClient, error) {
-	c.muxMu.Lock()
-	defer c.muxMu.Unlock()
-
-	if c.muxClient != nil && !c.muxClient.IsClosed() {
-		return c.muxClient, nil
-	}
-
-	baseCfg := c.baseConf
-	baseConn, err := c.dialAndHandshake(ctx, &baseCfg)
-	if err != nil {
-		return nil, err
-	}
-
-	client, err := StartMultiplexClient(baseConn)
-	if err != nil {
-		baseConn.Close()
-		return nil, err
-	}
-	c.muxClient = client
-	return client, nil
-}
-
-func (c *Client) resetMuxClient() {
-	c.muxMu.Lock()
-	defer c.muxMu.Unlock()
-	if c.muxClient != nil {
-		c.muxClient.Close()
-		c.muxClient = nil
-	}
 }
 
 func (c *Client) getOrCreateHTTPMaskClient(cfg *ProtocolConfig) (*httpmask.TunnelClient, error) {
@@ -267,19 +245,6 @@ func (c *Client) resetHTTPMaskClient() {
 		c.httpMaskClient.CloseIdleConnections()
 		c.httpMaskClient = nil
 		c.httpMaskKey = ""
-	}
-}
-
-func normalizeHTTPMaskMultiplex(mode string) string {
-	switch strings.ToLower(strings.TrimSpace(mode)) {
-	case "", "off":
-		return "off"
-	case "auto":
-		return "auto"
-	case "on":
-		return "on"
-	default:
-		return "off"
 	}
 }
 

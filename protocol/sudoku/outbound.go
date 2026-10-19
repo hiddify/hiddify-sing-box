@@ -52,7 +52,10 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 	httpMaskMode := defaultConf.HTTPMaskMode
 	var httpMaskHost string
 	var pathRoot string
-	httpMaskMultiplex := defaultConf.HTTPMaskMultiplex
+	multiplex := defaultConf.Multiplex
+	if mode := strings.TrimSpace(options.Multiplex); mode != "" {
+		multiplex = mode
+	}
 
 	if hm := options.HTTPMask; hm != nil {
 		disableHTTPMask = !hm.Enabled
@@ -61,8 +64,8 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 		}
 		httpMaskHost = hm.Host
 		pathRoot = strings.TrimSpace(hm.PathRoot)
-		if hm.Multiplex != "" {
-			httpMaskMultiplex = hm.Multiplex
+		if mode := strings.TrimSpace(hm.Multiplex); mode != "" {
+			multiplex = mode
 		}
 	}
 
@@ -78,7 +81,7 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 		HTTPMaskMode:            httpMaskMode,
 		HTTPMaskHost:            httpMaskHost,
 		HTTPMaskPathRoot:        pathRoot,
-		HTTPMaskMultiplex:       httpMaskMultiplex,
+		Multiplex:               multiplex,
 	}
 	if options.AEADMethod != "" {
 		baseConf.AEADMethod = options.AEADMethod
@@ -92,6 +95,9 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 		baseConf.Table = tables[0]
 	} else {
 		baseConf.Tables = tables
+	}
+	if err = baseConf.Validate(); err != nil {
+		return nil, err
 	}
 
 	var tlsConfig tls.Config
@@ -107,11 +113,14 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 		}
 	}
 
-	client := sudoku.NewClient(sudoku.ClientOptions{
+	client, err := sudoku.NewClient(sudoku.ClientOptions{
 		Dialer:    outboundDialer,
 		TLSConfig: tlsConfig,
 		Config:    baseConf,
 	})
+	if err != nil {
+		return nil, err
+	}
 
 	return &Outbound{
 		Adapter:   outbound.NewAdapterWithDialerOptions(C.TypeSudoku, tag, []string{N.NetworkTCP, N.NetworkUDP}, options.DialerOptions),
@@ -158,5 +167,8 @@ func (h *Outbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 }
 
 func (h *Outbound) InterfaceUpdated() {
-	h.client.Close()
+	err := h.client.ResetConnections()
+	if err != nil {
+		h.logger.Error(E.Cause(err, "reset connections"))
+	}
 }

@@ -19,6 +19,7 @@
       // "enable_pure_downlink": true,       // true | false
       // "custom_table": "xpxvvpvv",         // 8 chars: 2x, 2p, 4v
       // "custom_tables": ["xpxvvpvv", "vxpvxvvp"],
+      // "multiplex": "off",                 // off | auto (HTTP reuse) | on (session mux over raw TCP or HTTPMask)
       // "http_mask": {
       //   "enabled": true,                  // true | false
       //   "mode": "stream",                 // legacy | stream | poll | auto | ws
