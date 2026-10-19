@@ -100,6 +100,10 @@ func (h *Outbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	return h.router.Start(stage, scope)
 }
 
+func (h *Outbound) References() []string {
+	return h.router.References()
+}
+
 func (h *Outbound) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
 	onClose, lockCtx, err := h.strategy.request(ctx, adapter.ContextFrom(ctx))
 	if err != nil {

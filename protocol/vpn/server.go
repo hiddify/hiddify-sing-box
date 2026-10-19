@@ -107,6 +107,17 @@ func (s *ServerEndpoint) Start(stage adapter.StartStage, scope *adapter.Scope) e
 	return nil
 }
 
+func (s *ServerEndpoint) References() []string {
+	var references []string
+	for _, inbound := range s.inbounds {
+		referrer, isReferrer := inbound.(adapter.Referrer)
+		if isReferrer {
+			references = append(references, referrer.References()...)
+		}
+	}
+	return references
+}
+
 func (s *ServerEndpoint) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
 	if N.NetworkName(network) == N.NetworkUDP {
 		return s.uotClient.DialContext(ctx, network, destination)

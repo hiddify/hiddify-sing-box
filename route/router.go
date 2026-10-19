@@ -10,6 +10,7 @@ import (
 	"github.com/sagernet/sing-box/common/process"
 	"github.com/sagernet/sing-box/common/taskmonitor"
 	C "github.com/sagernet/sing-box/constant"
+	"github.com/sagernet/sing-box/experimental/clashmode"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	R "github.com/sagernet/sing-box/route/rule"
@@ -36,6 +37,7 @@ type Router struct {
 	defaultOutbound   adapter.Outbound
 	httpClientManager adapter.HTTPClientManager
 	rules             []adapter.Rule
+	ruleOptions       []option.Rule
 	final             string
 	needFindProcess   bool
 	needFindNeighbor  bool
@@ -64,6 +66,7 @@ func NewRouter(ctx context.Context, logFactory log.Factory, name string, options
 		network:           service.FromContext[adapter.NetworkManager](ctx),
 		httpClientManager: service.FromContext[adapter.HTTPClientManager](ctx),
 		rules:             make([]adapter.Rule, 0, len(options.Rules)),
+		ruleOptions:       options.Rules,
 		final:             options.Final,
 		ruleSetMap:        make(map[string]adapter.RuleSet),
 		needFindProcess:   hasRule(options.Rules, isProcessRule) || hasDNSRule(dnsOptions.Rules, isProcessDNSRule) || options.FindProcess,
@@ -240,6 +243,19 @@ func (r *Router) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 		runtime.GC()
 	}
 	return nil
+}
+
+func (r *Router) References() []string {
+	var mode string
+	clashMode := service.PtrFromContext[clashmode.Manager](r.ctx)
+	if clashMode != nil {
+		mode = clashMode.Mode()
+	}
+	var references, transports []string
+	if !collectRuleReferences(r.ruleOptions, mode, &references, &transports) {
+		references = append(references, r.final)
+	}
+	return references
 }
 
 func (r *Router) RuleSet(tag string) (adapter.RuleSet, bool) {

@@ -186,6 +186,10 @@ func (a *Adapter) UpdateGroups() {
 	for element := a.callbacks.Front(); element != nil; element = element.Next() {
 		element.Value(a.providerTag)
 	}
+	history := service.PtrFromContext[urltest.HistoryStorage](a.ctx)
+	if history != nil {
+		history.NotifyUpdated()
+	}
 }
 
 func (a *Adapter) Close() error {

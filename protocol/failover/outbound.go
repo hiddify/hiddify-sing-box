@@ -79,6 +79,37 @@ func (f *Failover) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	return nil
 }
 
+func (f *Failover) References() []string {
+	var references []string
+	for _, outbound := range f.outbounds {
+		referrer, isReferrer := outbound.(adapter.Referrer)
+		if isReferrer {
+			references = append(references, referrer.References()...)
+		} else {
+			references = append(references, outbound.Dependencies()...)
+		}
+	}
+	return references
+}
+
+func (f *Failover) SetKeepIdleConnections(keep bool) {
+	for _, outbound := range f.outbounds {
+		keeper, isKeeper := outbound.(adapter.IdleConnectionKeeper)
+		if isKeeper {
+			keeper.SetKeepIdleConnections(keep)
+		}
+	}
+}
+
+func (f *Failover) CloseIdleConnections() {
+	for _, outbound := range f.outbounds {
+		keeper, isKeeper := outbound.(adapter.IdleConnectionKeeper)
+		if isKeeper {
+			keeper.CloseIdleConnections()
+		}
+	}
+}
+
 func (f *Failover) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
 	if N.NetworkName(network) == N.NetworkUDP {
 		return f.uotClient.DialContext(ctx, network, destination)

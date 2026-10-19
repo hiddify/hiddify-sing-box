@@ -121,6 +121,7 @@ func (m *ReferenceManager) update() {
 	transportManager := service.FromContext[adapter.DNSTransportManager](m.ctx)
 	networkManager := service.FromContext[adapter.NetworkManager](m.ctx)
 	httpClientManager := service.FromContext[adapter.HTTPClientManager](m.ctx)
+	providerManager := service.FromContext[adapter.ProviderManager](m.ctx)
 
 	transportQueue := slices.Clone(m.staticTransports)
 	outboundQueue := slices.Clone(m.staticOutbounds)
@@ -155,6 +156,12 @@ func (m *ReferenceManager) update() {
 	referrer, isReferrer := httpClientManager.(adapter.Referrer)
 	if isReferrer {
 		outboundQueue = append(outboundQueue, referrer.References()...)
+	}
+	for _, provider := range providerManager.Providers() {
+		referrer, isReferrer := provider.(adapter.Referrer)
+		if isReferrer {
+			outboundQueue = append(outboundQueue, referrer.References()...)
+		}
 	}
 
 	referencedTransports := make(map[string]bool)

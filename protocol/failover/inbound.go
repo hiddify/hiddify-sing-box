@@ -69,6 +69,17 @@ func (h *Inbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	return nil
 }
 
+func (h *Inbound) References() []string {
+	var references []string
+	for _, inbound := range h.inbounds {
+		referrer, isReferrer := inbound.(adapter.Referrer)
+		if isReferrer {
+			references = append(references, referrer.References()...)
+		}
+	}
+	return references
+}
+
 func (h *Inbound) connHandler(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) error {
 	if metadata.Destination != Destination {
 		h.router.RouteConnectionEx(ctx, conn, metadata, onClose)

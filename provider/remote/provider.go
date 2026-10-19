@@ -140,6 +140,17 @@ func (s *ProviderRemote) Start(stage adapter.StartStage, scope *adapter.Scope) e
 	return s.Adapter.Start()
 }
 
+func (s *ProviderRemote) References() []string {
+	if s.downloadDetour != "" {
+		return []string{s.downloadDetour}
+	}
+	defaultOutbound := s.outbound.Default()
+	if defaultOutbound == nil {
+		return nil
+	}
+	return []string{defaultOutbound.Tag()}
+}
+
 func (s *ProviderRemote) Update() error {
 	if s.ticker != nil {
 		s.ticker.Reset(s.updateInterval)
