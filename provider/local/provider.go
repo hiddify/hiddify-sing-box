@@ -102,13 +102,17 @@ func (s *ProviderLocal) Start(stage adapter.StartStage, scope *adapter.Scope) er
 		return err
 	}
 	s.UpdateGroups()
+	err = s.Adapter.Start()
+	if err != nil {
+		return err
+	}
 	if s.watcher != nil {
-		err := s.watcher.Start()
+		err = s.watcher.Start()
 		if err != nil {
 			s.logger.Error(E.Cause(err, "watch provider file"))
 		}
 	}
-	return s.Adapter.Start()
+	return nil
 }
 
 func (s *ProviderLocal) UpdatedAt() time.Time {
@@ -133,5 +137,5 @@ func (s *ProviderLocal) reloadFile(path string) error {
 }
 
 func (s *ProviderLocal) Close() error {
-	return common.Close(&s.Adapter, common.PtrOrNil(s.watcher))
+	return common.Close(common.PtrOrNil(s.watcher), &s.Adapter)
 }

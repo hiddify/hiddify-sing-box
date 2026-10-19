@@ -28,6 +28,7 @@ type Adapter struct {
 	logger         log.ContextLogger
 	providerType   string
 	providerTag    string
+	outboundAccess sync.RWMutex
 	outbounds      []adapter.Outbound
 	outboundsByTag map[string]adapter.Outbound
 	ticker         *time.Ticker
@@ -85,7 +86,10 @@ func (a *Adapter) Start() error {
 	if a.history == nil {
 		a.history = urltest.NewHistoryStorage()
 	}
-	go a.loopCheck()
+	if a.enabled {
+		a.ticker = time.NewTicker(a.interval)
+		go a.loopCheck()
+	}
 	return nil
 }
 
@@ -98,13 +102,14 @@ func (a *Adapter) Tag() string {
 }
 
 func (a *Adapter) Outbounds() []adapter.Outbound {
+	a.outboundAccess.RLock()
+	defer a.outboundAccess.RUnlock()
 	return a.outbounds
 }
 
 func (a *Adapter) Outbound(tag string) (adapter.Outbound, bool) {
-	if a.outboundsByTag == nil {
-		return nil, false
-	}
+	a.outboundAccess.RLock()
+	defer a.outboundAccess.RUnlock()
 	detour, ok := a.outboundsByTag[tag]
 	return detour, ok
 }
@@ -156,11 +161,13 @@ func (a *Adapter) UpdateOutbounds(oldOpts []option.Outbound, newOpts []option.Ou
 		outbounds = append(outbounds, outbound)
 		outboundsByTag[tag] = outbound
 	}
+	a.outboundAccess.Lock()
+	a.outbounds = outbounds
+	a.outboundsByTag = outboundsByTag
+	a.outboundAccess.Unlock()
 	if a.enabled && a.history != nil {
 		go a.HealthCheck(a.ctx)
 	}
-	a.outbounds = outbounds
-	a.outboundsByTag = outboundsByTag
 }
 
 func (a *Adapter) HealthCheck(ctx context.Context) (map[string]uint16, error) {
@@ -196,8 +203,11 @@ func (a *Adapter) Close() error {
 	if a.ticker != nil {
 		a.ticker.Stop()
 	}
+	a.outboundAccess.Lock()
 	outbounds := a.outbounds
 	a.outbounds = nil
+	a.outboundsByTag = nil
+	a.outboundAccess.Unlock()
 	var err error
 	for _, ob := range outbounds {
 		if err2 := a.outbound.Remove(ob.Tag()); err2 != nil {
@@ -210,10 +220,6 @@ func (a *Adapter) Close() error {
 }
 
 func (a *Adapter) loopCheck() {
-	if !a.enabled {
-		return
-	}
-	a.ticker = time.NewTicker(a.interval)
 	a.healthcheck(a.ctx)
 	for {
 		select {
@@ -234,7 +240,7 @@ func (a *Adapter) healthcheck(ctx context.Context) (map[string]uint16, error) {
 	b, _ := batch.New(ctx, batch.WithConcurrencyNum[any](10))
 	var resultAccess sync.Mutex
 	checked := make(map[string]bool)
-	for _, detour := range a.outbounds {
+	for _, detour := range a.Outbounds() {
 		tag := detour.Tag()
 		if checked[tag] {
 			continue
@@ -265,7 +271,8 @@ func (a *Adapter) healthcheck(ctx context.Context) (map[string]uint16, error) {
 }
 
 func (a *Adapter) removeUseless(newOpts []option.Outbound) {
-	if len(a.outbounds) == 0 {
+	outbounds := a.Outbounds()
+	if len(outbounds) == 0 {
 		return
 	}
 	exists := make(map[string]bool)
@@ -278,7 +285,7 @@ func (a *Adapter) removeUseless(newOpts []option.Outbound) {
 		}
 		exists[tag] = true
 	}
-	for _, opt := range a.outbounds {
+	for _, opt := range outbounds {
 		if !exists[opt.Tag()] {
 			if err := a.outbound.Remove(opt.Tag()); err != nil {
 				a.logger.Error(err, "close outbound [", opt.Tag(), "]")
