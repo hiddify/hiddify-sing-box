@@ -1,9 +1,10 @@
 package cloudflare
 
 const (
-	ApiUrl     = "https://api.cloudflareclient.com"
-	ApiVersion = "v0a4471"
-	ConnectSNI = "consumer-masque.cloudflareclient.com"
+	ApiUrl       = "https://api.cloudflareclient.com"
+	ApiVersion   = "v0a4471"
+	ConnectSNI   = "consumer-masque.cloudflareclient.com"
+	L4ConnectSNI = "consumer-masque-proxy.cloudflareclient.com"
 	// unused for now
 	ZeroTierSNI         = "zt-masque.cloudflareclient.com"
 	ConnectURI          = "https://cloudflareaccess.com"

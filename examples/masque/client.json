@@ -28,6 +28,8 @@
       "system": false,
       "name": "masque0",
       "use_http2": false,
+      // TCP-only CONNECT proxy over HTTP/3 instead of a CONNECT-IP tunnel
+      "use_l4_proxy": false,
       "use_ipv6": false,
       "profile": {
         "detour": "direct",
@@ -43,10 +45,12 @@
       "udp_keepalive_period": "30s",
       "udp_initial_packet_size": 0,
       "reconnect_delay": "5s",
+      // Timeout for establishing a connection to the endpoint; 0 = no timeout
+      "handshake_timeout": "0s",
       "congestion_controller": "bbr",
       "cwnd": 0,
       "tls": { // TLS fields for HTTP2
-        "server_name": "", // SNI; empty = default "consumer-masque.cloudflareclient.com"
+        "server_name": "", // SNI; empty = default "consumer-masque.cloudflareclient.com" ("consumer-masque-proxy.cloudflareclient.com" with use_l4_proxy)
         "insecure": false,
         "cipher_suites": [],
         "curve_preferences": [],

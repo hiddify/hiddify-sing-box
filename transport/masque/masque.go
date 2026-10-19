@@ -74,36 +74,13 @@ func ConnectTunnel(ctx context.Context, dialer N.Dialer, tlsConfig aTLS.Config, 
 		return ConnectTunnelH2(ctx, dialer, tlsConfig, h2Endpoint, connectUri)
 	}
 
-	quicEndpoint, ok := endpoint.(*net.UDPAddr)
-	if !ok || quicEndpoint == nil {
-		return nil, nil, nil, errors.New("missing HTTP/3 UDP endpoint")
-	}
-	endpointAddrPort := quicEndpoint.AddrPort()
-	udpConn, err := dialer.ListenPacket(
-		ctx,
-		M.SocksaddrFromNetIP(
-			netip.AddrPortFrom(
-				endpointAddrPort.Addr().Unmap(),
-				endpointAddrPort.Port(),
-			),
-		),
-	)
+	udpConn, conn, err := dialQUIC(ctx, dialer, tlsConfig, quicConfig, endpoint, congestionControl)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	conn, err := qtls.Dial(
-		ctx,
-		bufio.NewBindPacketConn(udpConn, quicEndpoint),
-		NewTLSConfig(tlsConfig, 20),
-		quicConfig,
-	)
-	if err != nil {
-		_ = udpConn.Close()
-		return nil, nil, nil, err
-	}
-	if congestionControl != nil {
-		conn.SetCongestionControl(congestionControl(conn))
-	}
+	stop := context.AfterFunc(ctx, func() {
+		_ = conn.CloseWithError(0, "handshake canceled")
+	})
 	tr := &http3.Transport{
 		EnableDatagrams: true,
 		AdditionalSettings: map[uint64]uint64{
@@ -119,6 +96,7 @@ func ConnectTunnel(ctx context.Context, dialer N.Dialer, tlsConfig aTLS.Config, 
 	}
 	ipConn, rsp, err := connectip.Dial(ctx, hconn, template, "cf-connect-ip", additionalHeaders, true)
 	if err != nil {
+		stop()
 		_ = tr.Close()
 		_ = conn.CloseWithError(0, "connect-ip dial failed")
 		_ = udpConn.Close()
@@ -144,7 +122,11 @@ func ConnectTunnel(ctx context.Context, dialer N.Dialer, tlsConfig aTLS.Config, 
 			}),
 		},
 	})
+	if err == nil && !stop() {
+		err = ctx.Err()
+	}
 	if err != nil {
+		stop()
 		_ = ipConn.Close()
 		_ = tr.Close()
 		_ = udpConn.Close()
@@ -157,4 +139,38 @@ func ConnectTunnel(ctx context.Context, dialer N.Dialer, tlsConfig aTLS.Config, 
 		return nil
 	})
 	return closer, newQuicIpConn(ipConn), rsp, nil
+}
+
+func dialQUIC(ctx context.Context, dialer N.Dialer, tlsConfig aTLS.Config, quicConfig *quic.Config, endpoint net.Addr, congestionControl func(conn *quic.Conn) congestion.CongestionControl) (net.PacketConn, *quic.Conn, error) {
+	quicEndpoint, ok := endpoint.(*net.UDPAddr)
+	if !ok || quicEndpoint == nil {
+		return nil, nil, errors.New("missing HTTP/3 UDP endpoint")
+	}
+	endpointAddrPort := quicEndpoint.AddrPort()
+	udpConn, err := dialer.ListenPacket(
+		ctx,
+		M.SocksaddrFromNetIP(
+			netip.AddrPortFrom(
+				endpointAddrPort.Addr().Unmap(),
+				endpointAddrPort.Port(),
+			),
+		),
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+	conn, err := qtls.Dial(
+		ctx,
+		bufio.NewBindPacketConn(udpConn, quicEndpoint),
+		NewTLSConfig(tlsConfig, 20),
+		quicConfig,
+	)
+	if err != nil {
+		_ = udpConn.Close()
+		return nil, nil, err
+	}
+	if congestionControl != nil {
+		conn.SetCongestionControl(congestionControl(conn))
+	}
+	return udpConn, conn, nil
 }

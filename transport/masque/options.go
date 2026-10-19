@@ -25,5 +25,6 @@ type TunnelOptions struct {
 	UDPKeepalivePeriod   time.Duration
 	UDPInitialPacketSize uint16
 	ReconnectDelay       time.Duration
+	HandshakeTimeout     time.Duration
 	CongestionControl    func(conn *quic.Conn) congestion.CongestionControl
 }
