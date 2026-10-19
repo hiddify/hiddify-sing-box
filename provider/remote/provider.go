@@ -119,9 +119,11 @@ func (s *ProviderRemote) Start(stage adapter.StartStage, scope *adapter.Scope) e
 				s.subscriptionInfo = info
 				content, _ = boxCommon.DecodeBase64URLSafe(others)
 			}
-			if err := s.updateProviderFromContent(content); err != nil {
+			cachedOptions, err := json.UnmarshalExtendedContext[option.Options](s.ctx, []byte(content))
+			if err != nil {
 				return E.Cause(err, "restore cached outbound provider")
 			}
+			s.updateProviderFromOptions(cachedOptions.Outbounds)
 			s.UpdateGroups()
 			s.lastUpdated, s.lastEtag = saveSub.LastUpdated, saveSub.LastEtag
 		}
@@ -314,12 +316,16 @@ func (s *ProviderRemote) updateProviderFromContent(content string) error {
 	if err != nil {
 		return err
 	}
+	s.updateProviderFromOptions(outboundOpts)
+	return nil
+}
+
+func (s *ProviderRemote) updateProviderFromOptions(outboundOpts []option.Outbound) {
 	outboundOpts = common.Filter(outboundOpts, func(it option.Outbound) bool {
 		return (s.exclude == nil || !s.exclude.MatchString(it.Tag)) && (s.include == nil || s.include.MatchString(it.Tag))
 	})
 	s.UpdateOutbounds(s.lastOutOpts, outboundOpts)
 	s.lastOutOpts = outboundOpts
-	return nil
 }
 
 func getFirstLine(content string) (string, string) {
