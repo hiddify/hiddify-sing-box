@@ -501,8 +501,8 @@ github.com/shtorm-7/dnscrypt/v2 v2.4.0-extended-1.0.0 h1:e5s7RKBd2rIPR0StbvZ2vTV
 github.com/shtorm-7/dnscrypt/v2 v2.4.0-extended-1.0.0/go.mod h1:WpEFV2uhebXb8Jhes/5/fSdpmhGV8TL22RDaeWwV6hI=
 github.com/shtorm-7/go-cache/v2 v2.1.0-extended-1.2.0 h1:aOd9Vy2LGSwgMM+4805AgLBE/MQf8UymbXHxUZjSmoU=
 github.com/shtorm-7/go-cache/v2 v2.1.0-extended-1.2.0/go.mod h1:Ek4yz5OK6stwhLKgLsRRYDI+FA+ZWvRJiWLjsi/vMM4=
-github.com/shtorm-7/mtg-multi v1.11.0-extended-1.0.0 h1:iBLll4ZZG8ULQcHWs6gGslZWtBN72Zo1zjySzMVHF7g=
-github.com/shtorm-7/mtg-multi v1.11.0-extended-1.0.0/go.mod h1:3rvdhwdPABkwKBdvgMt3VwMn9uSq8hpoHRezZ5jRJU0=
+github.com/shtorm-7/mtg-multi v1.12.0-extended-1.0.0 h1:C3z032x0hxf7hVifdX//7p0JcZKhIgLga2thm6/gUu4=
+github.com/shtorm-7/mtg-multi v1.12.0-extended-1.0.0/go.mod h1:3rvdhwdPABkwKBdvgMt3VwMn9uSq8hpoHRezZ5jRJU0=
 github.com/shtorm-7/rmux v1.0.1 h1:ES3/MEQIXG1FR/Lb70M1YFP8eHTPQ99OjPLkutGbLF4=
 github.com/shtorm-7/rmux v1.0.1/go.mod h1:6tVwUpgjMcCTi3iami7le2/rqhfR6aFPhwuyFzGNQcw=
 github.com/shtorm-7/sing v0.9.7-extended-1.2.1 h1:CWLGvp/D3U39lV9rkNvlY8/Ru/0u5N5jZSEwi8zlcLE=

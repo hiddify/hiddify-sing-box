@@ -278,7 +278,7 @@ replace github.com/ameshkov/dnscrypt/v2 => github.com/shtorm-7/dnscrypt/v2 v2.4.
 
 replace github.com/sagernet/sing-vmess => github.com/shtorm-7/sing-vmess v0.2.9-extended-1.0.0
 
-replace github.com/dolonet/mtg-multi => github.com/shtorm-7/mtg-multi v1.11.0-extended-1.0.0
+replace github.com/dolonet/mtg-multi => github.com/shtorm-7/mtg-multi v1.12.0-extended-1.0.0
 
 replace github.com/Diniboy1123/connect-ip-go => github.com/shtorm-7/connect-ip-go v1.0.0-extended-1.1.1
 
