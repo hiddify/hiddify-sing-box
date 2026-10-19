@@ -52,6 +52,7 @@
       "quic": true,
       "congestion_controller": "bbr", // bbr, bbr_standard, bbr2, bbr2_variant, cubic, reno
       "cwnd": 32,
+      "disable_path_mtu_discovery": false, // QUIC only
       "multiplex": {
         "enabled": true,
         "max_connections": 8,

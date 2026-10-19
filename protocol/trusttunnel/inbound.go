@@ -157,9 +157,10 @@ func (h *Inbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 			},
 		}
 		quicListener, err := qtls.ListenEarly(udpConn, h.http3TLSConfig, &quic.Config{
-			MaxIdleTimeout:     trusttunnel.DefaultSessionTimeout * 2,
-			MaxIncomingStreams: 1 << 60,
-			Allow0RTT:          true,
+			MaxIdleTimeout:          trusttunnel.DefaultSessionTimeout * 2,
+			MaxIncomingStreams:      1 << 60,
+			Allow0RTT:               true,
+			DisablePathMTUDiscovery: h.options.DisablePathMTUDiscovery,
 		})
 		if err != nil {
 			return err

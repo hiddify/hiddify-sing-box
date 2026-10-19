@@ -45,16 +45,17 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 		return nil, err
 	}
 	clientOpts := trusttunnel.ClientOptions{
-		Dialer:            outboundDialer,
-		TLSConfig:         tlsConfig,
-		Server:            serverAddr,
-		Username:          options.Username,
-		Password:          options.Password,
-		QUIC:              options.QUIC,
-		CongestionControl: options.CongestionController,
-		CWND:              options.CWND,
-		Logger:            logger,
-		HealthCheck:       options.HealthCheck,
+		Dialer:                  outboundDialer,
+		TLSConfig:               tlsConfig,
+		Server:                  serverAddr,
+		Username:                options.Username,
+		Password:                options.Password,
+		QUIC:                    options.QUIC,
+		DisablePathMTUDiscovery: options.DisablePathMTUDiscovery,
+		CongestionControl:       options.CongestionController,
+		CWND:                    options.CWND,
+		Logger:                  logger,
+		HealthCheck:             options.HealthCheck,
 	}
 	var client trusttunnel.Dialer
 	if options.Multiplex != nil && options.Multiplex.Enabled {
