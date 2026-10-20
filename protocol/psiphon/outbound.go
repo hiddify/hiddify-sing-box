@@ -3,6 +3,7 @@ package psiphon
 import (
 	"context"
 	"encoding/base64"
+	"fmt"
 	"net"
 	"path/filepath"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/outbound"
 	"github.com/sagernet/sing-box/common/dialer"
+	"github.com/sagernet/sing-box/common/proxybridge"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/hiddify/secret"
 	"github.com/sagernet/sing-box/log"
@@ -54,6 +56,7 @@ type Outbound struct {
 	mu          sync.RWMutex
 	reconnectCh chan struct{}
 	psiphon     *Psiphon
+	proxy       *proxybridge.Bridge
 }
 
 type tunnelOwner struct{ notify func() }
@@ -104,7 +107,20 @@ func (h *Outbound) PreStart() error {
 	return h.psiphon.PreStart()
 }
 func (h *Outbound) Start() error {
-
+	// The Psiphon library opens its own connections. Without this bridge they ignored the
+	// outbound's dialer (its detour, e.g. the main proxy), and in VPN mode they went back into
+	// the tunnel. Same approach as the Tor outbound.
+	if h.psiphon.config.UpstreamProxyURL == "" {
+		proxy, err := proxybridge.New(h.ctx, h.logger, "psiphon", h.dialer)
+		if err != nil {
+			return err
+		}
+		if err = proxy.Start(); err != nil {
+			return err
+		}
+		h.proxy = proxy
+		h.psiphon.config.UpstreamProxyURL = fmt.Sprint("socks5://", proxy.Username(), ":", proxy.Password(), "@127.0.0.1:", proxy.Port())
+	}
 	go h.run()
 	return nil
 }
@@ -182,7 +198,9 @@ func (h *Outbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (n
 func (h *Outbound) Close() error {
 
 	h.psiphon.Close()
-
+	if h.proxy != nil {
+		h.proxy.Close()
+	}
 	return nil
 }
 
