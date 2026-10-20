@@ -43,6 +43,9 @@ const (
 	defaultURLTest        = "https://www.gstatic.com/generate_204"
 )
 
+// H: a test broken by a network reset waits this long, for the reset to end, then runs again
+const networkResetWait = time.Second
+
 // func RegisterService(registry *boxService.Registry) {
 // 	boxService.Register[option.MonitoringOptions](registry, C.TypeOutboundMonitor, func(ctx context.Context, logger log.ContextLogger, tag string, options option.MonitoringOptions) (adapter.Service, error) {
 // 		return NewOutboundMonitoring(ctx, logger, tag, options)
@@ -90,15 +93,17 @@ type OutboundMonitoring struct {
 
 	cycleSeq     uint64
 	cycleRunning atomic.Bool
+	networkSeq   atomic.Uint64 //H: counts network resets, see executeTask
 
 	workerWG    sync.WaitGroup
 	schedulerWG sync.WaitGroup
 	closerOnce  sync.Once
 }
 
-// InterfaceUpdated implements [adapter.InterfaceUpdateListener].
+// InterfaceUpdated implements [adapter.InterfaceUpdateListener]. H: called by the network reset,
+// which closes every connection, the running URL tests included.
 func (m *OutboundMonitoring) InterfaceUpdated(ctx context.Context) {
-	m.startCycleOnce()
+	m.networkSeq.Add(1)
 }
 
 // Name implements [adapter.LifecycleService].
@@ -538,7 +543,18 @@ func (m *OutboundMonitoring) executeTask(task *testTask) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
+		networkSeq := m.networkSeq.Load()
 		delay, err := m.tester(m.ctx, task.outboundTag)
+		for err != nil && m.networkSeq.Load() != networkSeq { //H: a network reset broke the test
+			m.logger.Info("outbound ", task.outboundTag, " test broken by a network reset, testing again")
+			networkSeq = m.networkSeq.Load()
+			select {
+			case <-m.ctx.Done():
+				return
+			case <-time.After(networkResetWait):
+			}
+			delay, err = m.tester(m.ctx, task.outboundTag)
+		}
 
 		outcome := testOutcome{
 			outboundTag: task.outboundTag,
