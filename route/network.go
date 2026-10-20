@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/common/monitoring"
 	"github.com/sagernet/sing-box/common/settings"
 	"github.com/sagernet/sing-box/common/taskmonitor"
 	C "github.com/sagernet/sing-box/constant"
@@ -488,6 +489,10 @@ func (r *NetworkManager) UpdateWIFIState(ctx context.Context) {
 }
 
 func (r *NetworkManager) ResetNetwork(ctx context.Context) {
+	// H: before CloseAll, so a URL test it breaks already sees the change
+	if monitor := monitoring.Get(r.ctx); monitor != nil {
+		monitor.InterfaceUpdated(ctx)
+	}
 	if r.connectionManager != nil {
 		r.connectionManager.CloseAll()
 	}
