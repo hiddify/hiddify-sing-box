@@ -471,10 +471,13 @@ func (c *Client) Lookup(ctx context.Context, transport adapter.DNSTransport, dom
 	}
 	var response4 []netip.Addr
 	var response6 []netip.Addr
-	// H: IPv4 addresses are enough to connect, so the IPv6 question is not waited for once they
-	// arrive; on a filtered network it can wait until the timeout on servers that never answer
+	// H: either family is enough to connect, so once one answers, the other question is waited
+	// for only one more second when it is the preferred family (IPv6 with prefer_ipv6, IPv4
+	// otherwise), and not at all otherwise; on a filtered network it can wait until the timeout
+	// on servers that never answer
 	lookupCtx, stopLookup := context.WithCancel(ctx)
 	defer stopLookup()
+	var stopTimer4, stopTimer6 *time.Timer
 	var group task.Group
 	group.Append("exchange4", func(ctx context.Context) error {
 		response, err := c.lookupToExchange(ctx, transport, dnsName, dns.TypeA, lookupOptions, responseChecker)
@@ -482,8 +485,12 @@ func (c *Client) Lookup(ctx context.Context, transport adapter.DNSTransport, dom
 			return err
 		}
 		response4 = response
-		if len(response) > 0 && strategy != C.DomainStrategyPreferIPv6 { //H
-			stopLookup()
+		if len(response) > 0 { //H
+			if strategy == C.DomainStrategyPreferIPv6 {
+				stopTimer4 = time.AfterFunc(time.Second, stopLookup)
+			} else {
+				stopLookup()
+			}
 		}
 		return nil
 	})
@@ -493,9 +500,21 @@ func (c *Client) Lookup(ctx context.Context, transport adapter.DNSTransport, dom
 			return err
 		}
 		response6 = response
+		if len(response) > 0 { //H
+			if strategy == C.DomainStrategyPreferIPv6 {
+				stopLookup()
+			} else {
+				stopTimer6 = time.AfterFunc(time.Second, stopLookup)
+			}
+		}
 		return nil
 	})
 	err := group.Run(lookupCtx)
+	for _, stopTimer := range []*time.Timer{stopTimer4, stopTimer6} {
+		if stopTimer != nil {
+			stopTimer.Stop()
+		}
+	}
 	if len(response4) == 0 && len(response6) == 0 {
 		return nil, err
 	}
