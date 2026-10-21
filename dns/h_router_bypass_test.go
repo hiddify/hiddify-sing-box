@@ -385,3 +385,58 @@ func TestH_ClearCachePurgesReverseMapping(t *testing.T) {
 	_, loaded = router.LookupReverseMapping(netip.MustParseAddr("1.2.3.4"))
 	require.False(t, loaded)
 }
+
+// hFamilyTransport answers an A question at once and an AAAA question after ipv6Delay, or never
+// when ipv6Delay is 0, like a filtered network.
+type hFamilyTransport struct {
+	fakeDNSTransport
+	ipv4, ipv6 []netip.Addr
+	ipv6Delay  time.Duration
+}
+
+func (t *hFamilyTransport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error) {
+	question := message.Question[0]
+	if question.Qtype == mDNS.TypeA {
+		return FixedResponse(message.Id, question, t.ipv4, 60), nil
+	}
+	var answered <-chan time.Time
+	if t.ipv6Delay > 0 {
+		answered = time.After(t.ipv6Delay)
+	}
+	select {
+	case <-answered:
+		return FixedResponse(message.Id, question, t.ipv6, 60), nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func (t *hFamilyTransport) ExchangeAsync(ctx context.Context, message *mDNS.Msg, callback func(*mDNS.Msg, error)) {
+	go func() {
+		callback(t.Exchange(ctx, message))
+	}()
+}
+
+// Once IPv4 addresses arrive, a lookup returns them without waiting for the IPv6 answer. A name
+// without IPv4 and the prefer_ipv6 strategy still wait for it.
+func TestH_LookupDoesNotWaitForIPv6(t *testing.T) {
+	ipv4 := netip.MustParseAddr("1.2.3.4")
+	ipv6 := netip.MustParseAddr("2001:db8::1")
+	client := NewClient(ClientOptions{Context: context.Background(), Timeout: 3 * time.Second, DisableCache: true, Logger: log.NewNOPFactory().Logger()})
+	lookup := func(transport *hFamilyTransport, strategy C.DomainStrategy) ([]netip.Addr, time.Duration) {
+		start := time.Now()
+		addresses, err := client.Lookup(context.Background(), transport, "example.com", adapter.DNSQueryOptions{Strategy: strategy}, nil)
+		require.NoError(t, err)
+		return addresses, time.Since(start)
+	}
+
+	addresses, elapsed := lookup(&hFamilyTransport{ipv4: []netip.Addr{ipv4}}, C.DomainStrategyAsIS)
+	require.Equal(t, []netip.Addr{ipv4}, addresses)
+	require.Less(t, elapsed, 500*time.Millisecond, "the IPv6 question never gets an answer")
+
+	addresses, _ = lookup(&hFamilyTransport{ipv6: []netip.Addr{ipv6}, ipv6Delay: 50 * time.Millisecond}, C.DomainStrategyAsIS)
+	require.Equal(t, []netip.Addr{ipv6}, addresses)
+
+	addresses, _ = lookup(&hFamilyTransport{ipv4: []netip.Addr{ipv4}, ipv6: []netip.Addr{ipv6}, ipv6Delay: 50 * time.Millisecond}, C.DomainStrategyPreferIPv6)
+	require.Equal(t, []netip.Addr{ipv6, ipv4}, addresses)
+}
