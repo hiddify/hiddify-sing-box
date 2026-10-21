@@ -475,6 +475,10 @@ func (c *Client) Lookup(ctx context.Context, transport adapter.DNSTransport, dom
 	}
 	var response4 []netip.Addr
 	var response6 []netip.Addr
+	// H: IPv4 addresses are enough to connect, so the IPv6 question is not waited for once they
+	// arrive; on a filtered network it can wait until the timeout on servers that never answer
+	lookupCtx, stopLookup := context.WithCancel(ctx)
+	defer stopLookup()
 	var group task.Group
 	group.Append("exchange4", func(ctx context.Context) error {
 		response, err := c.lookupToExchange(ctx, transport, dnsName, dns.TypeA, lookupOptions, responseChecker)
@@ -482,6 +486,9 @@ func (c *Client) Lookup(ctx context.Context, transport adapter.DNSTransport, dom
 			return err
 		}
 		response4 = response
+		if len(response) > 0 && strategy != C.DomainStrategyPreferIPv6 { //H
+			stopLookup()
+		}
 		return nil
 	})
 	group.Append("exchange6", func(ctx context.Context) error {
@@ -492,7 +499,7 @@ func (c *Client) Lookup(ctx context.Context, transport adapter.DNSTransport, dom
 		response6 = response
 		return nil
 	})
-	err := group.Run(ctx)
+	err := group.Run(lookupCtx)
 	if len(response4) == 0 && len(response6) == 0 {
 		return nil, err
 	}
