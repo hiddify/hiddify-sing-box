@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -382,4 +383,48 @@ func TestH_MonitoringSignalChangePropagatesToDependents(t *testing.T) {
 	require.False(t, m.reg().outbounds["b"].priorityQueued, "selector members did not change")
 
 	require.Error(t, m.SignalChange("missing"))
+}
+
+// A test broken by a network reset (it closes every connection) runs again in the same cycle
+// instead of showing a timeout until the next one; a plain failure is not run again.
+func TestH_MonitoringRetestsTestBrokenByNetworkReset(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(3 * time.Millisecond) // a 0 ms delay would read as "not measured"
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+	var dialer net.Dialer
+	var m *OutboundMonitoring
+	var brokenDials, plainDials atomic.Int32
+	broken := &fakeOutbound{tag: "broken", dial: func(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
+		if brokenDials.Add(1) == 1 {
+			m.InterfaceUpdated(ctx)
+			return nil, errors.New("use of closed network connection")
+		}
+		return dialer.DialContext(ctx, network, destination.String())
+	}}
+	plain := &fakeOutbound{tag: "plain", dial: func(context.Context, string, M.Socksaddr) (net.Conn, error) {
+		plainDials.Add(1)
+		return nil, errors.New("plain: unreachable")
+	}}
+	grp := &fakeGroup{fakeOutbound: fakeOutbound{tag: "grp"}, all: []string{"broken", "plain"}}
+	m = newTestMonitor(t, nil, option.MonitoringOptions{
+		Interval:       badoption.Duration(time.Hour),
+		Workers:        1,
+		URLs:           []string{server.URL + "/generate_204"},
+		URLTestTimeout: badoption.Duration(time.Second),
+	}, broken, plain, grp)
+	require.NoError(t, m.Start(adapter.StartStateInitialize))
+	start := time.Now()
+	require.NoError(t, m.Start(adapter.StartStatePostStart))
+
+	require.Eventually(t, func() bool {
+		state := m.reg().outbounds["broken"]
+		state.mu.Lock()
+		defer state.mu.Unlock()
+		return !state.invalid && state.history.Delay > 0 && state.history.Delay < TimeoutDelay
+	}, 3*time.Second, 10*time.Millisecond, "the broken test runs again and passes")
+	require.GreaterOrEqual(t, time.Since(start), networkResetWait, "it runs again once the reset is over")
+	require.Eventually(t, func() bool { return !m.cycleRunning.Load() }, 3*time.Second, 10*time.Millisecond, "the cycle ends")
+	require.EqualValues(t, 1, plainDials.Load(), "a failure without a network reset is not run again")
 }
