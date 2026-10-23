@@ -33,11 +33,8 @@ import (
 
 var _ adapter.RuleSet = (*RemoteRuleSet)(nil)
 
-// H: limits of rule-set downloads
-var (
-	hRuleSetInitialFetchTimeout = 15 * time.Second
-	hRuleSetFetchTimeout        = 2 * time.Minute
-)
+// H: a rule-set download gives up after this
+var hRuleSetFetchTimeout = 2 * time.Minute
 
 // H: retry delays after a failed rule-set fetch; the last one repeats until success
 var hRuleSetRetryDelays = []time.Duration{time.Second, 10 * time.Second, 30 * time.Second, time.Minute, 5 * time.Minute, 10 * time.Minute, 30 * time.Minute}
@@ -142,24 +139,14 @@ func (s *RemoteRuleSet) StartContext(ctx context.Context, startContext *adapter.
 			loadedFromInitialPath = true
 		}
 	}
+	// H: no download here: the start, and with it the tunnel, would wait for it, through an outbound
+	// that is itself still starting, and a stop could not cut it short. The rule-set starts empty and
+	// loopUpdate fetches it as soon as the service is up.
 	if s.lastUpdated.IsZero() && !loadedFromInitialPath {
-		s.initialFetch(ctx)
+		s.fetchFailed = true
 	}
 	s.updateTicker = time.NewTicker(s.updateInterval)
 	return nil
-}
-
-// initialFetch downloads a rule-set that has no cached copy, for at most hRuleSetInitialFetchTimeout:
-// startup (and with it the TUN) waits for it, and a download through a stalled outbound would
-// otherwise never end. On failure the rule-set starts empty and loopUpdate retries it. //H
-func (s *RemoteRuleSet) initialFetch(ctx context.Context) {
-	fetchCtx, cancel := context.WithTimeout(ctx, hRuleSetInitialFetchTimeout)
-	defer cancel()
-	err := s.fetch(fetchCtx, true)
-	if err != nil {
-		s.logger.Warn("initial rule-set ", s.tag, " unavailable, will retry: ", err)
-		s.fetchFailed = true
-	}
 }
 
 func (s *RemoteRuleSet) PostStart() error {
@@ -262,9 +249,13 @@ func (s *RemoteRuleSet) loopUpdate() {
 	}
 	retrying := s.fetchFailed || time.Since(s.lastUpdated) > s.updateInterval
 	retryIndex := 0
-	if retrying && !s.fetchFailed {
-		// stale cache: refresh immediately, back off only if that fails
-		retrying = s.updateOnce() != nil
+	if retrying {
+		// missing (the start does not download it) or stale: fetch right away, back off only if
+		// that fails
+		if s.updateOnce() == nil {
+			retrying = false
+			s.fetchFailed = false
+		}
 	}
 	for {
 		if retrying {

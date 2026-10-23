@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -17,12 +18,70 @@ type HTTPObfsServer struct {
 	net.Conn
 	buf           []byte
 	bio           *bufio.Reader
+	recorder      *recordingReader
 	offset        int
 	firstRequest  bool
 	firstResponse bool
 }
 
+// recordingReader keeps a copy of what it reads until stopped, so that a request
+// that turns out not to be simple-obfs can be replayed with everything bufio read ahead.
+type recordingReader struct {
+	io.Reader
+	recorded []byte
+	stopped  bool
+}
+
+func (r *recordingReader) Read(b []byte) (int, error) {
+	n, err := r.Reader.Read(b)
+	if !r.stopped {
+		r.recorded = append(r.recorded, b[:n]...)
+	}
+	return n, err
+}
+
+// handshake reads and checks the client's upgrade request. It returns every byte
+// it read, so that a connection that is not simple-obfs can be replayed to a fallback server.
+func (hos *HTTPObfsServer) handshake() ([]byte, error) {
+	hos.firstRequest = false
+	hos.recorder = &recordingReader{Reader: hos.Conn}
+	bio := bufio.NewReader(hos.recorder)
+	prefix, err := bio.Peek(4)
+	if err != nil {
+		return hos.recorder.recorded, err
+	}
+	if string(prefix) != "GET " {
+		return hos.recorder.recorded, ErrNotObfs
+	}
+	req, err := http.ReadRequest(bio)
+	if err != nil {
+		return hos.recorder.recorded, ErrNotObfs
+	}
+	if !strings.EqualFold(req.Header.Get("Upgrade"), "websocket") ||
+		!strings.Contains(strings.ToLower(req.Header.Get("Connection")), "upgrade") {
+		return hos.recorder.recorded, ErrNotObfs
+	}
+	body, err := io.ReadAll(req.Body)
+	req.Body.Close()
+	if err != nil {
+		return hos.recorder.recorded, err
+	}
+	hos.recorder.stopped = true
+	hos.recorder.recorded = nil
+	if len(body) > 0 {
+		hos.buf = body
+	}
+	hos.bio = bio
+	return nil, nil
+}
+
 func (hos *HTTPObfsServer) Read(b []byte) (int, error) {
+	if hos.firstRequest {
+		if _, err := hos.handshake(); err != nil {
+			return 0, err
+		}
+	}
+
 	if hos.buf != nil {
 		n := copy(b, hos.buf[hos.offset:])
 		hos.offset += n
@@ -30,31 +89,6 @@ func (hos *HTTPObfsServer) Read(b []byte) (int, error) {
 			hos.offset = 0
 			hos.buf = nil
 		}
-		return n, nil
-	}
-
-	if hos.firstRequest {
-		bio := bufio.NewReader(hos.Conn)
-		req, err := http.ReadRequest(bio)
-		if err != nil {
-			return 0, err
-		}
-		if req.Method != "GET" || req.Header.Get("Connection") != "Upgrade" {
-			return 0, io.EOF
-		}
-
-		body, err := io.ReadAll(req.Body)
-		req.Body.Close()
-		if err != nil {
-			return 0, err
-		}
-		n := copy(b, body)
-		if n < len(body) {
-			hos.buf = body
-			hos.offset = n
-		}
-		hos.bio = bio
-		hos.firstRequest = false
 		return n, nil
 	}
 

@@ -160,6 +160,12 @@ func (s *StartedService) updateStatusError(err error) {
 	s.serviceStatus = statusObject
 }
 
+// InterruptStart cancels a start in progress, which StartOrReloadService then gives up and returns
+// from; nothing when no start is in progress. //H
+func (s *StartedService) InterruptStart() {
+	s.interruptStart()
+}
+
 func (s *StartedService) interruptStart() {
 	s.serviceAccess.Lock()
 	if s.serviceStatus.Status == ServiceStatus_STARTING && s.instance != nil {

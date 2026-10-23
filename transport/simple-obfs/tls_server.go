@@ -15,11 +15,18 @@ import (
 // It reads the client's fake ClientHello and writes a fake ServerHello.
 type TLSObfsServer struct {
 	net.Conn
-	remain            int
-	firstRequest      bool
-	sessionTicketDone bool
-	firstResponse     bool
+	remain        int
+	pending       []byte
+	handshakeDone bool
+	firstResponse bool
 }
+
+// Byte layout of the fake ClientHello written by makeClientHelloMsg.
+const (
+	tlsHelloFixedLength = 133 // handshake header up to and including compression methods
+	tlsHelloTailLength  = 66  // ec_point_formats, groups, signature_algorithms, encrypt_then_mac, extended_master_secret
+	tlsCipherSuitesSize = 0x38
+)
 
 func (tos *TLSObfsServer) read(b []byte, discardN int) (int, error) {
 	discard := B.Get(discardN)
@@ -32,7 +39,7 @@ func (tos *TLSObfsServer) read(b []byte, discardN int) (int, error) {
 	sizeBuf := make([]byte, 2)
 	_, err = io.ReadFull(tos.Conn, sizeBuf)
 	if err != nil {
-		return 0, nil
+		return 0, err
 	}
 
 	length := int(binary.BigEndian.Uint16(sizeBuf))
@@ -48,18 +55,86 @@ func (tos *TLSObfsServer) read(b []byte, discardN int) (int, error) {
 	return io.ReadFull(tos.Conn, b[:length])
 }
 
-// skipOtherExts discards SNI and other TLS extensions after session ticket.
-func (tos *TLSObfsServer) skipOtherExts() error {
-	buf := make([]byte, 256)
-	_, err := tos.read(buf, 7)
+// handshake reads the whole fake ClientHello record and keeps the payload carried
+// in its session ticket. It returns every byte it read, so that a connection that
+// is not simple-obfs can be replayed to a fallback server.
+func (tos *TLSObfsServer) handshake() ([]byte, error) {
+	tos.handshakeDone = true
+	header := make([]byte, 5)
+	n, err := io.ReadFull(tos.Conn, header)
 	if err != nil {
-		return err
+		return header[:n], err
 	}
-	_, err = io.ReadFull(tos.Conn, buf[:4*16+2])
-	return err
+	if header[0] != 0x16 || header[1] != 0x03 {
+		return header, ErrNotObfs
+	}
+	recordLength := int(binary.BigEndian.Uint16(header[3:5]))
+	if recordLength < tlsHelloFixedLength+4+9+tlsHelloTailLength {
+		return header, ErrNotObfs
+	}
+	record := make([]byte, 5+recordLength)
+	copy(record, header)
+	n, err = io.ReadFull(tos.Conn, record[5:])
+	if err != nil {
+		return record[:5+n], err
+	}
+	payload, err := parseTLSObfsClientHello(record[5:])
+	if err != nil {
+		return record, err
+	}
+	tos.pending = payload
+	return nil, nil
+}
+
+// parseTLSObfsClientHello checks that hello has the exact layout of the simple-obfs
+// ClientHello and returns the payload carried in the session ticket extension.
+func parseTLSObfsClientHello(hello []byte) ([]byte, error) {
+	if hello[0] != 0x01 || int(hello[1])<<16|int(hello[2])<<8|int(hello[3]) != len(hello)-4 {
+		return nil, ErrNotObfs
+	}
+	if hello[4] != 0x03 || hello[5] != 0x03 || hello[38] != 32 {
+		return nil, ErrNotObfs
+	}
+	if binary.BigEndian.Uint16(hello[71:73]) != tlsCipherSuitesSize || hello[129] != 0x01 || hello[130] != 0x00 {
+		return nil, ErrNotObfs
+	}
+	if int(binary.BigEndian.Uint16(hello[131:133])) != len(hello)-tlsHelloFixedLength {
+		return nil, ErrNotObfs
+	}
+	extensions := hello[tlsHelloFixedLength:]
+	if binary.BigEndian.Uint16(extensions[0:2]) != 0x0023 {
+		return nil, ErrNotObfs
+	}
+	ticketLength := int(binary.BigEndian.Uint16(extensions[2:4]))
+	if ticketLength == 0 || 4+ticketLength+9 > len(extensions) {
+		return nil, ErrNotObfs
+	}
+	payload := extensions[4 : 4+ticketLength]
+	serverName := extensions[4+ticketLength:]
+	nameLength := int(binary.BigEndian.Uint16(serverName[7:9]))
+	if binary.BigEndian.Uint16(serverName[0:2]) != 0x0000 ||
+		int(binary.BigEndian.Uint16(serverName[2:4])) != nameLength+5 ||
+		int(binary.BigEndian.Uint16(serverName[4:6])) != nameLength+3 ||
+		serverName[6] != 0 ||
+		len(serverName) != 9+nameLength+tlsHelloTailLength {
+		return nil, ErrNotObfs
+	}
+	return payload, nil
 }
 
 func (tos *TLSObfsServer) Read(b []byte) (int, error) {
+	if !tos.handshakeDone {
+		if _, err := tos.handshake(); err != nil {
+			return 0, err
+		}
+	}
+
+	if len(tos.pending) > 0 {
+		n := copy(b, tos.pending)
+		tos.pending = tos.pending[n:]
+		return n, nil
+	}
+
 	if tos.remain > 0 {
 		length := tos.remain
 		if length > len(b) {
@@ -68,19 +143,6 @@ func (tos *TLSObfsServer) Read(b []byte) (int, error) {
 		n, err := io.ReadFull(tos.Conn, b[:length])
 		tos.remain -= n
 		return n, err
-	}
-
-	if tos.firstRequest {
-		tos.firstRequest = false
-		// Skip: record header(5) + handshake header(4) + TLS version(2) + timestamp(4) + random(28) + sid_len(1) + sid(32) + cipher_suites_len(2) + ciphers(56) + compress(2) = 9*16-4 = 140 bytes
-		return tos.read(b, 9*16-4)
-	}
-
-	if !tos.sessionTicketDone {
-		tos.sessionTicketDone = true
-		if err := tos.skipOtherExts(); err != nil {
-			return 0, err
-		}
 	}
 
 	return tos.read(b, 3)
@@ -125,7 +187,6 @@ func (tos *TLSObfsServer) Upstream() any {
 func NewTLSObfsServer(conn net.Conn) net.Conn {
 	return &TLSObfsServer{
 		Conn:          conn,
-		firstRequest:  true,
 		firstResponse: true,
 	}
 }
