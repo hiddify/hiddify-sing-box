@@ -14,7 +14,6 @@ import (
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
-	obfs "github.com/sagernet/sing-box/transport/simple-obfs"
 	"github.com/sagernet/sing-shadowsocks"
 	"github.com/sagernet/sing-shadowsocks/shadowaead"
 	"github.com/sagernet/sing-shadowsocks/shadowaead_2022"
@@ -43,23 +42,21 @@ type MultiInbound struct {
 	service  shadowsocks.MultiService[int]
 	users    []option.ShadowsocksUser
 	tracker  adapter.SSMTracker
-	obfsMode string
+	obfs     obfsServer
 }
 
 func newMultiInbound(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.ShadowsocksInboundOptions) (*MultiInbound, error) {
-	switch options.ObfsMode {
-	case "", "http", "tls":
-	default:
-		return nil, E.New("shadowsocks: unsupported obfs mode: ", options.ObfsMode)
+	obfsServer, err := newObfsServer(options)
+	if err != nil {
+		return nil, err
 	}
 	inbound := &MultiInbound{
-		Adapter:  inbound.NewAdapter(C.TypeShadowsocks, tag),
-		ctx:      ctx,
-		router:   uot.NewRouter(router, logger),
-		logger:   logger,
-		obfsMode: options.ObfsMode,
+		Adapter: inbound.NewAdapter(C.TypeShadowsocks, tag),
+		ctx:     ctx,
+		router:  uot.NewRouter(router, logger),
+		logger:  logger,
+		obfs:    obfsServer,
 	}
-	var err error
 	inbound.router, err = mux.NewRouterWithOptions(inbound.router, logger, common.PtrValueOrDefault(options.Multiplex))
 	if err != nil {
 		return nil, err
@@ -147,21 +144,9 @@ func (h *MultiInbound) UpdateUsers(users []string, uPSKs []string) error {
 
 //nolint:staticcheck
 func (h *MultiInbound) NewConnection(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
-	switch h.obfsMode {
-	case "http":
-		conn = obfs.NewHTTPObfsServer(conn)
-	case "tls":
-		conn = obfs.NewTLSObfsServer(conn)
-	}
-	err := h.service.NewConnection(ctx, conn, adapter.UpstreamMetadata(metadata))
-	N.CloseOnHandshakeFailure(conn, onClose, err)
-	if err != nil {
-		if E.IsClosedOrCanceled(err) {
-			h.logger.DebugContext(ctx, "connection closed: ", err)
-		} else {
-			h.logger.ErrorContext(ctx, E.Cause(err, "process connection from ", metadata.Source))
-		}
-	}
+	h.obfs.serve(ctx, conn, metadata, onClose, h, h.router, h.logger, func(ctx context.Context, conn net.Conn) error {
+		return h.service.NewConnection(ctx, conn, adapter.UpstreamMetadata(metadata))
+	})
 }
 
 //nolint:staticcheck
@@ -173,6 +158,7 @@ func (h *MultiInbound) NewPacket(buffer *buf.Buffer, source M.Socksaddr) {
 }
 
 func (h *MultiInbound) newConnection(ctx context.Context, conn net.Conn, metadata adapter.InboundContext) error {
+	markAuthenticated(ctx)
 	userIndex, loaded := auth.UserFromContext[int](ctx)
 	if !loaded {
 		return os.ErrInvalid
