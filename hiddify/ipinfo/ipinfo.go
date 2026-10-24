@@ -4,41 +4,35 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
-
-	C "github.com/sagernet/sing-box/constant"
-
-	"github.com/sagernet/sing-box/log"
-
+	"strings"
 	"time"
 
+	C "github.com/sagernet/sing-box/constant"
+	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing/common"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 )
 
+// providers that currently return usable JSON without challenge pages / dead hosts.
 var providers = []Provider{
-	NewFreeIpApiProvider(),
 	NewIpApiCoProvider(),
 	NewIpApiProvider(),
 	NewIpInfoIoProvider(),
 	NewIpSbProvider(),
 	NewIpWhoIsProvider(),
-	// NewCloudflareTraceProvider(),
 	NewCountryIsProvider(),
-	NewMyIPExpertProvider(),
 	NewMyIPioProvider(),
-	NewReallyFreeGeoIPProvider(),
 }
 
 var fallbackProviders = []Provider{
-	NewMyIPProvider(),
 	NewCountryIsProvider(),
-	// NewCloudflareTraceProvider(),
+	NewMyIPioProvider(),
 }
 
 func GetAllIPCheckerDomainsDomains() []string {
@@ -154,7 +148,7 @@ func (p *BaseProvider) fetchData(ctx context.Context, detour N.Dialer) (map[stri
 	if resp.StatusCode != http.StatusOK {
 		return nil, 65535, fmt.Errorf("non-200 response from [%s]: %d", p.URL, resp.StatusCode)
 	}
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, 65535, fmt.Errorf("failed to read response from [%s]: %v", p.URL, err)
 	}
@@ -169,9 +163,24 @@ func (p *BaseProvider) fetchData(ctx context.Context, detour N.Dialer) (map[stri
 
 }
 
-// getCurrentIpInfo iterates over the providers to fetch and parse IP information.
-func GetIpInfo(logger log.Logger, ctx context.Context, detour N.Dialer) (*IpInfo, uint16, error) {
+// GetIpInfo iterates over the providers to fetch and parse IP information.
+// When customURL is non-empty (subscription `ipinfo-url`), that endpoint is
+// tried first with the custom ipapi-compatible parser.
+func GetIpInfo(logger log.Logger, ctx context.Context, detour N.Dialer, customURL ...string) (*IpInfo, uint16, error) {
 	var lastErr error
+	if len(customURL) > 0 {
+		if u := strings.TrimSpace(customURL[0]); u != "" {
+			p := NewCustomIpApiProvider(u)
+			testCtx, cancel := context.WithTimeout(ctx, C.TCPTimeout)
+			ipInfo, t, err := p.GetIPInfo(testCtx, detour)
+			cancel()
+			if err == nil {
+				return ipInfo, t, nil
+			}
+			logger.Warn("custom ipinfo-url failed, falling back: ", p.GetName(), " ", err)
+			lastErr = err
+		}
+	}
 	startIndex := rand.Intn(len(providers))
 	for i := 0; i < len(providers); i++ {
 		select {

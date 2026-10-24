@@ -57,6 +57,7 @@ type urlProvider interface {
 
 func (p *FreeIpApiProvider) base() *BaseProvider       { return &p.BaseProvider }
 func (p *IpApiCoProvider) base() *BaseProvider         { return &p.BaseProvider }
+func (p *CustomIpApiProvider) base() *BaseProvider     { return &p.BaseProvider }
 func (p *IpApiProvider) base() *BaseProvider           { return &p.BaseProvider }
 func (p *IpInfoIoProvider) base() *BaseProvider        { return &p.BaseProvider }
 func (p *IpSbProvider) base() *BaseProvider            { return &p.BaseProvider }
@@ -85,6 +86,18 @@ func TestH_IpInfoProviderParsing(t *testing.T) {
 			provider: NewIpApiCoProvider(),
 			body:     `{"ip":"1.2.3.4","country_code":"US","region":"California","city":"LA","asn":"AS15169","org":"Google LLC","latitude":34.05,"longitude":-118.24,"postal":"90001"}`,
 			want:     IpInfo{IP: "1.2.3.4", CountryCode: "US", Region: "California", City: "LA", ASN: 15169, Org: "Google LLC", Latitude: 34.05, Longitude: -118.24, PostalCode: "90001"},
+		},
+		{
+			name:     "custom ipapi panel",
+			provider: NewCustomIpApiProvider("https://panel.example/ipapi"),
+			body:     `{"ip":"9.9.9.9","city":"Paris","region":"Ile-de-France","region_code":"IDF","country_name":"France","country_code":"FR","continent_code":"EU","latitude":48.85,"longitude":2.35,"timezone":"Europe/Paris","utc_offset":"+0200","currency":"EUR","currency_name":"Euro","languages":"fr-FR,en-US","asn":"AS1234","org":"cloudflare"}`,
+			want:     IpInfo{IP: "9.9.9.9", CountryCode: "FR", Region: "Ile-de-France", City: "Paris", ASN: 1234, Org: "cloudflare", Latitude: 48.85, Longitude: 2.35},
+		},
+		{
+			name:     "ipapi.co asn as number",
+			provider: NewIpApiCoProvider(),
+			body:     `{"ip":"1.2.3.4","country_code":"us","asn":15169,"org":"Google LLC"}`,
+			want:     IpInfo{IP: "1.2.3.4", CountryCode: "US", ASN: 15169, Org: "Google LLC"},
 		},
 		{
 			name:     "ipapi.co bad asn",
@@ -239,13 +252,13 @@ func TestH_IpInfoGetIpInfoFallback(t *testing.T) {
 	logger := log.NewNOPFactory().NewLogger("ipinfo")
 
 	failing, _ := jsonServer(t, http.StatusInternalServerError, `{}`)
-	ok, _ := jsonServer(t, http.StatusOK, `{"ip":"3.3.3.3","cc":"JP"}`)
+	ok, _ := jsonServer(t, http.StatusOK, `{"ip":"3.3.3.3","country":"JP"}`)
 	newFailing := func() Provider {
 		p := NewIpSbProvider()
 		p.URL = failing.URL
 		return p
 	}
-	good := NewMyIPProvider()
+	good := NewCountryIsProvider()
 	good.URL = ok.URL
 
 	providers = []Provider{newFailing(), newFailing()}
@@ -272,6 +285,48 @@ func TestH_IpInfoGetIpInfoFallback(t *testing.T) {
 	cancel()
 	_, _, err = GetIpInfo(logger, ctx, nil)
 	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestH_IpInfoCustomURLPreferred(t *testing.T) {
+	oldProviders, oldFallback := providers, fallbackProviders
+	t.Cleanup(func() { providers, fallbackProviders = oldProviders, oldFallback })
+	logger := log.NewNOPFactory().NewLogger("ipinfo")
+
+	custom, _ := jsonServer(t, http.StatusOK, `{"ip":"8.8.4.4","country_code":"US","asn":"AS15169","org":"Google"}`)
+	builtin, _ := jsonServer(t, http.StatusOK, `{"ip":"1.1.1.1","country":"AU"}`)
+	p := NewCountryIsProvider()
+	p.URL = builtin.URL
+	providers = []Provider{p}
+	fallbackProviders = nil
+
+	info, _, err := GetIpInfo(logger, testCtx(t), nil, custom.URL)
+	require.NoError(t, err)
+	require.Equal(t, "8.8.4.4", info.IP)
+	require.Equal(t, "US", info.CountryCode)
+	require.Equal(t, 15169, info.ASN)
+}
+
+func TestH_IpInfoCustomURLFallback(t *testing.T) {
+	oldProviders, oldFallback := providers, fallbackProviders
+	t.Cleanup(func() { providers, fallbackProviders = oldProviders, oldFallback })
+	logger := log.NewNOPFactory().NewLogger("ipinfo")
+
+	custom, _ := jsonServer(t, http.StatusInternalServerError, `boom`)
+	builtin, _ := jsonServer(t, http.StatusOK, `{"ip":"1.1.1.1","country":"AU"}`)
+	p := NewCountryIsProvider()
+	p.URL = builtin.URL
+	providers = []Provider{p}
+	fallbackProviders = nil
+
+	info, _, err := GetIpInfo(logger, testCtx(t), nil, custom.URL)
+	require.NoError(t, err)
+	require.Equal(t, "1.1.1.1", info.IP)
+	require.Equal(t, "AU", info.CountryCode)
+
+	emptyCustom, _ := jsonServer(t, http.StatusOK, `{}`)
+	info, _, err = GetIpInfo(logger, testCtx(t), nil, emptyCustom.URL)
+	require.NoError(t, err)
+	require.Equal(t, "1.1.1.1", info.IP)
 }
 
 func TestH_IpInfoString(t *testing.T) {

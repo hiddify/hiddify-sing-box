@@ -15,7 +15,7 @@ type IpInfoIoProvider struct {
 
 func NewIpInfoIoProvider() *IpInfoIoProvider {
 	return &IpInfoIoProvider{
-		BaseProvider: BaseProvider{URL: "http://ipinfo.io/json"},
+		BaseProvider: BaseProvider{URL: "https://ipinfo.io/json"},
 	}
 }
 
