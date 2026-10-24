@@ -69,6 +69,7 @@ type OutboundMonitoring struct {
 	pauseCallback    *list.Element[pause.Callback]
 	started          bool
 	urls             []string
+	ipInfoURL        string
 	currentLinkIndex atomic.Uint32
 	access           sync.Mutex
 	idleTimeout      time.Duration
@@ -255,6 +256,7 @@ func NewOutboundMonitoring(ctx context.Context, logger log.ContextLogger, option
 		ctx:             ctx,
 		cancel:          cancel,
 		urls:            cloned,
+		ipInfoURL:       options.IpInfoURL,
 		pause:           service.FromContext[pause.Manager](ctx),
 		started:         false,
 		logger:          logger,
@@ -614,7 +616,7 @@ func (m *OutboundMonitoring) tester(parent context.Context, tag string) (adapter
 		ctx, cancel2 := context.WithTimeout(parent, m.urlTestTimeout)
 		defer cancel2()
 
-		newip, t, err := ipinfo.GetIpInfo(m.logger, ctx, out.outbound)
+		newip, t, err := ipinfo.GetIpInfo(m.logger, ctx, out.outbound, m.ipInfoURL)
 		if err == nil {
 			his.IpInfo = mergeIpInfo(out.history.IpInfo, newip)
 			if t < his.Delay {
