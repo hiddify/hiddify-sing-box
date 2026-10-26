@@ -141,7 +141,7 @@ func (s *URLTest) URLTest(ctx context.Context) (map[string]uint16, error) {
 }
 
 func (s *URLTest) CheckOutbounds() {
-	s.group.CheckOutbounds(s.ctx, true)
+	s.group.CheckOutbounds(s.group.ctx, true) //H
 }
 
 func (s *URLTest) PerformUpdateCheck() {
@@ -212,6 +212,7 @@ func (s *URLTest) ListenPacket(ctx context.Context, destination M.Socksaddr) (ne
 
 type URLTestGroup struct {
 	ctx                          context.Context
+	cancel                       context.CancelFunc //H: stops running tests on close
 	outbound                     adapter.OutboundManager
 	pause                        pause.Manager
 	pauseCallback                *list.Element[pause.Callback]
@@ -252,8 +253,10 @@ func NewURLTestGroup(ctx context.Context, outboundManager adapter.OutboundManage
 	if history == nil {
 		return nil, E.New("missing URL test history storage")
 	}
+	ctx, cancel := context.WithCancel(ctx) //H
 	return &URLTestGroup{
 		ctx:                          ctx,
+		cancel:                       cancel, //H
 		outbound:                     outboundManager,
 		logger:                       logger,
 		outbounds:                    outbounds,
@@ -294,6 +297,7 @@ func (g *URLTestGroup) Touch() {
 }
 
 func (g *URLTestGroup) Close() error {
+	g.cancel() //H
 	g.access.Lock()
 	defer g.access.Unlock()
 	if g.ticker == nil {
