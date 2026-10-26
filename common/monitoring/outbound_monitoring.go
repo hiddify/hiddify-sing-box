@@ -46,6 +46,9 @@ const (
 // H: a test broken by a network reset waits this long, for the reset to end, then runs again
 const networkResetWait = time.Second
 
+// H: how long after the last network change every outbound is tested again
+const networkRetestDelay = 2 * time.Second
+
 // func RegisterService(registry *boxService.Registry) {
 // 	boxService.Register[option.MonitoringOptions](registry, C.TypeOutboundMonitor, func(ctx context.Context, logger log.ContextLogger, tag string, options option.MonitoringOptions) (adapter.Service, error) {
 // 		return NewOutboundMonitoring(ctx, logger, tag, options)
@@ -96,6 +99,9 @@ type OutboundMonitoring struct {
 	cycleRunning atomic.Bool
 	networkSeq   atomic.Uint64 //H: counts network resets, see executeTask
 
+	networkRetest *time.Timer // H: the pending retest after a network change, guarded by access
+	cycleAgain    atomic.Bool // H: a cycle that ran during a network change runs once more
+
 	workerWG    sync.WaitGroup
 	schedulerWG sync.WaitGroup
 	closerOnce  sync.Once
@@ -105,6 +111,44 @@ type OutboundMonitoring struct {
 // which closes every connection, the running URL tests included.
 func (m *OutboundMonitoring) InterfaceUpdated(ctx context.Context) {
 	m.networkSeq.Add(1)
+}
+
+// NetworkChanged makes every outbound be tested again once the network has settled: what was
+// measured on the previous network says nothing about the new one, or about having none. A burst
+// of changes is one retest.
+func (m *OutboundMonitoring) NetworkChanged() {
+	m.access.Lock()
+	defer m.access.Unlock()
+	if !m.started {
+		return
+	}
+	if m.networkRetest != nil {
+		m.networkRetest.Reset(networkRetestDelay)
+		return
+	}
+	m.networkRetest = time.AfterFunc(networkRetestDelay, m.retestAll)
+}
+
+func (m *OutboundMonitoring) retestAll() {
+	m.access.Lock()
+	m.networkRetest = nil
+	m.access.Unlock()
+	select {
+	case <-m.ctx.Done():
+		return
+	default:
+	}
+	m.logger.Info("network changed, testing every outbound again")
+	for _, state := range m.reg().outbounds {
+		state.mu.Lock()
+		state.invalid = true
+		state.mu.Unlock()
+	}
+	m.Touch()
+	if !m.startCycleOnce() {
+		// a cycle is running: its results may predate the change, so it runs once more
+		m.cycleAgain.Store(true)
+	}
 }
 
 // Name implements [adapter.LifecycleService].
@@ -445,6 +489,12 @@ func (m *OutboundMonitoring) UnsubscribeGroup(groupTag string, observer <-chan G
 func (m *OutboundMonitoring) Close() error {
 	m.closerOnce.Do(func() {
 		m.stopTimerWorkers()
+		m.access.Lock()
+		if m.networkRetest != nil {
+			m.networkRetest.Stop()
+			m.networkRetest = nil
+		}
+		m.access.Unlock()
 
 		// close(m.priorityQueue)
 		// close(m.normalQueue)
@@ -640,6 +690,10 @@ func (m *OutboundMonitoring) startCycleOnce() bool {
 		defer m.cycleRunning.Store(false)
 		m.logger.Info("starting regular outbound monitoring cycle")
 		m.runCycle()
+		for m.cycleAgain.Swap(false) {
+			m.logger.Info("running the monitoring cycle again after a network change")
+			m.runCycle()
+		}
 	}()
 	return true
 }
