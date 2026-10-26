@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/netip"
 	"sync"
+	"sync/atomic" //H
 	"time"
 
 	C "github.com/sagernet/sing-box/constant" //H
@@ -31,7 +32,7 @@ type ClientBind struct {
 	reservedAccess      sync.RWMutex
 	reservedForEndpoint map[netip.AddrPort][3]uint8
 	connAccess          sync.Mutex
-	conn                *wireConn
+	conn                atomic.Pointer[wireConn] //H: read without the lock on the fast path
 	done                chan struct{}
 	isConnect           bool
 	connectAddr         netip.AddrPort
@@ -53,7 +54,7 @@ func NewClientBind(ctx context.Context, logger logger.Logger, dialer N.Dialer, i
 }
 
 func (c *ClientBind) connect() (*wireConn, error) {
-	serverConn := c.conn
+	serverConn := c.conn.Load() //H
 	if serverConn != nil {
 		select {
 		case <-serverConn.done:
@@ -69,7 +70,7 @@ func (c *ClientBind) connect() (*wireConn, error) {
 		return nil, net.ErrClosed
 	default:
 	}
-	serverConn = c.conn
+	serverConn = c.conn.Load() //H
 	if serverConn != nil {
 		select {
 		case <-serverConn.done:
@@ -90,24 +91,24 @@ func (c *ClientBind) connect() (*wireConn, error) {
 			cancelDial() //H
 			return nil, err
 		}
-		c.conn = &wireConn{
+		c.conn.Store(&wireConn{ //H
 			PacketConn: bufio.NewUnbindPacketConn(udpConn),
 			done:       make(chan struct{}),
 			cancel:     cancelDial, //H
-		}
+		}) //H
 	} else {
 		udpConn, err := c.dialer.ListenPacket(dialCtx, M.Socksaddr{Addr: netip.IPv4Unspecified()}) //H
 		if err != nil {
 			cancelDial() //H
 			return nil, err
 		}
-		c.conn = &wireConn{
+		c.conn.Store(&wireConn{ //H
 			PacketConn: bufio.NewPacketConn(udpConn),
 			done:       make(chan struct{}),
 			cancel:     cancelDial, //H
-		}
+		}) //H
 	}
-	return c.conn, nil
+	return c.conn.Load(), nil //H
 }
 
 func (c *ClientBind) Open(port uint16) (fns []conn.ReceiveFunc, actualPort uint16, err error) {
@@ -171,7 +172,7 @@ func (c *ClientBind) Close() error {
 	}
 	c.connAccess.Lock()
 	defer c.connAccess.Unlock()
-	common.Close(common.PtrOrNil(c.conn))
+	common.Close(common.PtrOrNil(c.conn.Load())) //H
 	return nil
 }
 
