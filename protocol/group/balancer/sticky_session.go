@@ -47,29 +47,40 @@ func (s *StickySession) Select(metadata adapter.InboundContext, net string, touc
 		net = N.NetworkTCP
 	}
 	key := s.hash.Hash(getKeyWithSrcAndDst(&metadata))
-	length := len(s.outbounds[net])
+	outbounds := s.outbounds[net]
+	length := int32(len(outbounds))
 	idx, has := s.lruCache.Get(key)
-	if !has || idx >= length {
-		idx = int(jumpHash(key+uint64(time.Now().UnixNano()), int32(length)))
+	if !has || idx >= len(outbounds) {
+		has = false
+		idx = int(jumpHash(key+uint64(time.Now().UnixNano()), length))
 	}
 
-	nowIdx := idx
-	for i := 1; i < s.maxRetry; i++ {
-		proxy := s.outbounds[net][nowIdx]
-		if s.Alive(proxy, net) {
-			if !has || nowIdx != idx {
-				s.lruCache.Add(key, nowIdx)
+	pick := idx
+	if !s.Alive(outbounds[pick], net) {
+		pick = -1
+		// a new random seed per session, stepped on each retry so every retry draws again
+		seed := key + uint64(time.Now().UnixNano())
+		for i := 0; i < s.maxRetry; i++ {
+			candidate := int(jumpHash(seed+uint64(i)+1, length))
+			if s.Alive(outbounds[candidate], net) {
+				pick = candidate
+				break
 			}
-
-			return proxy
-		} else {
-			nowIdx = int(jumpHash(key+uint64(time.Now().UnixNano()), int32(length)))
+		}
+		// when availability is poor, traverse the entire list to get the available nodes
+		for i := 0; pick < 0 && i < len(outbounds); i++ {
+			if s.Alive(outbounds[i], net) {
+				pick = i
+			}
+		}
+		if pick < 0 {
+			pick = idx
 		}
 	}
-
-	s.lruCache.Add(key, nowIdx)
-	return s.outbounds[net][nowIdx]
-
+	if !has || pick != idx {
+		s.lruCache.Add(key, pick)
+	}
+	return outbounds[pick]
 }
 
 func (s *StickySession) Now() string {
