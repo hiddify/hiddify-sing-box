@@ -39,10 +39,13 @@ func NewRoundRobin(outbounds []adapter.Outbound, options option.BalancerOutbound
 	}
 }
 
+// Now returns the member the next TCP connection goes to.
 func (s *RoundRobin) Now() string {
-	// s.idxMutex.Lock()
-	// defer s.idxMutex.Unlock()
-	return ""
+	next := s.Select(adapter.InboundContext{}, N.NetworkTCP, false)
+	if next == nil {
+		return ""
+	}
+	return next.Tag()
 }
 
 func (s *RoundRobin) UpdateOutboundsInfo(history map[string]*adapter.URLTestHistory) bool {
