@@ -8,7 +8,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -116,22 +115,16 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		}
 	}
 	ApplyXPaddingToHeader(writer.Header(), config)
+	// read and check the padding where x_padding_obfs_mode puts it, as Xray does; only the
+	// Referer and the query were checked, so obfs mode with another placement always failed
 	validRange := s.options.GetNormalizedXPaddingBytes()
-	paddingLength := 0
-	referrer := request.Header.Get("Referer")
-	if referrer != "" {
-		if referrerURL, err := url.Parse(referrer); err == nil {
-			// Browser dialer cannot control the host part of referrer header, so only check the query
-			paddingLength = len(referrerURL.Query().Get("x_padding"))
-		}
-	} else {
-		paddingLength = len(request.URL.Query().Get("x_padding"))
-	}
-	if int32(paddingLength) < validRange.From || int32(paddingLength) > validRange.To {
-		s.logger.ErrorContext(request.Context(), "invalid x_padding length:", int32(paddingLength))
+	paddingValue, paddingPlacement := ExtractXPaddingFromRequest(&s.options.V2RayXHTTPBaseOptions, request, s.options.XPaddingObfsMode)
+	if !IsPaddingValid(&s.options.V2RayXHTTPBaseOptions, paddingValue, validRange.From, validRange.To, PaddingMethod(s.options.XPaddingMethod)) {
+		s.logger.ErrorContext(request.Context(), "invalid padding (", paddingPlacement, ") length: ", len(paddingValue))
 		writer.WriteHeader(http.StatusBadRequest)
 		return
 	}
+	obfsPaddingAccepted := s.options.XPaddingObfsMode && paddingValue != ""
 	sessionId, seqStr := ExtractMetaFromRequest(s.options, request, s.path)
 	if sessionId == "" && s.options.Mode != "" && s.options.Mode != "auto" && s.options.Mode != "stream-one" && s.options.Mode != "stream-up" {
 		s.logger.ErrorContext(request.Context(), "stream-one mode is not allowed")
@@ -205,8 +198,8 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 				writer.Header().Set("Cache-Control", "no-store")
 				writer.WriteHeader(http.StatusOK)
 				scStreamUpServerSecs := s.options.GetNormalizedScStreamUpServerSecs()
-				referrer := request.Header.Get("Referer")
-				if referrer != "" && scStreamUpServerSecs.To > 0 {
+				hasLegacyRefererCompatMarker := request.Header.Get("Referer") != ""
+				if (hasLegacyRefererCompatMarker || obfsPaddingAccepted) && scStreamUpServerSecs.To > 0 {
 					go func() {
 						for {
 							_, err := httpSC.Write(bytes.Repeat([]byte{'X'}, int(s.options.GetNormalizedXPaddingBytes().Rand())))
