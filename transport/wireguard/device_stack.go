@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	C "github.com/sagernet/sing-box/constant" //H
 	"github.com/sagernet/sing-tun"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
@@ -55,6 +56,10 @@ func (w *stackDevice) DialContext(ctx context.Context, network string, destinati
 	}
 	switch N.NetworkName(network) {
 	case N.NetworkTCP:
+		// H: the netstack retries SYN for about a minute; give up after the TCP timeout, as a
+		// direct dial does
+		ctx, cancel := context.WithTimeout(ctx, C.TCPTimeout) //H
+		defer cancel()                                        //H
 		var tcpConn *tun.GoConn
 		tcpConn, err = w.stack.DialTCP(ctx, bind, destination.AddrPort())
 		if err != nil {

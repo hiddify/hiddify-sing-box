@@ -7,6 +7,7 @@ import (
 
 	"github.com/amnezia-vpn/amneziawg-go/tun"
 	"github.com/amnezia-vpn/amneziawg-go/tun/netstack"
+	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing/common/metadata"
 )
 
@@ -37,6 +38,10 @@ func (t *networkTun) Start() error {
 }
 
 func (t *networkTun) DialContext(ctx context.Context, network string, destination metadata.Socksaddr) (net.Conn, error) {
+	// the netstack retries SYN for about two minutes; give up after the TCP timeout, as a
+	// direct dial does
+	ctx, cancel := context.WithTimeout(ctx, C.TCPTimeout)
+	defer cancel()
 	return t.conn.DialContext(ctx, network, destination.String())
 }
 
