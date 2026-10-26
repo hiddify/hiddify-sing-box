@@ -81,9 +81,57 @@ func (c *CacheFile) Flush() {
 		c.logger.Warn("save cache: ", err)
 	}
 	c.pendingAccess.Lock()
+	if err != nil { //H: keep what failed to save, or it is neither on disk nor in memory
+		c.restorePendingLocked(writing) //H
+	} //H
 	c.writing = nil
 	c.pendingAccess.Unlock()
 }
+
+// restorePendingLocked puts the writes of a failed flush back, under any newer write of the
+// same key. From reF1nd/sing-box 1d089fcb. //H
+func (c *CacheFile) restorePendingLocked(writing *pendingWrites) { //H
+	wasEmpty := c.pending.count == 0           //H
+	for key, entry := range writing.dnsCache { //H
+		if _, loaded := c.pending.dnsCache[key]; loaded { //H
+			continue //H
+		} //H
+		c.pending.dnsCache[key] = entry                            //H
+		c.pending.count++                                          //H
+		c.pending.size += len(key.QuestionName) + len(entry.value) //H
+	} //H
+	for key := range writing.rdrc { //H
+		if _, loaded := c.pending.rdrc[key]; loaded { //H
+			continue //H
+		} //H
+		c.pending.rdrc[key] = struct{}{}        //H
+		c.pending.count++                       //H
+		c.pending.size += len(key.QuestionName) //H
+	} //H
+	for address, domain := range writing.fakeIPDomain { //H
+		if _, loaded := c.pending.fakeIPDomain[address]; loaded { //H
+			continue //H
+		} //H
+		if _, loaded := c.pending.fakeIPAddress(domain, address.Is6()); loaded { //H
+			continue //H
+		} //H
+		c.pending.fakeIPDomain[address] = domain //H
+		if address.Is4() {                       //H
+			c.pending.fakeIPAddress4[domain] = address //H
+		} else { //H
+			c.pending.fakeIPAddress6[domain] = address //H
+		} //H
+		c.pending.count++             //H
+		c.pending.size += len(domain) //H
+	} //H
+	if c.pending.fakeIPMetadata == nil && writing.fakeIPMetadata != nil { //H
+		c.pending.fakeIPMetadata = writing.fakeIPMetadata //H
+		c.pending.count++                                 //H
+	} //H
+	if wasEmpty && c.pending.count > 0 && c.flushInterval > 0 { //H
+		c.flushTimer.Reset(c.flushInterval) //H
+	} //H
+} //H
 
 func (c *CacheFile) writePending(tx *bbolt.Tx, pending *pendingWrites) error {
 	if len(pending.dnsCache) > 0 {
