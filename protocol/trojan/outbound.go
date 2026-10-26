@@ -68,7 +68,9 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 		if err != nil {
 			return nil, err
 		}
-		outbound.tlsDialer = tls.NewDialer(outboundDialer, outbound.tlsConfig)
+		if outbound.tlsConfig != nil { //H: a present but disabled tls block gives no config
+			outbound.tlsDialer = tls.NewDialer(outboundDialer, outbound.tlsConfig) //H
+		} //H
 	}
 	if options.Transport != nil {
 		outbound.transport, err = v2ray.NewClientTransport(ctx, outbound.dialer, outbound.serverAddr, common.PtrValueOrDefault(options.Transport), outbound.tlsConfig)
