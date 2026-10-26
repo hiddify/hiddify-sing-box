@@ -3,21 +3,35 @@
 package libbox
 
 import (
-	"github.com/sagernet/sing-box/adapter"
+	"net/netip"
+
 	"github.com/sagernet/sing-box/protocol/bridge"
 	E "github.com/sagernet/sing/common/exceptions"
 )
 
-func NewBridgeService(options *adapter.BridgeOptions) (adapter.BridgeSession, error) {
+func NewBridgeService(options *BridgeOptions) (BridgeSession, error) {
 	if options == nil {
 		return nil, E.New("missing bridge options")
 	}
-	service, err := bridge.NewService(bridge.ServiceOptions{
+	serviceOptions := bridge.ServiceOptions{
 		MTU:       int(options.MTU),
 		Interface: options.Interface,
-		Inet4Port: options.Inet4Port,
-		Inet6Port: options.Inet6Port,
-	})
+	}
+	if options.Inet4Port != "" {
+		inet4Port, err := netip.ParseAddr(options.Inet4Port)
+		if err != nil {
+			return nil, E.Cause(err, "parse inet4 port address")
+		}
+		serviceOptions.Inet4Port = inet4Port
+	}
+	if options.Inet6Port != "" {
+		inet6Port, err := netip.ParseAddr(options.Inet6Port)
+		if err != nil {
+			return nil, E.Cause(err, "parse inet6 port address")
+		}
+		serviceOptions.Inet6Port = inet6Port
+	}
+	service, err := bridge.NewService(serviceOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -28,8 +42,8 @@ type bridgeServiceSession struct {
 	service *bridge.Service
 }
 
-func (s *bridgeServiceSession) FileDescriptor() int {
-	return s.service.FileDescriptor()
+func (s *bridgeServiceSession) FileDescriptor() int32 {
+	return int32(s.service.FileDescriptor())
 }
 
 func (s *bridgeServiceSession) Name() string {

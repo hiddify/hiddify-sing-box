@@ -36,7 +36,7 @@ type ErrorMessage struct {
 func (e *ErrorMessage) Encode() []byte {
 	var buffer bytes.Buffer
 	buffer.WriteByte(MessageTypeError)
-	varbin.Write(&buffer, binary.BigEndian, e.Message)
+	writeString(&buffer, e.Message)
 	return buffer.Bytes()
 }
 
@@ -50,7 +50,7 @@ func DecodeErrorMessage(data []byte) (*ErrorMessage, error) {
 		return nil, E.New("invalid message")
 	}
 	var message ErrorMessage
-	message.Message, err = varbin.ReadValue[string](reader, binary.BigEndian)
+	message.Message, err = readString(reader)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +88,7 @@ func (e *ProfileEncoder) Encode() []byte {
 	binary.Write(&buffer, binary.BigEndian, uint16(len(e.profiles)))
 	for _, preview := range e.profiles {
 		binary.Write(&buffer, binary.BigEndian, preview.ProfileID)
-		varbin.Write(&buffer, binary.BigEndian, preview.Name)
+		writeString(&buffer, preview.Name)
 		binary.Write(&buffer, binary.BigEndian, preview.Type)
 	}
 	return buffer.Bytes()
@@ -118,7 +118,7 @@ func (d *ProfileDecoder) Decode(data []byte) error {
 		if err != nil {
 			return err
 		}
-		profile.Name, err = varbin.ReadValue[string](reader, binary.BigEndian)
+		profile.Name, err = readString(reader)
 		if err != nil {
 			return err
 		}
@@ -179,11 +179,11 @@ func (c *ProfileContent) Encode() []byte {
 	buffer.WriteByte(1)
 	gWriter := gzip.NewWriter(buffer)
 	writer := bufio.NewWriter(gWriter)
-	varbin.Write(writer, binary.BigEndian, c.Name)
+	writeStringBuffered(writer, c.Name)
 	binary.Write(writer, binary.BigEndian, c.Type)
-	varbin.Write(writer, binary.BigEndian, c.Config)
+	writeStringBuffered(writer, c.Config)
 	if c.Type != ProfileTypeLocal {
-		varbin.Write(writer, binary.BigEndian, c.RemotePath)
+		writeStringBuffered(writer, c.RemotePath)
 	}
 	if c.Type == ProfileTypeRemote {
 		binary.Write(writer, binary.BigEndian, c.AutoUpdate)
@@ -215,7 +215,7 @@ func DecodeProfileContent(data []byte) (*ProfileContent, error) {
 	}
 	bReader := varbin.StubReader(gReader)
 	var content ProfileContent
-	content.Name, err = varbin.ReadValue[string](bReader, binary.BigEndian)
+	content.Name, err = readString(bReader)
 	if err != nil {
 		return nil, err
 	}
@@ -223,12 +223,12 @@ func DecodeProfileContent(data []byte) (*ProfileContent, error) {
 	if err != nil {
 		return nil, err
 	}
-	content.Config, err = varbin.ReadValue[string](bReader, binary.BigEndian)
+	content.Config, err = readString(bReader)
 	if err != nil {
 		return nil, err
 	}
 	if content.Type != ProfileTypeLocal {
-		content.RemotePath, err = varbin.ReadValue[string](bReader, binary.BigEndian)
+		content.RemotePath, err = readString(bReader)
 		if err != nil {
 			return nil, err
 		}

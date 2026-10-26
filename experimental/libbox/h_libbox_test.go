@@ -219,10 +219,6 @@ func TestH_PlatformWrapperSystemCertificates(t *testing.T) {
 	t.Parallel()
 	wrapper := &platformInterfaceWrapper{iif: &hCertPlatform{certificates: []string{"a", "b"}}}
 	require.Equal(t, []string{"a", "b"}, wrapper.SystemCertificates())
-	require.False(t, wrapper.UsePlatformShell())
-	require.ErrorIs(t, wrapper.CheckPlatformShell(), os.ErrInvalid)
-	_, err := wrapper.LookupUser("root")
-	require.ErrorIs(t, err, os.ErrInvalid)
 	require.Nil(t, (&platformInterfaceWrapper{iif: &hCertPlatform{}}).SystemCertificates())
 }
 

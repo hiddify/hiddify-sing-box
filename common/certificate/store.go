@@ -48,7 +48,11 @@ func NewStore(ctx context.Context, logger logger.Logger, options option.Certific
 		systemPool = x509.NewCertPool()
 		platformInterface := service.FromContext[adapter.PlatformInterface](ctx)
 		var systemValid bool
-		if platformInterface != nil {
+		for _, certificate := range systemCertificates() {
+			systemPool.AddCert(certificate)
+			systemValid = true
+		}
+		if platformInterface != nil { // H: certificates the hiddify app hands over
 			for _, cert := range platformInterface.SystemCertificates() {
 				if systemPool.AppendCertsFromPEM([]byte(cert)) {
 					systemValid = true

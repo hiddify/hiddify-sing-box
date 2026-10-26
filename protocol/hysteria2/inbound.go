@@ -170,7 +170,14 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 				}
 				return dnsRouter.Lookup(ctx, host, dnsOptions)
 			},
-			Logger: logger,
+			Logger:    logger,
+			IPVersion: options.Realm.IPVersion,
+		}
+		if options.Realm.PortMapping != nil && options.Realm.PortMapping.Enabled {
+			realmOptions.PortMapping = &realm.PortMappingOptions{
+				Timeout:  time.Duration(options.Realm.PortMapping.Timeout),
+				Lifetime: time.Duration(options.Realm.PortMapping.Lifetime),
+			}
 		}
 	}
 	hysteriaService, err := hysteria2.NewService[int](hysteria2.ServiceOptions{

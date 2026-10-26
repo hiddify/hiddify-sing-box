@@ -68,7 +68,16 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 		vision:     strings.HasPrefix(options.Flow, "xtls-rprx-vision"),
 	}
 	if options.TLS != nil {
-		outbound.tlsConfig, err = tls.NewClient(ctx, logger, options.Server, common.PtrValueOrDefault(options.TLS))
+		outbound.tlsConfig, err = tls.NewClientWithOptions(tls.ClientOptions{
+			Context:       ctx,
+			Logger:        logger,
+			ServerAddress: options.Server,
+			Options:       common.PtrValueOrDefault(options.TLS),
+			KTLSCompatible: common.PtrValueOrDefault(options.Transport).Type == "" &&
+				!common.PtrValueOrDefault(options.Multiplex).Enabled &&
+				(options.Encryption == "" || options.Encryption == "none") && // H: VLESS encryption wraps the TLS stream
+				options.Flow == "",
+		})
 		if err != nil {
 			return nil, err
 		}

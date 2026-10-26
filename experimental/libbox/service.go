@@ -7,7 +7,6 @@ import (
 	"errors"
 	"net"
 	"net/netip"
-	"os"
 	"runtime"
 	"strconv"
 	"sync"
@@ -241,11 +240,11 @@ func (w *platformInterfaceWrapper) CloseNeighborMonitor(listener adapter.Neighbo
 }
 
 func (w *platformInterfaceWrapper) UsePlatformShell() bool {
-	return false
+	return w.iif.UsePlatformShell()
 }
 
 func (w *platformInterfaceWrapper) CheckPlatformShell() error {
-	return os.ErrInvalid
+	return w.iif.CheckPlatformShell()
 }
 
 func (w *platformInterfaceWrapper) OpenShellSession(user *adapter.PlatformUser, command string, environ []string, term string, rows int32, cols int32) (adapter.ShellSession, error) {
@@ -405,7 +404,18 @@ func (w *autoRedirectHandlerWrapper) WriteLog(level int32, message string) {
 }
 
 func (w *platformInterfaceWrapper) LookupUser(username string) (*adapter.PlatformUser, error) {
-	return nil, os.ErrInvalid
+	platformUser, err := w.iif.LookupUser(username)
+	if err != nil {
+		return nil, err
+	}
+	return &adapter.PlatformUser{
+		Username: platformUser.Username,
+		Uid:      int(platformUser.Uid),
+		Gid:      int(platformUser.Gid),
+		HomeDir:  platformUser.HomeDir,
+		Shell:    platformUser.Shell,
+		Groups:   common.Map(iteratorToArray[int32](platformUser.Groups()), func(g int32) int { return int(g) }),
+	}, nil
 }
 
 type neighborUpdateListenerWrapper struct {

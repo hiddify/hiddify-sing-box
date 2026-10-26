@@ -83,6 +83,7 @@ func NewRouter(ctx context.Context, logFactory log.Factory, options option.DNSOp
 	}
 	router.client = NewClient(ClientOptions{
 		Context:           ctx,
+		Timeout:           time.Duration(options.DNSClientOptions.Timeout),
 		DisableCache:      options.DNSClientOptions.DisableCache,
 		DisableExpire:     options.DNSClientOptions.DisableExpire,
 		OptimisticTimeout: optimisticTimeout,
@@ -318,6 +319,9 @@ func (r *Router) matchDNS(ctx context.Context, rules []adapter.DNSRule, allowFak
 				if action.RewriteTTL != nil {
 					options.RewriteTTL = action.RewriteTTL
 				}
+				if action.Timeout > 0 {
+					options.Timeout = action.Timeout
+				}
 				if action.ClientSubnet.IsValid() {
 					options.ClientSubnet = action.ClientSubnet
 					options.RemoveClientSubnet = false
@@ -336,6 +340,9 @@ func (r *Router) matchDNS(ctx context.Context, rules []adapter.DNSRule, allowFak
 				}
 				if action.RewriteTTL != nil {
 					options.RewriteTTL = action.RewriteTTL
+				}
+				if action.Timeout > 0 {
+					options.Timeout = action.Timeout
 				}
 				if action.ClientSubnet.IsValid() {
 					options.ClientSubnet = action.ClientSubnet
@@ -368,6 +375,9 @@ func (r *Router) applyDNSRouteOptions(options *adapter.DNSQueryOptions, routeOpt
 	}
 	if routeOptions.RewriteTTL != nil {
 		options.RewriteTTL = routeOptions.RewriteTTL
+	}
+	if routeOptions.Timeout > 0 {
+		options.Timeout = routeOptions.Timeout
 	}
 	if routeOptions.ClientSubnet.IsValid() {
 		options.ClientSubnet = routeOptions.ClientSubnet
@@ -1271,6 +1281,8 @@ func (r *Router) Lookup(ctx context.Context, domain string, options adapter.DNSQ
 				r.logger.DebugContext(ctx, "response rejected for ", domain)
 			} else if R.IsRejected(err) {
 				r.logger.DebugContext(ctx, "lookup rejected for ", domain)
+			} else if errors.Is(err, ErrNotCached) {
+				r.logger.DebugContext(ctx, "cache-only lookup missed for ", domain)
 			} else {
 				r.logger.ErrorContext(ctx, E.Cause(err, "lookup failed for ", domain))
 			}
