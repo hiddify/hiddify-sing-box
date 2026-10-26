@@ -243,8 +243,11 @@ func (h *vlessDialer) DialContext(ctx context.Context, network string, destinati
 	} else {
 		conn, err = h.dialer.DialContext(ctx, N.NetworkTCP, h.serverAddr)
 		if err == nil && h.tlsConfig != nil {
-			conn, err = tls.ClientHandshake(ctx, conn, h.tlsConfig)
-			if err == nil && h.vision && baseConn == nil {
+			rawConn := conn                                            //H
+			conn, err = tls.ClientHandshake(ctx, rawConn, h.tlsConfig) //H
+			if err != nil {                                            //H: the TLS handshake does not close the conn it was given
+				rawConn.Close() //H
+			} else if h.vision && baseConn == nil { //H
 				baseConn = conn
 			}
 		}
@@ -255,10 +258,14 @@ func (h *vlessDialer) DialContext(ctx context.Context, network string, destinati
 
 	// Apply encryption if configured
 	if h.encryption != nil {
-		conn, err = h.encryption.Handshake(conn)
+		// H: a failed handshake returns a nil *CommonConn; keep the conn to close it
+		var encryptedConn net.Conn                        //H
+		encryptedConn, err = h.encryption.Handshake(conn) //H
 		if err != nil {
+			conn.Close() //H
 			return nil, E.Cause(err, "encryption handshake")
 		}
+		conn = encryptedConn //H
 	}
 
 	// For Vision: wrap the connection to expose the TLS/encryption connection for vless client
@@ -336,7 +343,11 @@ func (h *vlessDialer) ListenPacket(ctx context.Context, destination M.Socksaddr)
 	} else {
 		conn, err = h.dialer.DialContext(ctx, N.NetworkTCP, h.serverAddr)
 		if err == nil && h.tlsConfig != nil {
-			conn, err = tls.ClientHandshake(ctx, conn, h.tlsConfig)
+			rawConn := conn                                            //H
+			conn, err = tls.ClientHandshake(ctx, rawConn, h.tlsConfig) //H
+			if err != nil {                                            //H: the TLS handshake does not close the conn it was given
+				rawConn.Close() //H
+			} //H
 		}
 	}
 	if err != nil {
@@ -345,11 +356,14 @@ func (h *vlessDialer) ListenPacket(ctx context.Context, destination M.Socksaddr)
 	}
 	// Apply encryption if configured
 	if h.encryption != nil {
-		conn, err = h.encryption.Handshake(conn)
+		// H: a failed handshake returns a nil *CommonConn; closing that panics
+		var encryptedConn net.Conn                        //H
+		encryptedConn, err = h.encryption.Handshake(conn) //H
 		if err != nil {
-			common.Close(conn)
+			conn.Close() //H
 			return nil, E.Cause(err, "encryption handshake")
 		}
+		conn = encryptedConn //H
 	}
 	if h.xudp {
 		return h.client.DialEarlyXUDPPacketConn(conn, destination)
