@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	C "github.com/sagernet/sing-box/constant" //H
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/bufio"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -77,23 +78,33 @@ func (c *ClientBind) connect() (*wireConn, error) {
 			return serverConn, nil
 		}
 	}
+	// H: sending and receiving wait on this lock, so a detour that hangs must not hold it for good:
+	// give up after the TCP timeout and let the next attempt retry. Only the dial is bounded; the
+	// connection may live on its context, which ends when the connection closes
+	dialCtx, cancelDial := context.WithCancel(c.bindCtx)  //H
+	dialTimer := time.AfterFunc(C.TCPTimeout, cancelDial) //H
+	defer dialTimer.Stop()                                //H
 	if c.isConnect {
-		udpConn, err := c.dialer.DialContext(c.bindCtx, N.NetworkUDP, M.SocksaddrFromNetIP(c.connectAddr))
+		udpConn, err := c.dialer.DialContext(dialCtx, N.NetworkUDP, M.SocksaddrFromNetIP(c.connectAddr)) //H
 		if err != nil {
+			cancelDial() //H
 			return nil, err
 		}
 		c.conn = &wireConn{
 			PacketConn: bufio.NewUnbindPacketConn(udpConn),
 			done:       make(chan struct{}),
+			cancel:     cancelDial, //H
 		}
 	} else {
-		udpConn, err := c.dialer.ListenPacket(c.bindCtx, M.Socksaddr{Addr: netip.IPv4Unspecified()})
+		udpConn, err := c.dialer.ListenPacket(dialCtx, M.Socksaddr{Addr: netip.IPv4Unspecified()}) //H
 		if err != nil {
+			cancelDial() //H
 			return nil, err
 		}
 		c.conn = &wireConn{
 			PacketConn: bufio.NewPacketConn(udpConn),
 			done:       make(chan struct{}),
+			cancel:     cancelDial, //H
 		}
 	}
 	return c.conn, nil
@@ -242,6 +253,7 @@ type wireConn struct {
 	conn   net.Conn
 	access sync.Mutex
 	done   chan struct{}
+	cancel context.CancelFunc //H: ends the context it was dialed with
 }
 
 func (w *wireConn) WriteToUDPAddrPort(b []byte, addr netip.AddrPort) (int, error) {
@@ -261,6 +273,9 @@ func (w *wireConn) Close() error {
 	}
 	w.PacketConn.Close()
 	close(w.done)
+	if w.cancel != nil { //H
+		w.cancel() //H
+	} //H
 	return nil
 }
 
