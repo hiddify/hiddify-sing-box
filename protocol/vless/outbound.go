@@ -259,8 +259,8 @@ func (h *vlessDialer) DialContext(ctx context.Context, network string, destinati
 	// Apply encryption if configured
 	if h.encryption != nil {
 		// H: a failed handshake returns a nil *CommonConn; keep the conn to close it
-		var encryptedConn net.Conn                        //H
-		encryptedConn, err = h.encryption.Handshake(conn) //H
+		var encryptedConn net.Conn                                        //H
+		encryptedConn, err = encryptionHandshake(ctx, h.encryption, conn) //H
 		if err != nil {
 			conn.Close() //H
 			return nil, E.Cause(err, "encryption handshake")
@@ -357,8 +357,8 @@ func (h *vlessDialer) ListenPacket(ctx context.Context, destination M.Socksaddr)
 	// Apply encryption if configured
 	if h.encryption != nil {
 		// H: a failed handshake returns a nil *CommonConn; closing that panics
-		var encryptedConn net.Conn                        //H
-		encryptedConn, err = h.encryption.Handshake(conn) //H
+		var encryptedConn net.Conn                                        //H
+		encryptedConn, err = encryptionHandshake(ctx, h.encryption, conn) //H
 		if err != nil {
 			conn.Close() //H
 			return nil, E.Cause(err, "encryption handshake")
