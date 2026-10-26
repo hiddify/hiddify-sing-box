@@ -319,3 +319,5 @@ require (
 )
 
 replace github.com/amnezia-vpn/amneziawg-go => github.com/hiddifydeveloper/amneziawg-go v0.0.0-20261001141816-70b344f2f78b
+
+replace github.com/sagernet/sing-tun => ../replace/sing-tun

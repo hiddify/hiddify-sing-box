@@ -308,3 +308,5 @@ replace github.com/net2share/vaydns => github.com/hiddify/vaydns v0.0.0-20260401
 replace github.com/kianmhz/GooseRelayVPN => github.com/hiddify/GooseRelayVPN v0.0.0-20260429125124-0e68c2a3ae4c
 
 replace github.com/amnezia-vpn/amneziawg-go => github.com/hiddifydeveloper/amneziawg-go v0.0.0-20261001141816-70b344f2f78b
+
+replace github.com/sagernet/sing-tun => ./replace/sing-tun
