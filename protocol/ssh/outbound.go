@@ -384,6 +384,9 @@ func (s *Outbound) releaseStream(client *ssh.Client, keepSession bool) {
 }
 
 func (s *Outbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
+	if stage == adapter.StartStateStarted { //H: connect in the background once started
+		return s.PostStart() //H
+	} //H
 	if stage != adapter.StartStateInitialize {
 		return nil
 	}
