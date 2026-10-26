@@ -228,6 +228,7 @@ func (r *Router) RoutePacketConnection(ctx context.Context, conn N.PacketConn, m
 		} else {
 			r.logger.ErrorContext(ctx, err)
 		}
+		return nil //H: nothing will close done after a failed route; waiting leaked until shutdown
 	}
 	select {
 	case <-done:
