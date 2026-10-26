@@ -183,11 +183,7 @@ func getMinDelay(outbounds map[string][]adapter.Outbound, history map[string]*ad
 func getDelayMap(history map[string]*adapter.URLTestHistory) map[string]uint16 {
 	delayMap := make(map[string]uint16)
 	for tag, his := range history {
-		if his != nil {
-			delayMap[tag] = his.Delay
-		} else {
-			delayMap[tag] = monitoring.TimeoutDelay
-		}
+		delayMap[tag] = getModifiedDelay(his)
 	}
 
 	return delayMap
