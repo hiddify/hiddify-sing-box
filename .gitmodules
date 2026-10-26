@@ -10,3 +10,7 @@
 [submodule "replace/wireguard-go"]
 	path = replace/wireguard-go
 	url = https://github.com/hiddify/wireguard-go.git
+[submodule "replace/sing-vmess"]
+	path = replace/sing-vmess
+	url = https://github.com/hiddify/sing-vmess.git
+	branch = dev
