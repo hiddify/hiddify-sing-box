@@ -297,17 +297,19 @@ func (c *Client) beginExchange(ctx context.Context, transport adapter.DNSTranspo
 		disableCache:    disableCache,
 	}
 	if !disableCache {
-		cacheKey := c.newCacheKey(transport, question, message, options)
-		operation.cacheKey = cacheKey
-		exchangeKey := dnsExchangeKey{dnsCacheKey: cacheKey, timeout: options.Timeout}
-		cond, loaded := c.cacheLock.LoadOrStore(exchangeKey, make(chan struct{}))
-		if !loaded {
-			operation.releaseCond = func() {
-				c.cacheLock.Delete(exchangeKey)
-				close(cond)
-			}
-		}
 		for {
+			// H: each wait ends by rejoining here, so after a failed query the waiters share one
+			// new query (under the current environment) instead of each sending their own
+			cacheKey := c.newCacheKey(transport, question, message, options)               //H
+			operation.cacheKey = cacheKey                                                  //H
+			exchangeKey := dnsExchangeKey{dnsCacheKey: cacheKey, timeout: options.Timeout} //H
+			cond, loaded := c.cacheLock.LoadOrStore(exchangeKey, make(chan struct{}))      //H
+			if !loaded {                                                                   //H
+				operation.releaseCond = func() { //H
+					c.cacheLock.Delete(exchangeKey) //H
+					close(cond)                     //H
+				} //H
+			} //H
 			response, ttl, isStale := c.loadResponse(cacheKey)
 			if response != nil && (!isStale || !options.DisableOptimisticCache) {
 				operation.release()
@@ -341,9 +343,6 @@ func (c *Client) beginExchange(ctx context.Context, transport adapter.DNSTranspo
 			if err != nil {
 				return nil, nil, exchangeDone, err
 			}
-			cacheKey = c.newCacheKey(transport, question, message, options)
-			operation.cacheKey = cacheKey
-			loaded = false
 		}
 	}
 
