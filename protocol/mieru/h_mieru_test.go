@@ -2,6 +2,7 @@ package mieru
 
 import (
 	"context"
+	"github.com/sagernet/sing-box/adapter/htest"
 	"io"
 	"net"
 	"net/netip"
@@ -352,8 +353,8 @@ func TestH_MieruLoopbackRoundTrip(t *testing.T) {
 		PortBindings: []option.MieruPortBinding{{Protocol: "TCP", Port: port}},
 	})
 	require.NoError(t, err)
-	require.NoError(t, in.Start(adapter.StartStateStart))
-	defer in.Close()
+	require.NoError(t, htest.Start(in, adapter.StartStateStart))
+	defer htest.Close(in)
 
 	out, err := NewOutbound(ctx, router, logger, "mieru-out", option.MieruOutboundOptions{
 		ServerOptions: option.ServerOptions{Server: "127.0.0.1"},

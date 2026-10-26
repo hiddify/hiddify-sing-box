@@ -81,8 +81,8 @@ func NewServerEndpoint(ctx context.Context, router adapter.Router, logger log.Co
 	return server, nil
 }
 
-func (s *ServerEndpoint) Start(stage adapter.StartStage) error {
-	return s.inbound.Start(stage)
+func (s *ServerEndpoint) Start(stage adapter.StartStage, scope *adapter.Scope) error {
+	return s.inbound.Start(stage, scope) // H: the inbound registers its own cleanup
 }
 
 func (s *ServerEndpoint) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {

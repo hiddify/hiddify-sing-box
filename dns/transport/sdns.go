@@ -42,7 +42,14 @@ func NewSDNSTransport(ctx context.Context, logger log.ContextLogger, tag string,
 			Net:     "udp",
 			Timeout: 10 * time.Second,
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				return transportDialer.DialContext(ctx, N.NetworkName(network), M.ParseSocksaddr(addr))
+				conn, err := transportDialer.DialContext(ctx, N.NetworkName(network), M.ParseSocksaddr(addr))
+				if err != nil || N.NetworkName(network) != N.NetworkUDP {
+					return conn, err
+				}
+				if _, isPacketConn := conn.(net.PacketConn); isPacketConn {
+					return conn, nil
+				}
+				return &sdnsPacketConn{conn}, nil
 			},
 		},
 		stamp: options.Stamp,
@@ -53,7 +60,7 @@ func (t *SDNSTransport) Name() string {
 	return t.name
 }
 
-func (t *SDNSTransport) Start(adapter.StartStage) error {
+func (t *SDNSTransport) Start(adapter.StartStage, *adapter.Scope) error {
 	return nil
 }
 
@@ -74,4 +81,21 @@ func (t *SDNSTransport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.
 }
 
 func (t *SDNSTransport) Reset() {
+}
+
+// sdnsPacketConn presents a connected UDP connection as a net.PacketConn. miekg/dns, which
+// dnscrypt uses to fetch the resolver certificate, frames a connection as UDP only when it is
+// one; sing-box's dialer wraps connected UDP sockets in a type that is not, and with TCP's
+// length prefix the certificate request never gets an answer. //H
+type sdnsPacketConn struct {
+	net.Conn
+}
+
+func (c *sdnsPacketConn) ReadFrom(b []byte) (int, net.Addr, error) {
+	n, err := c.Conn.Read(b)
+	return n, c.Conn.RemoteAddr(), err
+}
+
+func (c *sdnsPacketConn) WriteTo(b []byte, _ net.Addr) (int, error) {
+	return c.Conn.Write(b)
 }

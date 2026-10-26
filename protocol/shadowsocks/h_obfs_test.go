@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"github.com/sagernet/sing-box/adapter/htest"
 	"io"
 	"net"
 	"net/http"
@@ -90,7 +91,7 @@ func TestH_ShadowsocksInboundRejectsUnknownObfsMode(t *testing.T) {
 			options.ObfsMode = mode
 			in, err := NewInbound(context.Background(), newTestRouter(), logger, "ss-in", options)
 			require.NoError(t, err, name+"/"+mode)
-			require.NoError(t, in.Close())
+			require.NoError(t, htest.Close(in))
 		}
 	}
 }
@@ -103,8 +104,8 @@ func startShadowsocksInbound(t *testing.T, options option.ShadowsocksInboundOpti
 	options.Network = "tcp"
 	in, err := NewInbound(context.Background(), router, log.NewNOPFactory().Logger(), "ss-in", options)
 	require.NoError(t, err)
-	require.NoError(t, in.Start(adapter.StartStateStart))
-	t.Cleanup(func() { in.Close() })
+	require.NoError(t, htest.Start(in, adapter.StartStateStart))
+	t.Cleanup(func() { htest.Close(in) })
 	return router, port
 }
 
@@ -258,8 +259,8 @@ func startShadowsocksInboundWithRouter(t *testing.T, router adapter.Router, opti
 	options.Network = "tcp"
 	in, err := NewInbound(context.Background(), router, log.NewNOPFactory().Logger(), "ss-in", options)
 	require.NoError(t, err)
-	require.NoError(t, in.Start(adapter.StartStateStart))
-	t.Cleanup(func() { in.Close() })
+	require.NoError(t, htest.Start(in, adapter.StartStateStart))
+	t.Cleanup(func() { htest.Close(in) })
 	return port
 }
 
@@ -343,7 +344,7 @@ func TestH_ShadowsocksObfsFallbackOptions(t *testing.T) {
 		Method: "aes-128-gcm", Password: "p", ObfsMode: "tls", ObfsFallback: &option.ServerOptions{Server: "decoy.example.com", ServerPort: 443},
 	})
 	require.NoError(t, err)
-	require.NoError(t, in.Close())
+	require.NoError(t, htest.Close(in))
 }
 
 // Without obfs_fallback a probe is still just closed, as before.

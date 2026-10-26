@@ -107,7 +107,10 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 	return outbound, nil
 }
 
-func (o *Outbound) Start(stage adapter.StartStage) error {
+func (o *Outbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
+	if stage == adapter.StartStateInitialize {
+		scope.Add(o.Close) // H: closed with the box
+	}
 	switch stage {
 	case adapter.StartStateInitialize:
 		// H: creates the WireGuard device; without it Start dereferences a nil device

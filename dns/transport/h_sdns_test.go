@@ -2,6 +2,7 @@ package transport
 
 import (
 	"context"
+	"github.com/sagernet/sing-box/adapter/htest"
 	"log/slog"
 	"net"
 	"testing"
@@ -75,7 +76,7 @@ func hQuery() *mDNS.Msg {
 func TestH_SDNSExchangeDNSCrypt(t *testing.T) {
 	t.Parallel()
 	transport := hNewSDNS(t, hStartDNSCryptServer(t))
-	require.NoError(t, transport.Start(adapter.StartStateStart))
+	require.NoError(t, htest.Start(transport, adapter.StartStateStart))
 	defer transport.Close()
 
 	response, err := transport.Exchange(context.Background(), hQuery())

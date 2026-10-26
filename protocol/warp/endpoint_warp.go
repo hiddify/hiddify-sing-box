@@ -15,7 +15,6 @@ import (
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
-	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
@@ -30,6 +29,7 @@ type WARPEndpoint struct {
 	endpoint.Adapter
 	endpoint     adapter.Endpoint
 	startHandler func()
+	scope        *adapter.Scope // H: the inner endpoint is started as a child of it, so it closes with WARP
 
 	mtx sync.Mutex
 }
@@ -109,13 +109,10 @@ func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.Cont
 			return
 		}
 		// run every start stage: the WireGuard device is only created in StartStateInitialize,
-		// so skipping it panics in Start (nil tun device)
-		for _, stage := range []adapter.StartStage{adapter.StartStateInitialize, adapter.StartStateStart, adapter.StartStatePostStart} {
-			if err = innerEndpoint.Start(stage); err != nil {
-				logger.ErrorContext(ctx, E.Cause(err, "start WARP endpoint (", stage, ")"))
-				innerEndpoint.Close()
-				return
-			}
+		// so skipping it panics in Start (nil tun device); a failed start is closed again
+		if err = adapter.StartLate(warpEndpoint.scope, "endpoint/"+innerEndpoint.Type()+"["+tag+"]", innerEndpoint); err != nil {
+			logger.ErrorContext(ctx, E.Cause(err, "start WARP endpoint"))
+			return
 		}
 		// publish only a fully started endpoint
 		warpEndpoint.endpoint = innerEndpoint
@@ -166,7 +163,10 @@ func (w *WARPEndpoint) IsReady() bool {
 	}
 	return w.endpoint.IsReady()
 }
-func (w *WARPEndpoint) Start(stage adapter.StartStage) error {
+func (w *WARPEndpoint) Start(stage adapter.StartStage, scope *adapter.Scope) error {
+	if stage == adapter.StartStateInitialize {
+		w.scope = scope
+	}
 	if stage != adapter.StartStatePostStart {
 		return nil
 	}
@@ -175,7 +175,7 @@ func (w *WARPEndpoint) Start(stage adapter.StartStage) error {
 }
 
 func (w *WARPEndpoint) Close() error {
-	return common.Close(w.endpoint)
+	return adapter.CloseLate(w.scope, w.endpoint)
 }
 
 func (w *WARPEndpoint) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {

@@ -61,7 +61,10 @@ func NewClientEndpoint(ctx context.Context, router adapter.Router, logger log.Co
 	return client, nil
 }
 
-func (c *ClientEndpoint) Start(stage adapter.StartStage) error {
+func (c *ClientEndpoint) Start(stage adapter.StartStage, scope *adapter.Scope) error {
+	if stage == adapter.StartStateInitialize {
+		scope.Add(c.Close) // H: closed with the box
+	}
 	if stage != adapter.StartStatePostStart {
 		return nil
 	}

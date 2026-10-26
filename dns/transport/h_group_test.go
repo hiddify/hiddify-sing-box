@@ -3,6 +3,7 @@ package transport
 import (
 	"context"
 	"errors"
+	"github.com/sagernet/sing-box/adapter/htest"
 	"net"
 	"net/netip"
 	"sync/atomic"
@@ -190,12 +191,12 @@ func TestH_GroupStartValidation(t *testing.T) {
 	fakeIP := &hGroupMember{tag: "fake", typ: C.DNSTypeFakeIP}
 	members := []*hGroupMember{plain, nestedGroup, nestedMulti, fakeIP}
 
-	require.NoError(t, hNewGroup(t, option.GroupDNSServerOptions{Servers: []string{"plain"}}, members...).Start(adapter.StartStateStart))
-	require.NoError(t, hNewGroup(t, option.GroupDNSServerOptions{Servers: []string{"missing"}}, members...).Start(adapter.StartStateInitialize))
-	require.ErrorContains(t, hNewGroup(t, option.GroupDNSServerOptions{Servers: []string{"missing"}}, members...).Start(adapter.StartStateStart), "DNS server not found: missing")
-	require.ErrorContains(t, hNewGroup(t, option.GroupDNSServerOptions{Servers: []string{"nested-group"}}, members...).Start(adapter.StartStateStart), "cannot contain another group")
-	require.ErrorContains(t, hNewGroup(t, option.GroupDNSServerOptions{Servers: []string{"nested-multi"}}, members...).Start(adapter.StartStateStart), "cannot contain another group")
-	require.ErrorContains(t, hNewGroup(t, option.GroupDNSServerOptions{Servers: []string{"fake"}}, members...).Start(adapter.StartStateStart), "cannot contain fakeip")
+	require.NoError(t, htest.Start(hNewGroup(t, option.GroupDNSServerOptions{Servers: []string{"plain"}}, members...), adapter.StartStateStart))
+	require.NoError(t, htest.Start(hNewGroup(t, option.GroupDNSServerOptions{Servers: []string{"missing"}}, members...), adapter.StartStateInitialize))
+	require.ErrorContains(t, htest.Start(hNewGroup(t, option.GroupDNSServerOptions{Servers: []string{"missing"}}, members...), adapter.StartStateStart), "DNS server not found: missing")
+	require.ErrorContains(t, htest.Start(hNewGroup(t, option.GroupDNSServerOptions{Servers: []string{"nested-group"}}, members...), adapter.StartStateStart), "cannot contain another group")
+	require.ErrorContains(t, htest.Start(hNewGroup(t, option.GroupDNSServerOptions{Servers: []string{"nested-multi"}}, members...), adapter.StartStateStart), "cannot contain another group")
+	require.ErrorContains(t, htest.Start(hNewGroup(t, option.GroupDNSServerOptions{Servers: []string{"fake"}}, members...), adapter.StartStateStart), "cannot contain fakeip")
 }
 
 func TestH_GroupSequentialStopsAtFirstAnswer(t *testing.T) {

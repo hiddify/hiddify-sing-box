@@ -8,7 +8,6 @@ import (
 	"github.com/sagernet/sing-box/common/ipset"
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/json/badoption"
-	E "github.com/sagernet/sing/common/exceptions"
 
 	"go4.org/netipx"
 )

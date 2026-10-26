@@ -257,7 +257,12 @@ func (h *Outbound) ResolveUDP(resolver dnstt.Resolver, name string, qtype uint16
 	// h.logger.InfoContext(h.ctx, "resolving name ", name, " of type ", qtype, " using resolver ", resolver.ResolverAddr)
 
 	msg := buildDNSQuery(name, qtype)
-	trans.Start(adapter.StartStateStart)
+	scope := adapter.NewScope(h.ctx, h.logger) // H: the transport lives only for this query
+	defer scope.Close()
+	err = scope.Start("dns/test", trans, adapter.StartStateStart)
+	if err != nil {
+		return nil, err
+	}
 	ctx, cancel := context.WithTimeout(h.ctx, 5*time.Second)
 	defer cancel()
 	resp, err := trans.Exchange(ctx, msg)

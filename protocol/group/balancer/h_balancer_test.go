@@ -3,6 +3,7 @@ package balancer
 import (
 	"context"
 	"errors"
+	"github.com/sagernet/sing-box/adapter/htest"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -159,11 +160,11 @@ func TestH_BalancerFailoverViaMonitoring(t *testing.T) {
 	lb := out.(*Balancer)
 	manager.list = append(manager.list, lb)
 
-	require.NoError(t, monitor.Start(adapter.StartStateInitialize))
+	require.NoError(t, htest.Start(monitor, adapter.StartStateInitialize))
 	require.NoError(t, lb.Start())
 	require.Equal(t, "a", lb.Now())
 	require.NoError(t, lb.PostStart())
-	require.NoError(t, monitor.Start(adapter.StartStatePostStart))
+	require.NoError(t, htest.Start(monitor, adapter.StartStatePostStart))
 
 	require.Eventually(t, func() bool { return lb.Now() == "b" }, 4*time.Second, 20*time.Millisecond)
 	history := monitor.OutboundsHistory("lb")

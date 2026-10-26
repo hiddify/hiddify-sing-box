@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/sagernet/sing-box/adapter/htest"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -218,7 +219,8 @@ func TestH_ClashServerClose(t *testing.T) {
 	hook := observable.NewSubscriber[struct{}](1)
 	history.SetHook(hook)
 	env := newHTestEnv(t, history)
-	require.NoError(t, env.server.Close())
+	require.NoError(t, htest.Start(env.server, adapter.StartStateInitialize))
+	require.NoError(t, htest.Close(env.server))
 	history.StoreURLTestHistory("x", &adapter.URLTestHistory{Delay: 1})
 	updates, _ := hook.Subscription()
 	require.Len(t, updates, 0, "server close also closes the history storage")

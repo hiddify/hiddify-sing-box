@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"github.com/sagernet/sing-box/adapter/htest"
 	"net"
 	"net/netip"
 	"strings"
@@ -257,7 +258,7 @@ func TestH_EndpointReadinessAndDialValidation(t *testing.T) {
 
 	_, err := ep.DialContext(context.Background(), N.NetworkTCP, M.Socksaddr{Port: 80})
 	require.ErrorContains(t, err, "invalid destination")
-	require.NoError(t, ep.Start(adapter.StartStateInitialize))
+	require.NoError(t, htest.Start(ep, adapter.StartStateInitialize))
 }
 
 func TestH_RegisterEndpoint(t *testing.T) {

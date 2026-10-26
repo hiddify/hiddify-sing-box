@@ -37,6 +37,7 @@ var _ adapter.NetworkManager = (*NetworkManager)(nil)
 type NetworkManager struct {
 	ctx                     context.Context
 	logger                  logger.ContextLogger
+	router                  adapter.Router
 	interfaceFinder         *control.DefaultInterfaceFinder
 	networkInterfaces       common.TypedValue[[]adapter.NetworkInterface]
 	autoDetectInterface     bool

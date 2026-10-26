@@ -42,7 +42,7 @@ func createWARPWireGuardEndpoint(
 				Address:   peerAddr,
 				Port:      peerPort,
 				PublicKey: peerPublicKey,
-				AllowedIPs: badoption.Listable[netip.Prefix]{
+				AllowedIPs: option.LegacyListable[netip.Prefix]{
 					netip.MustParsePrefix("0.0.0.0/0"),
 					netip.MustParsePrefix("::/0"),
 				},

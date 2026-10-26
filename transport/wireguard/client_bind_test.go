@@ -237,6 +237,8 @@ func (m *endpointPauseManager) IsPaused() bool {
 
 func (m *endpointPauseManager) WaitActive() {}
 
+func (m *endpointPauseManager) WaitActiveContext(context.Context) {}
+
 func (m *endpointPauseManager) RegisterCallback(callback pause.Callback) *list.Element[pause.Callback] {
 	m.access.Lock()
 	m.callback = callback
@@ -325,6 +327,14 @@ func (m *testPauseManager) IsPaused() bool {
 func (m *testPauseManager) WaitActive() {
 	m.waitingOnce.Do(func() { close(m.waiting) })
 	<-m.active
+}
+
+func (m *testPauseManager) WaitActiveContext(ctx context.Context) {
+	m.waitingOnce.Do(func() { close(m.waiting) })
+	select {
+	case <-m.active:
+	case <-ctx.Done():
+	}
 }
 
 func (m *testPauseManager) RegisterCallback(pause.Callback) *list.Element[pause.Callback] {

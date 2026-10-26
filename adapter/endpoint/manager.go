@@ -17,6 +17,7 @@ type Manager struct {
 	registry      adapter.EndpointRegistry
 	access        sync.Mutex
 	scope         *adapter.Scope
+	started       bool // H: components created from now on are started right away (hot reload)
 	endpoints     []adapter.Endpoint
 	endpointByTag map[string]adapter.Endpoint
 }
@@ -44,6 +45,9 @@ func (m *Manager) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 			return err
 		}
 	}
+	if stage == adapter.StartStateStarted {
+		m.started = true
+	}
 	return nil
 }
 
@@ -64,6 +68,7 @@ func (m *Manager) Get(tag string) (adapter.Endpoint, bool) {
 	return endpoint, found
 }
 
+// Remove removes and closes an endpoint; used by hot reload. //H
 func (m *Manager) Remove(tag string) error {
 	m.access.Lock()
 	endpoint, found := m.endpointByTag[tag]
@@ -72,9 +77,7 @@ func (m *Manager) Remove(tag string) error {
 		return os.ErrInvalid
 	}
 	delete(m.endpointByTag, tag)
-	index := common.Index(m.endpoints, func(it adapter.Endpoint) bool {
-		return it == endpoint
-	})
+	index := slices.Index(m.endpoints, endpoint)
 	if index == -1 {
 		panic("invalid endpoint index")
 	}
@@ -82,7 +85,7 @@ func (m *Manager) Remove(tag string) error {
 	started := m.started
 	m.access.Unlock()
 	if started {
-		return endpoint.Close()
+		return adapter.CloseLate(m.scope, endpoint)
 	}
 	return nil
 }
@@ -93,29 +96,22 @@ func (m *Manager) Create(ctx context.Context, router adapter.Router, logger log.
 		return err
 	}
 	m.access.Lock()
-	defer m.access.Unlock()
-	if m.started {
-		name := "endpoint/" + endpoint.Type() + "[" + endpoint.Tag() + "]"
-		for _, stage := range adapter.ListStartStages {
-			done := adapter.LogElapsed(m.logger, stage, " ", name)
-			err = adapter.LegacyStart(endpoint, stage)
-			done()
-			if err != nil {
-				return E.Cause(err, stage, " ", name)
-			}
+	started := m.started
+	m.access.Unlock()
+	if started { // H: hot reload; started outside the lock, as starting may look up other endpoints
+		err = adapter.StartLate(m.scope, "endpoint/"+endpoint.Type()+"["+endpoint.Tag()+"]", endpoint)
+		if err != nil {
+			return err
 		}
 	}
-	var replaced bool
-	if existsEndpoint, loaded := m.endpointByTag[tag]; loaded {
-		if m.started {
-			err = existsEndpoint.Close()
-			if err != nil {
-				return E.Cause(err, "close endpoint/", existsEndpoint.Type(), "[", existsEndpoint.Tag(), "]")
-			}
-		}
-		existsIndex := common.Index(m.endpoints, func(it adapter.Endpoint) bool {
-			return it == existsEndpoint
-		})
+	m.access.Lock()
+	existsEndpoint, replaced := m.endpointByTag[tag]
+	if replaced && !started {
+		m.access.Unlock()
+		return E.New("duplicate endpoint tag: ", tag)
+	}
+	if replaced {
+		existsIndex := slices.Index(m.endpoints, existsEndpoint)
 		if existsIndex == -1 {
 			panic("invalid endpoint index")
 		}
@@ -123,11 +119,16 @@ func (m *Manager) Create(ctx context.Context, router adapter.Router, logger log.
 		// comes first); a copy, so a slice already handed out never changes
 		m.endpoints = slices.Clone(m.endpoints)
 		m.endpoints[existsIndex] = endpoint
-		replaced = true
-	}
-	if !replaced {
+	} else {
 		m.endpoints = append(m.endpoints, endpoint)
 	}
 	m.endpointByTag[tag] = endpoint
+	m.access.Unlock()
+	if replaced {
+		err = adapter.CloseLate(m.scope, existsEndpoint)
+		if err != nil {
+			return E.Cause(err, "close endpoint/", existsEndpoint.Type(), "[", existsEndpoint.Tag(), "]")
+		}
+	}
 	return nil
 }

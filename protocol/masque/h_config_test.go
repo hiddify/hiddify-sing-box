@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"github.com/sagernet/sing-box/adapter/htest"
 	"sync"
 	"testing"
 	"time"
@@ -177,7 +178,7 @@ func TestH_OutboundStartHandlerFailureModes(t *testing.T) {
 			ctx, cache := hCachedContext(t, config)
 			logger := &hErrorLogger{ContextLogger: log.NewNOPFactory().NewLogger("masque")}
 			out := hNewOutbound(t, ctx, logger, options)
-			require.NoError(t, out.Start(adapter.StartStatePostStart))
+			require.NoError(t, htest.Start(out, adapter.StartStatePostStart))
 			_, err := out.DialContext(ctx, N.NetworkTCP, M.ParseSocksaddr("1.1.1.1:80"))
 			require.ErrorContains(t, err, "tunnel not initialized")
 			require.Equal(t, []string{"masque-out"}, cache.loads)
@@ -205,7 +206,7 @@ func TestH_OutboundWaitsForStartup(t *testing.T) {
 	require.Equal(t, C.TypeMASQUE, out.Type())
 	require.Equal(t, "masque-out", out.Tag())
 	require.Equal(t, []string{N.NetworkTCP, N.NetworkUDP, N.NetworkICMP}, out.Network())
-	require.NoError(t, out.Start(adapter.StartStateStart), "only post-start triggers the handler")
+	require.NoError(t, htest.Start(out, adapter.StartStateStart), "only post-start triggers the handler")
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 	_, err := out.DialContext(ctx, N.NetworkTCP, M.ParseSocksaddr("1.1.1.1:80"))

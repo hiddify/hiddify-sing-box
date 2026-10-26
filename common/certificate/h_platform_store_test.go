@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"github.com/sagernet/sing-box/adapter/htest"
 	"math/big"
 	"testing"
 	"time"
@@ -72,7 +73,7 @@ func hNewSystemStore(t *testing.T, platform adapter.PlatformInterface) *Store {
 	}
 	store, err := NewStore(ctx, logger.NOP(), option.CertificateOptions{Store: C.CertificateStoreSystem})
 	require.NoError(t, err)
-	t.Cleanup(func() { store.Close() })
+	t.Cleanup(func() { htest.Close(store) })
 	return store
 }
 
@@ -134,7 +135,7 @@ func TestH_StorePlatformIgnoredForBundledStores(t *testing.T) {
 		require.Nil(t, store.systemPool)
 		require.Error(t, hVerify(store.Pool(), leaf))
 		require.True(t, store.ExclusiveAnchors())
-		store.Close()
+		htest.Close(store)
 	}
 	_, err := NewStore(ctx, logger.NOP(), option.CertificateOptions{Store: "bogus"})
 	require.ErrorContains(t, err, "unknown certificate store")

@@ -2,6 +2,7 @@ package smart_dns_pool
 
 import (
 	"context"
+	"github.com/sagernet/sing-box/adapter/htest"
 	"net/netip"
 	"testing"
 	"time"
@@ -112,7 +113,7 @@ func TestH_ServiceStartOtherStagesAndCloseIdle(t *testing.T) {
 	require.NoError(t, err)
 	service := instance.(*Service)
 	for _, stage := range []adapter.StartStage{adapter.StartStateInitialize, adapter.StartStatePostStart, adapter.StartStateStarted} {
-		require.NoError(t, service.Start(stage))
+		require.NoError(t, htest.Start(service, stage))
 	}
 	require.Nil(t, service.mgr)
 	require.Nil(t, service.server)

@@ -30,7 +30,10 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 	return &Endpoint{Outbound: out.(*Outbound)}, nil
 }
 
-func (h *Endpoint) Start(stage adapter.StartStage) error {
+func (h *Endpoint) Start(stage adapter.StartStage, scope *adapter.Scope) error {
+	if stage == adapter.StartStateInitialize {
+		scope.Add(h.Close) // H: closed with the box
+	}
 	return nil
 }
 

@@ -269,9 +269,10 @@ func (t *Endpoint) References() []string {
 	return []string{t.detour}
 }
 
-func (t *Endpoint) Start(stage adapter.StartStage) error {
+func (t *Endpoint) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	switch stage {
 	case adapter.StartStateInitialize:
+		scope.Add(t.Close) // H: closed with the box
 		t.server.NetstackMemoryPressure = oomkiller.MemoryPressure(t.ctx)
 		mkdirErr := filemanager.MkdirAll(t.ctx, t.server.Dir, 0o700)
 		if mkdirErr != nil {

@@ -128,7 +128,7 @@ func TestH_HeadlessRuleTunnelMatch(t *testing.T) {
 
 func TestH_RouteActionOverrideTunnelDestination(t *testing.T) {
 	t.Parallel()
-	action, err := NewRuleAction(context.Background(), log.NewNOPFactory().NewLogger("router"), option.RuleAction{
+	action, err := NewRuleAction(log.NewNOPFactory().NewLogger("router"), option.RuleAction{
 		Action: C.RuleActionTypeRoute,
 		RouteOptions: option.RouteActionOptions{
 			Outbound: "tunnel",
@@ -143,7 +143,7 @@ func TestH_RouteActionOverrideTunnelDestination(t *testing.T) {
 	require.Equal(t, hTunnelUUIDB, route.OverrideTunnelDestination)
 	require.Contains(t, route.String(), "override-tunnel-destination="+hTunnelUUIDB)
 
-	optionsAction, err := NewRuleAction(context.Background(), log.NewNOPFactory().NewLogger("router"), option.RuleAction{
+	optionsAction, err := NewRuleAction(log.NewNOPFactory().NewLogger("router"), option.RuleAction{
 		Action: C.RuleActionTypeRouteOptions,
 		RouteOptionsOptions: option.RouteOptionsActionOptions{
 			OverrideTunnelDestination: hTunnelUUIDC,

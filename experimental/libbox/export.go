@@ -22,8 +22,7 @@ func WrapPlatformInterface(platformInterface PlatformInterface) adapter.Platform
 		return nil
 	}
 	return &platformInterfaceWrapper{
-		iif:       platformInterface,
-		useProcFS: platformInterface.UseProcFS(),
+		iif: platformInterface,
 	}
 }
 

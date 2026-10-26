@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"github.com/sagernet/sing-box/adapter/htest"
 	"io"
 	"math/big"
 	"net"
@@ -143,7 +144,7 @@ func TestH_TrustTunnelInboundValidation(t *testing.T) {
 	in, err := NewInbound(context.Background(), newTestRouter(), logger, "tt-in", option.TrustTunnelInboundOptions{Network: "tcp", Users: users})
 	require.NoError(t, err)
 	require.Equal(t, C.TypeTrustTunnel, in.Type())
-	require.NoError(t, in.Close())
+	require.NoError(t, htest.Close(in))
 }
 
 func TestH_TrustTunnelOutboundValidation(t *testing.T) {
@@ -201,8 +202,8 @@ func startTrustTunnelInbound(t *testing.T) *tunnelFixture {
 		}},
 	})
 	require.NoError(t, err)
-	require.NoError(t, in.Start(adapter.StartStateStart))
-	t.Cleanup(func() { in.Close() })
+	require.NoError(t, htest.Start(in, adapter.StartStateStart))
+	t.Cleanup(func() { htest.Close(in) })
 	return f
 }
 

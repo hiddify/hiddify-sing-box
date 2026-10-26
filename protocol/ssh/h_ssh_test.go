@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/pem"
+	"github.com/sagernet/sing-box/adapter/htest"
 	"io"
 	"net"
 	"net/netip"
@@ -150,7 +151,7 @@ func startInbound(t *testing.T, mutate func(*option.SSHInboundOptions)) *sshFixt
 	in, err := NewInbound(context.Background(), f.router, log.NewNOPFactory().Logger(), "ssh-in", f.inOption)
 	require.NoError(t, err)
 	f.inbound = in.(*Inbound)
-	require.NoError(t, f.inbound.Start(adapter.StartStateStart))
+	require.NoError(t, htest.Start(f.inbound, adapter.StartStateStart))
 	t.Cleanup(func() { f.inbound.Close() })
 	f.addr = net.JoinHostPort("127.0.0.1", strconv.Itoa(int(f.port)))
 	return f
@@ -303,7 +304,7 @@ func newTestOutbound(t *testing.T, f *sshFixture, mutate func(*option.SSHOutboun
 	}
 	out, err := NewOutbound(context.Background(), f.router, log.NewNOPFactory().Logger(), "ssh-out", options)
 	require.NoError(t, err)
-	t.Cleanup(func() { out.(*Outbound).Close() })
+	t.Cleanup(func() { htest.Close(out.(*Outbound)) })
 	return out.(*Outbound)
 }
 
@@ -476,5 +477,5 @@ func TestH_SSHOutboundUnreachableServer(t *testing.T) {
 		return strings.Contains(ssh.DisplayType(), "❌") && strings.Contains(ssh.DisplayType(), "refused")
 	}, 5*time.Second, 20*time.Millisecond, "the connection error is not shown: %q", ssh.DisplayType())
 	require.False(t, ssh.IsReady())
-	require.NoError(t, ssh.Close()) // stops the background retries
+	require.NoError(t, htest.Close(ssh)) // stops the background retries
 }

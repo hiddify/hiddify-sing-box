@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/netip"
 	"slices"
-	"unsafe"
 
 	"github.com/sagernet/sing-box/common/ipset"
 	C "github.com/sagernet/sing-box/constant"

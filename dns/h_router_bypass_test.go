@@ -2,6 +2,7 @@ package dns
 
 import (
 	"context"
+	"github.com/sagernet/sing-box/adapter/htest"
 	"net/netip"
 	"sync"
 	"testing"
@@ -359,8 +360,8 @@ func TestH_LegacyRouteActionTimeoutApplied(t *testing.T) {
 		defaultDomainStrategy: C.DomainStrategyAsIS,
 	}
 	require.NoError(t, router.Initialize([]option.DNSRule{rule, hLegacyModeRule()}))
-	require.NoError(t, router.Start(adapter.StartStateStart))
-	t.Cleanup(func() { router.Close() })
+	require.NoError(t, htest.Start(router, adapter.StartStateStart))
+	t.Cleanup(func() { htest.Close(router) })
 
 	_, err := router.Exchange(context.Background(), hQuery("example.com"), adapter.DNSQueryOptions{})
 	require.NoError(t, err)

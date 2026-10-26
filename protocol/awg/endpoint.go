@@ -312,7 +312,10 @@ func (w *Endpoint) NewConnectionEx(ctx context.Context, conn net.Conn, source M.
 	w.router.RouteConnectionEx(ctx, conn, metadata, onClose)
 }
 
-func (o *Endpoint) Start(stage adapter.StartStage) error {
+func (o *Endpoint) Start(stage adapter.StartStage, scope *adapter.Scope) error {
+	if stage == adapter.StartStateInitialize {
+		scope.Add(o.Close) // H: closed with the box
+	}
 	switch stage {
 	case adapter.StartStateStart:
 		return o.Device.Start(stage)

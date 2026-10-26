@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/sagernet/sing-box/adapter/htest"
 	"net"
 	"sync"
 	"testing"
@@ -184,7 +185,7 @@ func TestH_NewWARPEndpointMetadata(t *testing.T) {
 	require.Equal(t, "warp-tag", ep.Tag())
 	require.Equal(t, []string{N.NetworkTCP, N.NetworkUDP}, ep.Network())
 	require.Equal(t, []string{"wg-out", "profile-out"}, ep.Dependencies())
-	require.NoError(t, ep.Start(adapter.StartStateStart))
+	require.NoError(t, htest.Start(ep, adapter.StartStateStart))
 	require.False(t, ep.mtx.TryLock(), "endpoint stays locked until the start handler runs")
 }
 
@@ -207,7 +208,7 @@ func TestH_WARPStartPostStartRunsHandler(t *testing.T) {
 	options := option.WARPEndpointOptions{WARPConfig: hWARPConfig(t, hWARPConfigJSON), AWG: &option.AwgOptions{Jc: 3}}
 	options.Detour = "missing-detour"
 	ep := hNewWARP(t, hTestContext(t), options)
-	require.NoError(t, ep.Start(adapter.StartStatePostStart))
+	require.NoError(t, htest.Start(ep, adapter.StartStatePostStart))
 	done := make(chan bool, 1)
 	go func() { done <- ep.IsReady() }()
 	select {

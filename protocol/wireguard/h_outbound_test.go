@@ -2,6 +2,7 @@ package wireguard
 
 import (
 	"context"
+	"github.com/sagernet/sing-box/adapter/htest"
 	"net/netip"
 	"testing"
 
@@ -103,7 +104,7 @@ func TestH_LegacyOutboundStartWithoutInitialize(t *testing.T) {
 	require.NoError(t, err)
 	require.NotPanics(t, func() {
 		for _, stage := range adapter.ListStartStages {
-			require.NoError(t, o.Start(stage))
+			require.NoError(t, htest.Start(o, stage))
 		}
 	})
 }
@@ -111,8 +112,8 @@ func TestH_LegacyOutboundStartWithoutInitialize(t *testing.T) {
 func hStartLegacy(t *testing.T, o *Outbound) {
 	require.NoError(t, o.endpoint.Initialize(nil))
 	t.Cleanup(func() { o.Close() })
-	require.NoError(t, o.Start(adapter.StartStateStart))
-	require.NoError(t, o.Start(adapter.StartStatePostStart))
+	require.NoError(t, htest.Start(o, adapter.StartStateStart))
+	require.NoError(t, htest.Start(o, adapter.StartStatePostStart))
 }
 
 func TestH_LegacyOutboundSinglePeerRoutesEverything(t *testing.T) {

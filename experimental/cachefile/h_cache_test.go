@@ -2,6 +2,7 @@ package cachefile
 
 import (
 	"context"
+	"github.com/sagernet/sing-box/adapter/htest"
 	"path/filepath"
 	"testing"
 	"time"
@@ -15,7 +16,7 @@ import (
 
 func openTestCache(t *testing.T, options option.CacheFileOptions) *CacheFile {
 	c := New(context.Background(), log.NewNOPFactory().NewLogger("cache"), options)
-	require.NoError(t, c.Start(adapter.StartStateInitialize))
+	require.NoError(t, htest.Start(c, adapter.StartStateInitialize))
 	return c
 }
 
@@ -56,10 +57,10 @@ func TestH_CacheFileBinaryRoundTrip(t *testing.T) {
 
 	require.NoError(t, c.SaveBinary("outbound_monitoring_history", &adapter.SavedBinary{Content: []byte("v2")}))
 	require.Equal(t, []byte("v2"), c.LoadBinary("outbound_monitoring_history").Content)
-	require.NoError(t, c.Close())
+	require.NoError(t, htest.Close(c))
 
 	c = openTestCache(t, option.CacheFileOptions{Path: path})
-	defer c.Close()
+	defer htest.Close(c)
 	require.Equal(t, []byte("v2"), c.LoadBinary("outbound_monitoring_history").Content, "persisted across reopen")
 }
 
@@ -67,13 +68,13 @@ func TestH_CacheFileBinaryWithCacheID(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "cache.db")
 	c := openTestCache(t, option.CacheFileOptions{Path: path, CacheID: "profile-1"})
 	require.NoError(t, c.SaveBinary("k", &adapter.SavedBinary{Content: []byte("one")}))
-	require.NoError(t, c.Close())
+	require.NoError(t, htest.Close(c))
 
 	c = openTestCache(t, option.CacheFileOptions{Path: path, CacheID: "profile-2"})
 	require.Nil(t, c.LoadBinary("k"), "binaries are scoped by cache id")
-	require.NoError(t, c.Close())
+	require.NoError(t, htest.Close(c))
 
 	c = openTestCache(t, option.CacheFileOptions{Path: path, CacheID: "profile-1"})
-	defer c.Close()
+	defer htest.Close(c)
 	require.Equal(t, []byte("one"), c.LoadBinary("k").Content)
 }

@@ -2,6 +2,7 @@ package dns
 
 import (
 	"context"
+	"github.com/sagernet/sing/common"
 	"net/netip"
 	"testing"
 
@@ -89,7 +90,7 @@ func TestReproLogicalMatchResponseIPCIDR(t *testing.T) {
 						DefaultOptions: option.DefaultDNSRule{
 							RawDefaultDNSRule: option.RawDefaultDNSRule{
 								MatchResponse: &option.DNSRuleMatchResponse{Enabled: true},
-								IPCIDR:        badoption.Listable[string]{"1.1.1.0/24"},
+								IPCIDR:        badoption.Listable[*badoption.Prefixable]{common.Ptr(badoption.Prefixable(netip.MustParsePrefix("1.1.1.0/24")))},
 							},
 						},
 					}},

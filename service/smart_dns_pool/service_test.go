@@ -2,6 +2,7 @@ package smart_dns_pool
 
 import (
 	"context"
+	"github.com/sagernet/sing-box/adapter/htest"
 	"net"
 	"strconv"
 	"strings"
@@ -114,10 +115,10 @@ func TestSmartDNSPool_EndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
-	if err := svc.Start(adapter.StartStateStart); err != nil {
+	if err := htest.Start(svc, adapter.StartStateStart); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	defer svc.Close()
+	defer htest.Close(svc)
 
 	addr := "127.0.0.1:" + strconv.Itoa(int(port))
 
@@ -180,10 +181,10 @@ func TestSmartDNSPool_FailoverWithinDeadline(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
-	if err := svc.Start(adapter.StartStateStart); err != nil {
+	if err := htest.Start(svc, adapter.StartStateStart); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	defer svc.Close()
+	defer htest.Close(svc)
 
 	addr := "127.0.0.1:" + strconv.Itoa(int(port))
 	// Warmup until the listener accepts.
@@ -213,10 +214,10 @@ func TestSmartDNSPool_FailoverWithinDeadline(t *testing.T) {
 // TestSmartDNSPool_RejectsBadConfig verifies validation at NewService time.
 func TestSmartDNSPool_RejectsBadConfig(t *testing.T) {
 	cases := []struct {
-		name     string
-		opts     option.SmartDNSPoolServiceOptions
-		wantErr  string
-		wantOK   bool
+		name    string
+		opts    option.SmartDNSPoolServiceOptions
+		wantErr string
+		wantOK  bool
 	}{
 		{
 			name: "no upstreams",

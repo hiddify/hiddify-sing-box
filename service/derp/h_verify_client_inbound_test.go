@@ -10,6 +10,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"github.com/sagernet/sing-box/adapter/htest"
 	"math/big"
 	"path/filepath"
 	"testing"
@@ -57,6 +58,6 @@ func TestH_DERPStartFailsWithVerifyClientInboundWithoutTailcat(t *testing.T) {
 		VerifyClientInbound: []string{"tailcat-in"},
 	})
 	require.NoError(t, err)
-	err = svc.Start(adapter.StartStateStart)
+	err = htest.Start(svc, adapter.StartStateStart)
 	require.ErrorContains(t, err, "verify_client_inbound requires Tailcat")
 }

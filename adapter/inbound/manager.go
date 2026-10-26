@@ -17,6 +17,8 @@ type Manager struct {
 	registry     adapter.InboundRegistry
 	endpoint     adapter.EndpointManager
 	access       sync.Mutex
+	scope        *adapter.Scope // H: where inbounds created by hot reload are started
+	started      bool
 	inbounds     []adapter.Inbound
 	inboundByTag map[string]adapter.Inbound
 }
@@ -31,6 +33,7 @@ func NewManager(registry adapter.InboundRegistry, endpoint adapter.EndpointManag
 
 func (m *Manager) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	m.access.Lock()
+	m.scope = scope
 	inbounds := m.inbounds
 	m.access.Unlock()
 	for _, inbound := range inbounds {
@@ -39,6 +42,11 @@ func (m *Manager) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 		if err != nil {
 			return err
 		}
+	}
+	if stage == adapter.StartStateStarted {
+		m.access.Lock()
+		m.started = true
+		m.access.Unlock()
 	}
 	return nil
 }
@@ -59,6 +67,7 @@ func (m *Manager) Get(tag string) (adapter.Inbound, bool) {
 	return m.endpoint.Get(tag)
 }
 
+// Remove removes and closes an inbound; used by hot reload. //H
 func (m *Manager) Remove(tag string) error {
 	m.access.Lock()
 	inbound, found := m.inboundByTag[tag]
@@ -67,9 +76,7 @@ func (m *Manager) Remove(tag string) error {
 		return os.ErrInvalid
 	}
 	delete(m.inboundByTag, tag)
-	index := common.Index(m.inbounds, func(it adapter.Inbound) bool {
-		return it == inbound
-	})
+	index := slices.Index(m.inbounds, inbound)
 	if index == -1 {
 		panic("invalid inbound index")
 	}
@@ -77,7 +84,7 @@ func (m *Manager) Remove(tag string) error {
 	started := m.started
 	m.access.Unlock()
 	if started {
-		return inbound.Close()
+		return adapter.CloseLate(m.scope, inbound)
 	}
 	return nil
 }
@@ -88,41 +95,35 @@ func (m *Manager) Create(ctx context.Context, router adapter.Router, logger log.
 		return err
 	}
 	m.access.Lock()
-	defer m.access.Unlock()
-	if m.started {
-		name := "inbound/" + inbound.Type() + "[" + inbound.Tag() + "]"
-		for _, stage := range adapter.ListStartStages {
-			done := adapter.LogElapsed(m.logger, stage, " ", name)
-			err = adapter.LegacyStart(inbound, stage)
-			done()
-			if err != nil {
-				return E.Cause(err, stage, " ", name)
-			}
+	started := m.started
+	m.access.Unlock()
+	if started { // H: hot reload
+		err = adapter.StartLate(m.scope, "inbound/"+inbound.Type()+"["+inbound.Tag()+"]", inbound)
+		if err != nil {
+			return err
 		}
 	}
-	var replaced bool
-	if existsInbound, loaded := m.inboundByTag[tag]; loaded {
-		if m.started {
-			err = existsInbound.Close()
-			if err != nil {
-				return E.Cause(err, "close inbound/", existsInbound.Type(), "[", existsInbound.Tag(), "]")
-			}
-		}
-		existsIndex := common.Index(m.inbounds, func(it adapter.Inbound) bool {
-			return it == existsInbound
-		})
+	m.access.Lock()
+	existsInbound, replaced := m.inboundByTag[tag]
+	if replaced && !started {
+		m.access.Unlock()
+		return E.New("duplicate inbound tag: ", tag)
+	}
+	if replaced {
+		existsIndex := slices.Index(m.inbounds, existsInbound)
 		if existsIndex == -1 {
 			panic("invalid inbound index")
 		}
-		// H: the replacement takes the old one's place (callers rely on the order, e.g. the main group
-		// comes first); a copy, so a slice already handed out never changes
-		m.inbounds = slices.Clone(m.inbounds)
-		m.inbounds[existsIndex] = inbound
-		replaced = true
+		m.inbounds = slices.Delete(slices.Clone(m.inbounds), existsIndex, existsIndex+1) // H: never change a slice already handed out
 	}
-	if !replaced {
-		m.inbounds = append(m.inbounds, inbound)
-	}
+	m.inbounds = append(m.inbounds, inbound)
 	m.inboundByTag[tag] = inbound
+	m.access.Unlock()
+	if replaced {
+		err = adapter.CloseLate(m.scope, existsInbound)
+		if err != nil {
+			return E.Cause(err, "close inbound/", existsInbound.Type(), "[", existsInbound.Tag(), "]")
+		}
+	}
 	return nil
 }

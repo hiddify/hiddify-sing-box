@@ -41,7 +41,7 @@ func (c *fakeSingPacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error)
 func TestH_InterruptExternalContext(t *testing.T) {
 	ctx := context.Background()
 	require.False(t, IsExternalConnectionFromContext(ctx))
-	require.True(t, IsExternalConnectionFromContext(ContextWithIsExternalConnection(ctx)))
+	require.True(t, IsExternalConnectionFromContext(ContextWithIsExternalConnection(ctx, true)))
 }
 
 func TestH_InterruptGroupExternalFiltering(t *testing.T) {

@@ -359,6 +359,7 @@ func (s *Outbound) CloseIdleConnections() {
 	clientConn := s.clientConn
 	s.client = nil
 	s.clientConn = nil
+	s.ready.Store(false) // H: shown in the UI; the session watcher no longer sees it as its own
 	s.clientAccess.Unlock()
 	common.Close(clientConn)
 }
@@ -377,6 +378,7 @@ func (s *Outbound) releaseStream(client *ssh.Client, keepSession bool) {
 	clientConn := s.clientConn
 	s.client = nil
 	s.clientConn = nil
+	s.ready.Store(false) // H: shown in the UI; the session watcher no longer sees it as its own
 	s.clientAccess.Unlock()
 	common.Close(clientConn)
 }

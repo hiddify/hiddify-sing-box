@@ -165,7 +165,10 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 	return outbound, nil
 }
 
-func (w *Outbound) Start(stage adapter.StartStage) error {
+func (w *Outbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
+	if stage == adapter.StartStateInitialize {
+		scope.Add(w.Close) // H: closed with the box
+	}
 	if stage != adapter.StartStatePostStart {
 		return nil
 	}

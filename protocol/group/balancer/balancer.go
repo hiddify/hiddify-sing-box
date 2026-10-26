@@ -225,7 +225,7 @@ func (s *Balancer) ListenPacket(ctx context.Context, destination M.Socksaddr) (n
 }
 
 func (s *Balancer) NewConnection(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
-	ctx = interrupt.ContextWithIsExternalConnection(ctx)
+	ctx = interrupt.ContextWithIsExternalConnection(ctx, true)
 	selected := s.strategyFn.Select(metadata, metadata.Network, true)
 	if selected == nil {
 		N.CloseOnHandshakeFailure(conn, onClose, E.New("missing supported outbound"))
@@ -241,7 +241,7 @@ func (s *Balancer) NewConnection(ctx context.Context, conn net.Conn, metadata ad
 }
 
 func (s *Balancer) NewPacketConnection(ctx context.Context, conn N.PacketConn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
-	ctx = interrupt.ContextWithIsExternalConnection(ctx)
+	ctx = interrupt.ContextWithIsExternalConnection(ctx, true)
 	selected := s.strategyFn.Select(metadata, metadata.Network, true)
 	if selected == nil {
 		N.CloseOnHandshakeFailure(conn, onClose, E.New("missing supported outbound"))

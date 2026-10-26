@@ -80,7 +80,10 @@ func newGroup(ctx context.Context, logger log.ContextLogger, transportType strin
 	}, nil
 }
 
-func (t *GroupTransport) Start(stage adapter.StartStage) error {
+func (t *GroupTransport) Start(stage adapter.StartStage, scope *adapter.Scope) error {
+	if stage == adapter.StartStateInitialize {
+		scope.Add(t.Close) // H: closed with the box
+	}
 	if stage != adapter.StartStateStart {
 		return nil
 	}

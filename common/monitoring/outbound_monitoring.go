@@ -323,7 +323,10 @@ func NewOutboundMonitoring(ctx context.Context, logger log.ContextLogger, option
 	return m, nil
 }
 
-func (m *OutboundMonitoring) Start(stage adapter.StartStage) error {
+func (m *OutboundMonitoring) Start(stage adapter.StartStage, scope *adapter.Scope) error {
+	if stage == adapter.StartStateInitialize {
+		scope.Add(m.Close) // H: closed with the box
+	}
 	m.logger.Info("starting outbound monitoring ", stage)
 	switch stage {
 	case adapter.StartStateInitialize:
