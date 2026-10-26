@@ -137,6 +137,9 @@ type OutboundTLSOptions struct {
 	Reality                    *OutboundRealityOptions             `json:"reality,omitempty"`
 
 	TLSTricks *TLSTricksOptions `json:"tls_tricks,omitempty"` //H
+	// H: dialer-style tls_fragment nested under tls (legacy editor templates).
+	// Prefer DialerOptions.TLSFragment; config patching migrates this when present.
+	TLSFragment *TLSFragmentOptions `json:"tls_fragment,omitempty"`
 }
 
 type OutboundTLSOptionsContainer struct {

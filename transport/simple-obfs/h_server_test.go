@@ -170,7 +170,7 @@ func TestH_HTTPObfsServerRejectsInvalidRequest(t *testing.T) {
 			server := NewHTTPObfsServer(rawServer)
 			writeErr := hWriteAsync(rawClient, []byte(request))
 			_, err := server.Read(make([]byte, 64))
-			require.ErrorIs(t, err, io.EOF)
+			require.ErrorIs(t, err, ErrNotObfs)
 			require.NoError(t, <-writeErr)
 		})
 	}
@@ -232,7 +232,6 @@ func TestH_TLSObfsRoundTrip(t *testing.T) {
 }
 
 func TestH_TLSObfsLongServerName(t *testing.T) {
-	t.Skip("BUG: TLSObfsServer.skipOtherExts uses a 256-byte buffer, so an SNI longer than 256 bytes desynchronises the stream")
 	hTLSRoundTrip(t, strings.Repeat("s", 300))
 }
 

@@ -74,6 +74,13 @@ func NewWithOptions(options Options) (N.Dialer, error) {
 		return nil, err
 	}
 	dialer = newFinalMaskDialer(dialer, masks)
+	// H: dialer-level TLS ClientHello fragmentation (size/sleep); outermost so
+	// isClientHelloPacket sees the handshake bytes the TLS stack writes.
+	tlsFragment, err := buildTLSFragment(dialOptions.TLSFragment, dialOptions.TCPFastOpen)
+	if err != nil {
+		return nil, err
+	}
+	dialer = newTLSFragmentDialer(dialer, tlsFragment)
 	if options.RemoteIsDomain && (!hasDetour || options.ResolverOnDetour || dialOptions.DomainResolver != nil && dialOptions.DomainResolver.Server != "") {
 		networkManager := service.FromContext[adapter.NetworkManager](options.Context)
 		dnsTransport := service.FromContext[adapter.DNSTransportManager](options.Context)

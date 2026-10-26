@@ -165,3 +165,36 @@ func TestH_RemoteRuleSetKeepsCachedRulesOnFailedRefresh(t *testing.T) {
 	require.Greater(t, hits.Load(), int32(2), "failed refresh should be retried")
 	require.True(t, ruleSet.Match(&adapter.InboundContext{Domain: "cached.example"}), "cached rules must stay in use")
 }
+
+// The start no longer downloads a rule-set that has no cached copy (it would hold the tunnel and
+// could not be stopped), so the loop that runs once the service is up fetches it right away, not
+// after the first retry delay.
+func TestH_RemoteRuleSetMissingAtStartIsFetchedRightAway(t *testing.T) {
+	t.Parallel()
+	var hits atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		_, _ = w.Write([]byte(`{"version":4,"rules":[{"domain":["example.org"]}]}`))
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	ruleSet := &RemoteRuleSet{
+		ctx:            ctx,
+		cancel:         cancel,
+		logger:         logger.NOP(),
+		tag:            "remote",
+		url:            server.URL,
+		options:        option.RuleSet{Format: C.RuleSetFormatSource},
+		httpClient:     server.Client(),
+		updateInterval: time.Hour,
+		updateTicker:   time.NewTicker(time.Hour),
+		fetchFailed:    true, // as the start leaves it
+		retryDelays:    []time.Duration{time.Hour},
+	}
+	ruleSet.refs.Store(1)
+	defer ruleSet.Close()
+	hRunLoopUpdate(t, ruleSet, cancel, 300*time.Millisecond)
+	require.Equal(t, int32(1), hits.Load(), "the missing rule-set waited for a retry delay")
+	require.False(t, ruleSet.fetchFailed)
+	require.True(t, ruleSet.Match(&adapter.InboundContext{Domain: "example.org"}))
+}
