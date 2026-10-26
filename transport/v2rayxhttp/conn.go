@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -54,18 +55,20 @@ func (c *splitConn) RemoteAddr() net.Addr {
 }
 
 func (c *splitConn) SetDeadline(t time.Time) error {
-	// TODO cannot do anything useful
-	return nil
+	return os.ErrInvalid
 }
 
 func (c *splitConn) SetReadDeadline(t time.Time) error {
-	// TODO cannot do anything useful
-	return nil
+	return os.ErrInvalid
 }
 
 func (c *splitConn) SetWriteDeadline(t time.Time) error {
-	// TODO cannot do anything useful
-	return nil
+	return os.ErrInvalid
+}
+
+// NeedAdditionalReadDeadline makes callers wrap the conn for read deadlines, as for gRPC and HTTP
+func (c *splitConn) NeedAdditionalReadDeadline() bool {
+	return true
 }
 
 type H1Conn struct {
