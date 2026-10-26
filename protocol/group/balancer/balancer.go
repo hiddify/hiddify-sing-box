@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"net/netip"
+	"sync"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -53,6 +54,7 @@ type Balancer struct {
 
 	availbleOutbounds []adapter.Outbound
 	close             chan struct{}
+	closeOnce         sync.Once
 	interruptGroup    *interrupt.Group
 }
 
@@ -69,6 +71,7 @@ func NewLoadBalance(ctx context.Context, router adapter.Router, logger log.Conte
 		interruptExternalConnections: options.InterruptExistConnections,
 		options:                      options,
 		interruptGroup:               interrupt.NewGroup(),
+		close:                        make(chan struct{}),
 	}
 	if len(outbound.tags) == 0 {
 		return nil, E.New("missing tags")
@@ -149,9 +152,7 @@ func (s *Balancer) worker() {
 	}
 }
 func (s *Balancer) Close() error {
-	if s.close != nil {
-		close(s.close)
-	}
+	s.closeOnce.Do(func() { close(s.close) })
 	return nil
 }
 
