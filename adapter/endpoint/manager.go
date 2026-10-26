@@ -60,13 +60,17 @@ func (m *Manager) Start(stage adapter.StartStage) error {
 
 func (m *Manager) Close() error {
 	m.access.Lock()
-	defer m.access.Unlock()
 	if !m.started {
+		m.access.Unlock()
 		return nil
 	}
 	m.started = false
 	endpoints := m.endpoints
 	m.endpoints = nil
+	// H: closing without the lock. An endpoint that dials through another one (a detour, e.g. WARP
+	// in WARP) calls Get while it shuts down, and waiting for the lock here until the close
+	// timed out made every disconnect take 10s.
+	m.access.Unlock()
 	monitor := taskmonitor.New(m.logger, C.StopTimeout)
 	var err error
 	for _, endpoint := range endpoints {
