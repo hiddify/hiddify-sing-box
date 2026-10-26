@@ -428,3 +428,48 @@ func TestH_MonitoringRetestsTestBrokenByNetworkReset(t *testing.T) {
 	require.Eventually(t, func() bool { return !m.cycleRunning.Load() }, 3*time.Second, 10*time.Millisecond, "the cycle ends")
 	require.EqualValues(t, 1, plainDials.Load(), "a failure without a network reset is not run again")
 }
+
+// A network change tests every outbound again, once the network has settled; a burst of changes is
+// one retest, and results of the old network are not kept.
+func TestH_MonitoringRetestsEverythingAfterNetworkChange(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(3 * time.Millisecond)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+	var dialer net.Dialer
+	var aDials, bDials atomic.Int32
+	a := &fakeOutbound{tag: "a", dial: func(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
+		aDials.Add(1)
+		return dialer.DialContext(ctx, network, destination.String())
+	}}
+	b := &fakeOutbound{tag: "b", dial: func(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
+		bDials.Add(1)
+		return dialer.DialContext(ctx, network, destination.String())
+	}}
+	m := newTestMonitor(t, nil, option.MonitoringOptions{
+		Interval:       badoption.Duration(time.Hour),
+		Workers:        2,
+		URLs:           []string{server.URL + "/generate_204"},
+		URLTestTimeout: badoption.Duration(time.Second),
+	}, a, b)
+	require.NoError(t, m.Start(adapter.StartStateInitialize))
+	require.NoError(t, m.Start(adapter.StartStatePostStart))
+	require.Eventually(t, func() bool {
+		return aDials.Load() >= 1 && bDials.Load() >= 1 && !m.cycleRunning.Load()
+	}, 3*time.Second, 10*time.Millisecond, "the first cycle ends")
+	aBefore, bBefore := aDials.Load(), bDials.Load()
+	cyclesBefore := atomic.LoadUint64(&m.cycleSeq)
+
+	// the interval is an hour: only the network change can make a second test happen
+	m.NetworkChanged()
+	m.NetworkChanged()
+	m.NetworkChanged()
+	require.Never(t, func() bool { return aDials.Load() > aBefore }, networkRetestDelay-500*time.Millisecond, 20*time.Millisecond, "it waits for the network to settle")
+	require.Eventually(t, func() bool {
+		return aDials.Load() > aBefore && bDials.Load() > bBefore && !m.cycleRunning.Load()
+	}, 4*time.Second, 20*time.Millisecond, "every outbound is tested again")
+	time.Sleep(networkRetestDelay + 500*time.Millisecond)
+	// a test can dial more than once (the url test, then the IP lookup), so count cycles
+	require.EqualValues(t, cyclesBefore+1, atomic.LoadUint64(&m.cycleSeq), "a burst of changes is one retest")
+}

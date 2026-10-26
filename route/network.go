@@ -467,6 +467,14 @@ func (r *NetworkManager) UpdateWIFIState(ctx context.Context) {
 	r.onWIFIStateChanged(state)
 }
 
+// networkChanged has the monitoring test every outbound again: its results are of another network.
+// Unlike ResetNetwork, it is for the network really changing, not for releasing memory.
+func (r *NetworkManager) networkChanged() {
+	if monitor := monitoring.Get(r.ctx); monitor != nil {
+		monitor.NetworkChanged()
+	}
+}
+
 func (r *NetworkManager) ResetNetwork(ctx context.Context) {
 	// H: before CloseAll, so a URL test it breaks already sees the change
 	if monitor := monitoring.Get(r.ctx); monitor != nil {
@@ -538,6 +546,8 @@ func (r *NetworkManager) dispatchInterfaceUpdateLocked() {
 	if defaultInterface == nil {
 		r.pauseManager.NetworkPause()
 		r.logger.Error("missing default interface")
+		// with no network every test fails, and that is what the monitoring has to report
+		r.networkChanged()
 		return
 	}
 	r.pauseManager.NetworkWake()
@@ -596,6 +606,7 @@ func (r *NetworkManager) updateInterface(ctx context.Context, defaultInterface *
 	if resetNetwork {
 		r.ResetNetwork(ctx)
 	}
+	r.networkChanged()
 }
 
 func (r *NetworkManager) notifyWindowsPowerEvent(event int) {
@@ -626,6 +637,7 @@ func (r *NetworkManager) notifyWindowsPowerEvent(event int) {
 				return
 			}
 			r.ResetNetwork(updateContext)
+			r.networkChanged()
 		}()
 	}
 }
