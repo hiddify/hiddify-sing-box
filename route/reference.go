@@ -99,8 +99,12 @@ func (m *ReferenceManager) Start(stage adapter.StartStage, scope *adapter.Scope)
 	if m.pauseManager != nil {
 		m.devicePaused.Store(m.pauseManager.IsDevicePaused())
 	}
-	m.update()
-	go m.loop()
+	// H: the first update closes idle mux sessions of unreferenced outbounds, which waits for any
+	// mux dial in progress (sing-mux holds its lock for the whole dial), so it must not hold Start
+	go func() { //H
+		m.update() //H
+		m.loop()   //H
+	}() //H
 	if m.pauseManager != nil {
 		pauseCallback := m.pauseManager.RegisterCallback(func(event int) {
 			switch event {
