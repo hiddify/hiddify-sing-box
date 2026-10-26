@@ -8,20 +8,11 @@ import (
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
-	"github.com/sagernet/sing/common"
-	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/tailscale/ipn"
 	"github.com/sagernet/tailscale/ipn/ipnstate"
 )
 
 var _ adapter.TailscaleEndpoint = (*Endpoint)(nil)
-
-func (t *Endpoint) Logout(ctx context.Context) error {
-	if !t.started.Load() {
-		return E.New("Tailscale is not ready yet")
-	}
-	return common.Must1(t.server.LocalClient()).Logout(ctx)
-}
 
 func (t *Endpoint) SubscribeTailscaleStatus(ctx context.Context, fn func(*adapter.TailscaleEndpointStatus)) error {
 	localBackend := t.server.ExportLocalBackend()
@@ -80,12 +71,13 @@ func (t *Endpoint) SubscribeTailscaleStatus(ctx context.Context, fn func(*adapte
 	scheduleUpdate()
 	for {
 		var busError string
-		localBackend.WatchNotifications(ctx, ipn.NotifyInitialState|ipn.NotifyInitialNetMap, nil, func(roNotify *ipn.Notify) (keepGoing bool) {
+		localBackend.WatchNotifications(ctx, ipn.NotifyInitialState|ipn.NotifyPeerPatches, nil, func(roNotify *ipn.Notify) (keepGoing bool) {
 			if roNotify.ErrMessage != nil {
 				busError = *roNotify.ErrMessage
 				return false
 			}
-			if roNotify.State != nil || roNotify.NetMap != nil ||
+			if roNotify.State != nil || roNotify.SelfChange != nil ||
+				len(roNotify.PeersChanged) > 0 || len(roNotify.PeersRemoved) > 0 || len(roNotify.PeerChangedPatch) > 0 ||
 				roNotify.BrowseToURL != nil || roNotify.Prefs != nil {
 				scheduleUpdate()
 			}

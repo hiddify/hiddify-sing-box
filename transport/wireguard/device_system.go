@@ -8,10 +8,13 @@ import (
 	"os"
 	"runtime"
 	"sync"
+	"sync/atomic"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/common/kernelports"
 	"github.com/sagernet/sing-tun"
 	"github.com/sagernet/sing/common"
+	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/service"
@@ -25,6 +28,7 @@ type systemDevice struct {
 	options      DeviceOptions
 	dialer       N.Dialer
 	device       tun.Tun
+	ports        atomic.Pointer[kernelports.Pool]
 	batchDevice  tun.LinuxTUN
 	events       chan wgTun.Event
 	closeOnce    sync.Once
@@ -62,7 +66,15 @@ func (w *systemDevice) Inet6Address() netip.Addr {
 	return w.inet6Address
 }
 
-func (w *systemDevice) SetDevice(device *device.Device) {
+func (w *systemDevice) SetDevice(device *device.Device, peers []*device.Peer) {
+}
+
+func (w *systemDevice) UpstreamPort() any {
+	ports := w.ports.Load()
+	if ports == nil {
+		return nil
+	}
+	return ports
 }
 
 func (w *systemDevice) Start() error {
@@ -100,6 +112,12 @@ func (w *systemDevice) Start() error {
 		tunInterface.Close()
 		return err
 	}
+	ports, err := kernelports.New()
+	if err != nil {
+		w.options.Logger.Warn(E.Cause(err, "reserve selector ports"))
+	} else {
+		w.ports.Store(ports)
+	}
 	w.options.Logger.Info("started at ", w.options.Name)
 	w.device = tunInterface
 	batchTUN, isBatchTUN := tunInterface.(tun.LinuxTUN)
@@ -120,6 +138,7 @@ func (w *systemDevice) Read(bufs [][]byte, sizes []int, offset int) (count int, 
 	} else {
 		sizes[0], err = w.device.Read(bufs[0][offset-tun.PacketOffset:])
 		if err == nil {
+			sizes[0] -= tun.PacketOffset
 			count = 1
 		} else if errors.Is(err, tun.ErrTooManySegments) {
 			err = wgTun.ErrTooManySegments
@@ -169,6 +188,10 @@ func (w *systemDevice) Close() error {
 		close(w.events)
 		if w.device != nil {
 			err = w.device.Close()
+		}
+		ports := w.ports.Load()
+		if ports != nil {
+			err = E.Errors(err, ports.Close())
 		}
 	})
 	return err

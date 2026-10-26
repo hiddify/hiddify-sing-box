@@ -49,7 +49,7 @@ func (t *Endpoint) JudgeFlow(network uint8, source netip.AddrPort, destination n
 		return tun.FlowVerdict{Action: tun.ActionAccept}
 	}
 	if t.started.Load() {
-		tsFilter := t.server.ExportLocalBackend().ExportFilter().Load()
+		tsFilter := t.wgEngine.GetFilter()
 		if tsFilter != nil {
 			var (
 				ipProto         ipproto.Proto

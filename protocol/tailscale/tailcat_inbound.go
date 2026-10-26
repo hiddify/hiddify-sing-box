@@ -1,4 +1,4 @@
-//go:build with_tailscale && with_tailcat
+//go:build with_tailscale
 
 package tailscale
 

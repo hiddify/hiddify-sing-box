@@ -9,11 +9,9 @@ import (
 	"time"
 
 	"github.com/sagernet/sing-tun"
-	"github.com/sagernet/sing/common/buf"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
-	"github.com/sagernet/wireguard-go/conn"
 	"github.com/sagernet/wireguard-go/device"
 	wgTun "github.com/sagernet/wireguard-go/tun"
 )
@@ -22,10 +20,9 @@ var _ Device = (*stackDevice)(nil)
 
 type stackDevice struct {
 	stack        *tun.Go
-	memoryTun    *tun.MemoryTun
+	router       *peerRouter
 	mtu          uint32
 	events       chan wgTun.Event
-	outbound     chan *buf.Buffer // H: packets from the stack, read by wireguard-go
 	closed       chan struct{}
 	closeOnce    sync.Once
 	inet4Address netip.Addr
@@ -33,34 +30,22 @@ type stackDevice struct {
 }
 
 func newStackDevice(options DeviceOptions) (*stackDevice, error) {
+	router := newPeerRouter(options)
+	stack, err := newStack(options, router.memoryTun)
+	if err != nil {
+		router.close()
+		return nil, err
+	}
 	inet4Address, inet6Address := deviceAddresses(options.Address)
-	device := &stackDevice{
+	return &stackDevice{
+		stack:        stack,
+		router:       router,
 		mtu:          options.MTU,
 		events:       make(chan wgTun.Event, 1),
-		outbound:     make(chan *buf.Buffer, conn.IdealBatchSize*4),
 		closed:       make(chan struct{}),
 		inet4Address: inet4Address,
 		inet6Address: inet6Address,
-	}
-	// H: sing-tun's memory TUN pushes the stack's packets; Read hands them to wireguard-go
-	device.memoryTun = tun.NewMemoryTun(tun.MemoryTunOptions{MTU: int(options.MTU), Outbound: device.queueOutbound})
-	stack, err := newStack(options, device.memoryTun)
-	if err != nil {
-		return nil, err
-	}
-	device.stack = stack
-	return device, nil
-}
-
-func (w *stackDevice) queueOutbound(packets []*buf.Buffer) {
-	for i, packet := range packets {
-		select {
-		case w.outbound <- packet:
-		case <-w.closed:
-			buf.ReleaseMulti(packets[i:])
-			return
-		}
-	}
+	}, nil
 }
 
 func (w *stackDevice) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
@@ -122,7 +107,12 @@ func (w *stackDevice) Inet6Address() netip.Addr {
 	return w.inet6Address
 }
 
-func (w *stackDevice) SetDevice(device *device.Device) {
+func (w *stackDevice) UpstreamPort() any {
+	return w.stack
+}
+
+func (w *stackDevice) SetDevice(device *device.Device, peers []*device.Peer) {
+	w.router.setPeers(device.AllowedIPs(), peers)
 }
 
 func (w *stackDevice) Start() error {
@@ -139,26 +129,8 @@ func (w *stackDevice) File() *os.File {
 }
 
 func (w *stackDevice) Read(bufs [][]byte, sizes []int, offset int) (int, error) {
-	var packet *buf.Buffer
-	select {
-	case packet = <-w.outbound:
-	case <-w.closed:
-		return 0, os.ErrClosed
-	}
-	count := 0
-	for {
-		sizes[count] = copy(bufs[count][offset:], packet.Bytes())
-		packet.Release()
-		count++
-		if count == len(bufs) {
-			return count, nil
-		}
-		select {
-		case packet = <-w.outbound:
-		default:
-			return count, nil
-		}
-	}
+	<-w.closed
+	return 0, os.ErrClosed
 }
 
 func (w *stackDevice) Write(bufs [][]byte, offset int) (int, error) {
@@ -166,7 +138,7 @@ func (w *stackDevice) Write(bufs [][]byte, offset int) (int, error) {
 	for _, packet := range bufs {
 		packets = append(packets, packet[offset:])
 	}
-	return w.memoryTun.WritePackets(packets)
+	return w.router.memoryTun.WritePackets(packets)
 }
 
 func (w *stackDevice) Flush() error {
@@ -190,19 +162,11 @@ func (w *stackDevice) Close() error {
 	w.closeOnce.Do(func() {
 		close(w.events)
 		close(w.closed)
-		err = E.Errors(w.stack.Close(), w.memoryTun.Close())
-		for {
-			select {
-			case packet := <-w.outbound:
-				packet.Release()
-			default:
-				return
-			}
-		}
+		err = E.Errors(w.stack.Close(), w.router.close())
 	})
 	return err
 }
 
 func (w *stackDevice) BatchSize() int {
-	return conn.IdealBatchSize
+	return 1
 }

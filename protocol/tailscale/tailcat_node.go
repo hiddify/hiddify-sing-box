@@ -1,4 +1,4 @@
-//go:build with_tailscale && with_tailcat
+//go:build with_tailscale
 
 package tailscale
 
@@ -14,10 +14,8 @@ import (
 	"time"
 
 	"github.com/sagernet/sing-tun"
-	"github.com/sagernet/sing/common/bufio"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
-	M "github.com/sagernet/sing/common/metadata"
 	"github.com/sagernet/tailscale/disco"
 	"github.com/sagernet/tailscale/health"
 	tsDNS "github.com/sagernet/tailscale/net/dns"
@@ -159,7 +157,7 @@ func newTailcatNode(options tailcatNodeOptions) (*tailcatNode, error) {
 	bus := eventbus.New()
 	sys.Set(bus)
 	sys.Set(health.NewTracker(bus))
-	netMon, err := netmon.New(bus, node.logf, options.Hooks.Dialer)
+	netMon, err := netmon.New(bus, node.logf, options.Hooks)
 	if err != nil {
 		node.close()
 		return nil, E.Cause(err, "create network monitor")
@@ -190,7 +188,7 @@ func newTailcatNode(options tailcatNodeOptions) (*tailcatNode, error) {
 	}
 	sys.Set(engine)
 	sys.NetstackRouter.Set(true)
-	netStack, err := netstack.Create(node.logf, sys.Tun.Get(), engine, sys.MagicSock.Get(), dialer, sys.DNSManager.Get(), sys.ProxyMapper())
+	netStack, err := netstack.Create(node.logf, sys.Tun.Get(), sys.DNSManager.Get(), sys.ProxyMapper(), options.MemoryPressure)
 	if err != nil {
 		node.close()
 		return nil, E.Cause(err, "create netstack")
@@ -198,17 +196,7 @@ func newTailcatNode(options tailcatNodeOptions) (*tailcatNode, error) {
 	netStack.ProcessLocalIPs = true
 	if node.isServer {
 		netStack.ProcessSubnets = true
-		handler := options.Handler
-		netStack.GetTCPHandlerForFlow = func(source, destination netip.AddrPort) (func(net.Conn), bool) {
-			return func(conn net.Conn) {
-				handler.NewConnectionEx(node.ctx, conn, M.SocksaddrFromNetIP(source), M.SocksaddrFromNetIP(destination), nil)
-			}, true
-		}
-		netStack.GetUDPHandlerForFlow = func(source, destination netip.AddrPort) (func(nettype.ConnPacketConn), bool) {
-			return func(c nettype.ConnPacketConn) {
-				handler.NewPacketConnectionEx(node.ctx, bufio.NewPacketConn(c), M.SocksaddrFromNetIP(source), M.SocksaddrFromNetIP(destination), nil)
-			}, true
-		}
+		netStack.Handler = options.Handler
 	} else {
 		netStack.GetTCPHandlerForFlow = func(source, destination netip.AddrPort) (func(net.Conn), bool) {
 			return nil, true
