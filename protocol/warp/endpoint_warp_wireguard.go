@@ -9,7 +9,6 @@ import (
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	wg "github.com/sagernet/sing-box/protocol/wireguard"
-	"github.com/sagernet/sing/common/json/badoption"
 )
 
 func createWARPWireGuardEndpoint(
@@ -23,20 +22,21 @@ func createWARPWireGuardEndpoint(
 	peerPort uint16,
 	peerPublicKey string,
 ) (adapter.Endpoint, error) {
+	addresses, err := warpInterfaceAddresses(config) //H: a config without addresses crashed the process
+	if err != nil {                                  //H
+		return nil, err //H
+	} //H
 	return wg.NewEndpoint(ctx, router, logger, tag, option.WireGuardEndpointOptions{
-		System:                     options.System,
-		Name:                       options.Name,
-		ListenPort:                 options.ListenPort,
-		UDPTimeout:                 options.UDPTimeout,
+		System:        options.System,
+		Name:          options.Name,
+		ListenPort:    options.ListenPort,
+		UDPTimeout:    options.UDPTimeout,
 		Workers:       options.Workers,
 		Noise:         options.Noise,
 		AWG:           options.AWG,
 		DialerOptions: options.DialerOptions,
-		Address: badoption.Listable[netip.Prefix]{
-			netip.MustParsePrefix(config.Interface.Addresses.V4 + "/32"),
-			netip.MustParsePrefix(config.Interface.Addresses.V6 + "/128"),
-		},
-		PrivateKey: config.PrivateKey,
+		Address:       addresses, //H
+		PrivateKey:    config.PrivateKey,
 		Peers: []option.WireGuardPeer{
 			{
 				Address:   peerAddr,

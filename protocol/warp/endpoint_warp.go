@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"math/rand"
 	"net"
+	"net/netip"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -16,6 +18,7 @@ import (
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	E "github.com/sagernet/sing/common/exceptions"
+	"github.com/sagernet/sing/common/json/badoption"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/service"
@@ -88,21 +91,16 @@ func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.Cont
 				})
 			}
 		}
-		peer := config.Peers[0]
-		hostParts := strings.Split(peer.Endpoint.Host, ":")
-		peerAddr := hostParts[0]
-		perrPort := uint16(peer.Endpoint.Ports[rand.Intn(len(peer.Endpoint.Ports))])
-		if options.ServerOptions.Server != "" {
-			peerAddr = options.ServerOptions.Server
-		}
-		if options.ServerOptions.ServerPort != 0 {
-			perrPort = options.ServerOptions.ServerPort
-		}
+		peerAddr, perrPort, err := warpPeerEndpoint(config, options.ServerOptions) //H: a config without peers or ports crashed the process
+		if err != nil {                                                            //H
+			logger.ErrorContext(ctx, err) //H
+			return                        //H
+		} //H
 		var innerEndpoint adapter.Endpoint
 		if options.AWG != nil && options.AWG.IsAvailble() {
-			innerEndpoint, err = createWARPAwgEndpoint(ctx, router, logger, tag, options, config, peerAddr, perrPort, peer.PublicKey)
+			innerEndpoint, err = createWARPAwgEndpoint(ctx, router, logger, tag, options, config, peerAddr, perrPort, config.Peers[0].PublicKey) //H
 		} else {
-			innerEndpoint, err = createWARPWireGuardEndpoint(ctx, router, logger, tag, options, config, peerAddr, perrPort, peer.PublicKey)
+			innerEndpoint, err = createWARPWireGuardEndpoint(ctx, router, logger, tag, options, config, peerAddr, perrPort, config.Peers[0].PublicKey) //H
 		}
 		if err != nil {
 			logger.ErrorContext(ctx, err)
@@ -131,9 +129,12 @@ func GetWarpProfile(ctx context.Context, profile *option.WARPProfile) (*cloudfla
 
 	}
 	cf, err := GetWarpProfileDialer(ctx, dialer, profile)
-	if err == nil || outmanager == nil {
+	if err == nil {
 		return cf, nil
 	}
+	if outmanager == nil { //H: returning (nil, nil) here made the caller dereference a nil profile
+		return nil, err //H
+	} //H
 
 	for _, dialer := range outmanager.Outbounds() {
 		select {
@@ -204,4 +205,57 @@ func (w *WARPEndpoint) DisplayType() string {
 		str += " ⚠️ Connecting..."
 	}
 	return str
+}
+
+// warpPeerEndpoint picks the address and port of the WARP peer: the configured server and
+// server_port when set, otherwise the profile's endpoint host and one of its ports, or the
+// port in the host when the profile lists none. //H
+func warpPeerEndpoint(config *C.WARPConfig, server option.ServerOptions) (string, uint16, error) {
+	if len(config.Peers) == 0 {
+		return "", 0, E.New("WARP config has no peers")
+	}
+	endpoint := config.Peers[0].Endpoint
+	address, portString, hasPort := strings.Cut(endpoint.Host, ":")
+	var port uint16
+	if len(endpoint.Ports) > 0 {
+		port = uint16(endpoint.Ports[rand.Intn(len(endpoint.Ports))])
+	} else if hasPort {
+		parsed, err := strconv.ParseUint(portString, 10, 16)
+		if err == nil {
+			port = uint16(parsed)
+		}
+	}
+	if server.Server != "" {
+		address = server.Server
+	}
+	if server.ServerPort != 0 {
+		port = server.ServerPort
+	}
+	if address == "" || port == 0 {
+		return "", 0, E.New("WARP config has no peer address or port")
+	}
+	return address, port, nil
+}
+
+// warpInterfaceAddresses returns the tunnel addresses of a WARP config; a missing family is
+// skipped, but at least one is required. //H
+func warpInterfaceAddresses(config *C.WARPConfig) (badoption.Listable[netip.Prefix], error) {
+	var addresses badoption.Listable[netip.Prefix]
+	for _, address := range []struct {
+		value string
+		bits  string
+	}{{config.Interface.Addresses.V4, "/32"}, {config.Interface.Addresses.V6, "/128"}} {
+		if address.value == "" {
+			continue
+		}
+		prefix, err := netip.ParsePrefix(address.value + address.bits)
+		if err != nil {
+			return nil, E.Cause(err, "parse WARP interface address")
+		}
+		addresses = append(addresses, prefix)
+	}
+	if len(addresses) == 0 {
+		return nil, E.New("WARP config has no interface address")
+	}
+	return addresses, nil
 }
