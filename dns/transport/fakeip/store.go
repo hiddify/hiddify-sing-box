@@ -84,17 +84,22 @@ func (s *Store) Start() error {
 		s.inet4Current = metadata.Inet4Current
 		s.inet6Current = metadata.Inet6Current
 	} else {
-		if s.inet4Range.IsValid() {
-			s.inet4Current = s.inet4Range.Addr().Next()
-		}
-		if s.inet6Range.IsValid() {
-			s.inet6Current = s.inet6Range.Addr().Next()
-		}
+		s.resetCurrent() //H
 		_ = storage.FakeIPReset()
 	}
 	s.storage = storage
 	return nil
 }
+
+func (s *Store) resetCurrent() { //H
+	s.reservedCount = 0 //H
+	if s.inet4Range.IsValid() {
+		s.inet4Current = s.inet4Range.Addr().Next()
+	}
+	if s.inet6Range.IsValid() {
+		s.inet6Current = s.inet6Range.Addr().Next()
+	}
+} //H
 
 func (s *Store) Contains(address netip.Addr) bool {
 	return s.inet4Range.Contains(address) || s.inet6Range.Contains(address)
@@ -171,6 +176,20 @@ func (s *Store) Lookup(address netip.Addr) (string, bool) {
 	return s.storage.FakeIPLoad(address)
 }
 
+// Reset drops all mappings and restarts allocation from the beginning of the ranges. //H
+// From reF1nd/sing-box 08fc1d8a. //H
 func (s *Store) Reset() error {
-	return s.storage.FakeIPReset()
+	s.addressAccess.Lock()         //H
+	defer s.addressAccess.Unlock() //H
+	err := s.storage.FakeIPReset() //H
+	if err != nil {                //H
+		return err //H
+	} //H
+	s.resetCurrent()                                             //H
+	return s.storage.FakeIPSaveMetadata(&adapter.FakeIPMetadata{ //H
+		Inet4Range:   s.inet4Range,   //H
+		Inet6Range:   s.inet6Range,   //H
+		Inet4Current: s.inet4Current, //H
+		Inet6Current: s.inet6Current, //H
+	}) //H
 }

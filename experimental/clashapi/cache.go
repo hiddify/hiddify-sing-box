@@ -20,9 +20,14 @@ func cacheRouter(ctx context.Context) http.Handler {
 
 func flushFakeip(ctx context.Context) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		cacheFile := service.FromContext[adapter.CacheFile](ctx)
-		if cacheFile != nil {
-			err := cacheFile.FakeIPReset()
+		// H: reset through the FakeIP store, which clears the storage in use (in memory unless
+		// store_fakeip is on) and restarts allocation; the cache file alone missed the memory store
+		var fakeIPTransport adapter.FakeIPTransport                                                             //H
+		if transportManager := service.FromContext[adapter.DNSTransportManager](ctx); transportManager != nil { //H
+			fakeIPTransport = transportManager.FakeIP() //H
+		} //H
+		if fakeIPTransport != nil { //H
+			err := fakeIPTransport.Store().Reset() //H
 			if err != nil {
 				render.Status(r, http.StatusInternalServerError)
 				render.JSON(w, r, newError(err.Error()))
