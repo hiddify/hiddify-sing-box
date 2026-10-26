@@ -52,17 +52,17 @@ func archiveCrashReport(path string, crashReportsDir string) {
 	}
 	writeReportMetadata(destPath, metadata)
 	os.Remove(path)
-	copyConfigSnapshot(destPath)
+	pruneReports(crashReportsDir) //H
 }
 
 func configSnapshotPath() string {
 	return filepath.Join(sBasePath, "configuration.json")
 }
 
+// H: the configuration holds the servers' addresses, keys and passwords, and reports are made to
+// be shared, so it is neither kept for them nor copied into them; an old copy is removed
 func saveConfigSnapshot(configContent string) {
-	snapshotPath := configSnapshotPath()
-	os.WriteFile(snapshotPath, []byte(configContent), 0o666)
-	chownReport(snapshotPath)
+	os.Remove(configSnapshotPath()) //H
 }
 
 func RedirectStderr(path string) error {
@@ -70,9 +70,10 @@ func RedirectStderr(path string) error {
 }
 
 func redirectStderr(path string) error {
-	crashReportsDir := filepath.Join(sWorkingPath, "crash_reports")
+	crashReportsDir := filepath.Join(sWorkingPath, crashReportsDirectoryName) //H
 	archiveCrashReport(path, crashReportsDir)
 	archiveCrashReport(path+".old", crashReportsDir)
+	pruneAllReports() //H
 
 	outputFile, err := os.Create(path)
 	if err != nil {

@@ -3,7 +3,6 @@
 package libbox
 
 import (
-	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -60,16 +59,8 @@ func writeReportMetadata(destPath string, metadata any) {
 	writeReportFile(destPath, "metadata.json", data)
 }
 
+// H: reports do not carry the configuration; see saveConfigSnapshot
 func copyConfigSnapshot(destPath string) {
-	snapshotPath := configSnapshotPath()
-	content, err := os.ReadFile(snapshotPath)
-	if err != nil {
-		return
-	}
-	if len(bytes.TrimSpace(content)) == 0 {
-		return
-	}
-	writeReportFile(destPath, "configuration.json", content)
 }
 
 func platformSnapshotPath() string {
