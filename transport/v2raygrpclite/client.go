@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/common/grpcname" //H
 	"github.com/sagernet/sing-box/common/tls"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
@@ -60,8 +61,8 @@ func NewClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr, opt
 		url: &url.URL{
 			Scheme:  "https",
 			Host:    serverAddr.String(),
-			Path:    "/" + options.ServiceName + "/Tun",
-			RawPath: "/" + url.PathEscape(options.ServiceName) + "/Tun",
+			Path:    grpcname.UnescapedPath(options.ServiceName), //H: Xray's custom paths
+			RawPath: grpcname.Path(options.ServiceName),          //H
 		},
 		host: host,
 	}

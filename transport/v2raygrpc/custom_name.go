@@ -12,14 +12,14 @@ type GunService interface {
 	Recv() (*Hunk, error)
 }
 
-func ServerDesc(name string) grpc.ServiceDesc {
+func ServerDesc(name string, streamName string) grpc.ServiceDesc { //H: Xray's custom paths name the stream too
 	return grpc.ServiceDesc{
 		ServiceName: name,
 		HandlerType: (*GunServiceServer)(nil),
 		Methods:     []grpc.MethodDesc{},
 		Streams: []grpc.StreamDesc{
 			{
-				StreamName:    "Tun",
+				StreamName:    streamName, //H
 				Handler:       _GunService_Tun_Handler,
 				ServerStreams: true,
 				ClientStreams: true,
@@ -29,8 +29,8 @@ func ServerDesc(name string) grpc.ServiceDesc {
 	}
 }
 
-func (c *gunServiceClient) TunCustomName(ctx context.Context, name string, opts ...grpc.CallOption) (GunService_TunClient, error) {
-	stream, err := c.cc.NewStream(ctx, &ServerDesc(name).Streams[0], "/"+name+"/Tun", opts...)
+func (c *gunServiceClient) TunCustomName(ctx context.Context, name string, streamName string, opts ...grpc.CallOption) (GunService_TunClient, error) { //H
+	stream, err := c.cc.NewStream(ctx, &ServerDesc(name, streamName).Streams[0], "/"+name+"/"+streamName, opts...) //H
 	if err != nil {
 		return nil, err
 	}
@@ -41,11 +41,11 @@ func (c *gunServiceClient) TunCustomName(ctx context.Context, name string, opts 
 var _ GunServiceCustomNameClient = (*gunServiceClient)(nil)
 
 type GunServiceCustomNameClient interface {
-	TunCustomName(ctx context.Context, name string, opts ...grpc.CallOption) (GunService_TunClient, error)
+	TunCustomName(ctx context.Context, name string, streamName string, opts ...grpc.CallOption) (GunService_TunClient, error) //H
 	Tun(ctx context.Context, opts ...grpc.CallOption) (GunService_TunClient, error)
 }
 
-func RegisterGunServiceCustomNameServer(s *grpc.Server, srv GunServiceServer, name string) {
-	desc := ServerDesc(name)
+func RegisterGunServiceCustomNameServer(s *grpc.Server, srv GunServiceServer, name string, streamName string) { //H
+	desc := ServerDesc(name, streamName) //H
 	s.RegisterService(&desc, srv)
 }

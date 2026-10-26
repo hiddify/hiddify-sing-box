@@ -10,6 +10,7 @@ import (
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/badhttp"
+	"github.com/sagernet/sing-box/common/grpcname" //H
 	"github.com/sagernet/sing-box/common/tls"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
@@ -42,7 +43,7 @@ func NewServer(ctx context.Context, logger logger.ContextLogger, options option.
 		tlsConfig: tlsConfig,
 		logger:    logger,
 		handler:   handler,
-		path:      "/" + options.ServiceName + "/Tun",
+		path:      grpcname.UnescapedPath(options.ServiceName), //H: Xray's custom paths; compared with the decoded request path
 		h2Server: &http2.Server{
 			IdleTimeout: time.Duration(options.IdleTimeout),
 		},
