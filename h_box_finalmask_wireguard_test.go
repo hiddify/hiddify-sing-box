@@ -44,7 +44,7 @@ func TestH_WireGuardEndpointFinalMask(t *testing.T) {
 			"tag": "wg",
 			"address": ["172.16.0.2/32"],
 			"private_key": "` + privateKey.String() + `",
-			"final_mask": ` + udpMask + `,
+			"finalmask": ` + udpMask + `,
 			"peers": [{
 				"address": "127.0.0.1",
 				"port": ` + strconv.Itoa(int(M.SocksaddrFromNet(rawServer.LocalAddr()).Port)) + `,

@@ -1,9 +1,14 @@
 package shadowsocks
 
 import (
+	"bytes"
 	"context"
+	"crypto/tls"
+	"fmt"
 	"io"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"net/netip"
 	"sync"
 	"testing"
@@ -12,6 +17,7 @@ import (
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
+	obfs "github.com/sagernet/sing-box/transport/simple-obfs"
 	"github.com/sagernet/sing/common/json/badoption"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
@@ -200,5 +206,253 @@ func TestH_ShadowsocksObfsMismatch(t *testing.T) {
 			default:
 			}
 		})
+	}
+}
+
+// fallbackRouter dials connections routed to the fallback address, like a direct
+// outbound would, and echoes everything else like testRouter.
+type fallbackRouter struct {
+	*testRouter
+	fallback M.Socksaddr
+}
+
+func (r *fallbackRouter) RouteConnectionEx(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
+	if metadata.Destination != r.fallback {
+		r.testRouter.RouteConnectionEx(ctx, conn, metadata, onClose)
+		return
+	}
+	r.mu.Lock()
+	r.metadata = append(r.metadata, metadata)
+	r.mu.Unlock()
+	r.routed <- struct{}{}
+	upstream, err := net.Dial("tcp", metadata.Destination.String())
+	if err == nil {
+		go io.Copy(upstream, conn)
+		_, err = io.Copy(conn, upstream)
+		upstream.Close()
+	}
+	conn.Close()
+	if onClose != nil {
+		onClose(err)
+	}
+}
+
+func startDecoy(t *testing.T, useTLS bool) (*httptest.Server, option.ServerOptions) {
+	decoy := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, "decoy site "+r.Host+r.URL.Path)
+	}))
+	if useTLS {
+		decoy.StartTLS()
+	} else {
+		decoy.Start()
+	}
+	t.Cleanup(decoy.Close)
+	addr := decoy.Listener.Addr().(*net.TCPAddr)
+	return decoy, option.ServerOptions{Server: "127.0.0.1", ServerPort: uint16(addr.Port)}
+}
+
+func startShadowsocksInboundWithRouter(t *testing.T, router adapter.Router, options option.ShadowsocksInboundOptions) uint16 {
+	port := freeTCPPort(t)
+	listen := badoption.Addr(netip.MustParseAddr("127.0.0.1"))
+	options.ListenOptions = option.ListenOptions{Listen: &listen, ListenPort: port}
+	options.Network = "tcp"
+	in, err := NewInbound(context.Background(), router, log.NewNOPFactory().Logger(), "ss-in", options)
+	require.NoError(t, err)
+	require.NoError(t, in.Start(adapter.StartStateStart))
+	t.Cleanup(func() { in.Close() })
+	return port
+}
+
+func probe(t *testing.T, port uint16, useTLS bool) string {
+	client := &http.Client{Timeout: 3 * time.Second}
+	scheme := "http"
+	if useTLS {
+		scheme = "https"
+		client.Transport = &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+	}
+	response, err := client.Get(fmt.Sprintf("%s://127.0.0.1:%d/probe", scheme, port))
+	require.NoError(t, err)
+	defer response.Body.Close()
+	require.Equal(t, http.StatusOK, response.StatusCode)
+	body, err := io.ReadAll(response.Body)
+	require.NoError(t, err)
+	return string(body)
+}
+
+func TestH_ShadowsocksObfsFallback(t *testing.T) {
+	t.Parallel()
+	inbounds := map[string]option.ShadowsocksInboundOptions{
+		"single": {Method: "aes-128-gcm", Password: "pass"},
+		"multi":  {Method: "aes-128-gcm", Users: []option.ShadowsocksUser{{Name: "u", Password: "pass"}}},
+		"relay": {
+			Method:       "2022-blake3-aes-128-gcm",
+			Password:     "AAAAAAAAAAAAAAAAAAAAAA==",
+			Destinations: []option.ShadowsocksDestination{{Name: "d", Password: "AAAAAAAAAAAAAAAAAAAAAA==", ServerOptions: option.ServerOptions{Server: "127.0.0.1", ServerPort: 1}}},
+		},
+	}
+	cases := []struct {
+		mode     string
+		decoyTLS bool
+	}{
+		{"tls", true},  // a censor's real TLS handshake against a FakeTLS server
+		{"tls", false}, // plain HTTP sent to a FakeTLS server
+		{"http", false},
+		{"http", true},
+	}
+	for kind, base := range inbounds {
+		for _, tc := range cases {
+			name := fmt.Sprintf("%s/%s/decoy-tls=%v", kind, tc.mode, tc.decoyTLS)
+			t.Run(name, func(t *testing.T) {
+				t.Parallel()
+				_, fallback := startDecoy(t, tc.decoyTLS)
+				router := &fallbackRouter{testRouter: newTestRouter(), fallback: fallback.Build()}
+				options := base
+				options.ObfsMode = tc.mode
+				options.ObfsFallback = &fallback
+				port := startShadowsocksInboundWithRouter(t, router, options)
+
+				require.Equal(t, "decoy site 127.0.0.1:"+fmt.Sprint(port)+"/probe", probe(t, port, tc.decoyTLS))
+				router.mu.Lock()
+				md := router.metadata[0]
+				router.mu.Unlock()
+				require.Equal(t, "ss-in", md.Inbound)
+				require.Equal(t, fallback.Build(), md.Destination)
+
+				if kind == "single" {
+					// A real obfs client on the same port still reaches Shadowsocks.
+					pluginOpts := "obfs=" + tc.mode + ";obfs-host=www.example.com"
+					require.NoError(t, dialShadowsocks(t, port, "pass", "obfs-local", pluginOpts, "through obfs"))
+				}
+			})
+		}
+	}
+}
+
+func TestH_ShadowsocksObfsFallbackOptions(t *testing.T) {
+	t.Parallel()
+	logger := log.NewNOPFactory().Logger()
+	_, err := NewInbound(context.Background(), newTestRouter(), logger, "ss-in", option.ShadowsocksInboundOptions{
+		Method: "aes-128-gcm", Password: "p", ObfsFallback: &option.ServerOptions{Server: "127.0.0.1", ServerPort: 443},
+	})
+	require.ErrorContains(t, err, "obfs_fallback requires obfs_mode")
+	_, err = NewInbound(context.Background(), newTestRouter(), logger, "ss-in", option.ShadowsocksInboundOptions{
+		Method: "aes-128-gcm", Password: "p", ObfsMode: "tls", ObfsFallback: &option.ServerOptions{Server: "127.0.0.1"},
+	})
+	require.ErrorContains(t, err, "invalid obfs_fallback address")
+	in, err := NewInbound(context.Background(), newTestRouter(), logger, "ss-in", option.ShadowsocksInboundOptions{
+		Method: "aes-128-gcm", Password: "p", ObfsMode: "tls", ObfsFallback: &option.ServerOptions{Server: "decoy.example.com", ServerPort: 443},
+	})
+	require.NoError(t, err)
+	require.NoError(t, in.Close())
+}
+
+// Without obfs_fallback a probe is still just closed, as before.
+func TestH_ShadowsocksObfsNoFallbackClosesProbe(t *testing.T) {
+	t.Parallel()
+	router, port := startShadowsocksInbound(t, option.ShadowsocksInboundOptions{Method: "aes-128-gcm", Password: "p", ObfsMode: "tls"})
+	client := &http.Client{Timeout: 3 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}}
+	_, err := client.Get(fmt.Sprintf("https://127.0.0.1:%d/", port))
+	require.Error(t, err)
+	select {
+	case <-router.routed:
+		t.Fatal("probe was routed without obfs_fallback")
+	default:
+	}
+}
+
+type capturingConn struct {
+	net.Conn
+	sent []byte
+}
+
+func (c *capturingConn) Write(b []byte) (int, error) {
+	c.sent = append(c.sent, b...)
+	return c.Conn.Write(b)
+}
+
+// startRawDecoy accepts one connection, reports what it received and answers "DECOY".
+func startRawDecoy(t *testing.T) (option.ServerOptions, chan []byte) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { listener.Close() })
+	received := make(chan []byte, 1)
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		conn.SetDeadline(time.Now().Add(5 * time.Second))
+		var got []byte
+		chunk := make([]byte, 4096)
+		for {
+			n, err := conn.Read(chunk)
+			got = append(got, chunk[:n]...)
+			if err != nil || len(got) >= 64 {
+				break
+			}
+		}
+		received <- got
+		conn.Write([]byte("DECOY"))
+	}()
+	return option.ServerOptions{Server: "127.0.0.1", ServerPort: uint16(listener.Addr().(*net.TCPAddr).Port)}, received
+}
+
+// A client that passes obfs but fails Shadowsocks authentication gets the decoy,
+// and the decoy sees exactly the bytes the client sent.
+func TestH_ShadowsocksObfsFallbackAfterObfs(t *testing.T) {
+	t.Parallel()
+	inbounds := map[string]option.ShadowsocksInboundOptions{
+		"single": {Method: "aes-128-gcm", Password: "pass"},
+		"multi":  {Method: "aes-128-gcm", Users: []option.ShadowsocksUser{{Name: "u", Password: "pass"}}},
+		"multi-2022": {
+			Method:   "2022-blake3-aes-128-gcm",
+			Password: "AAAAAAAAAAAAAAAAAAAAAA==",
+			Users:    []option.ShadowsocksUser{{Name: "u", Password: "AAAAAAAAAAAAAAAAAAAAAA=="}},
+		},
+		"relay": {
+			Method:       "2022-blake3-aes-128-gcm",
+			Password:     "AAAAAAAAAAAAAAAAAAAAAA==",
+			Destinations: []option.ShadowsocksDestination{{Name: "d", Password: "AAAAAAAAAAAAAAAAAAAAAA==", ServerOptions: option.ServerOptions{Server: "127.0.0.1", ServerPort: 1}}},
+		},
+	}
+	for kind, base := range inbounds {
+		for _, mode := range []string{"http", "tls"} {
+			t.Run(kind+"/"+mode, func(t *testing.T) {
+				t.Parallel()
+				fallback, received := startRawDecoy(t)
+				router := &fallbackRouter{testRouter: newTestRouter(), fallback: fallback.Build()}
+				options := base
+				options.ObfsMode = mode
+				options.ObfsFallback = &fallback
+				port := startShadowsocksInboundWithRouter(t, router, options)
+
+				rawConn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+				require.NoError(t, err)
+				defer rawConn.Close()
+				rawConn.SetDeadline(time.Now().Add(5 * time.Second))
+				captured := &capturingConn{Conn: rawConn}
+				var client net.Conn
+				if mode == "http" {
+					client = obfs.NewHTTPObfs(captured, "www.example.com", "443")
+				} else {
+					client = obfs.NewTLSObfs(captured, "www.example.com")
+				}
+				// Valid obfs, but the payload is not a Shadowsocks stream for this server.
+				_, err = client.Write(bytes.Repeat([]byte("not shadowsocks "), 8))
+				require.NoError(t, err)
+
+				select {
+				case got := <-received:
+					require.Equal(t, captured.sent, got)
+				case <-time.After(5 * time.Second):
+					t.Fatal("decoy received nothing")
+				}
+				reply := make([]byte, 5)
+				_, err = io.ReadFull(rawConn, reply)
+				require.NoError(t, err)
+				require.Equal(t, "DECOY", string(reply))
+			})
+		}
 	}
 }

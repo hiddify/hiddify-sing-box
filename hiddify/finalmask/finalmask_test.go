@@ -42,9 +42,18 @@ func TestBuildEmpty(t *testing.T) {
 	require.Nil(t, masks)
 }
 
+func TestBuildFragmentLengthsDelaysString(t *testing.T) {
+	// Panel/Clash-style compact form: lengths/delays as a single string (not an array).
+	content := `{"tcp":[{"type":"fragment","settings":{"packets":"tlshello","lengths":"1-104","delays":"0","maxSplit":"0"}},{"type":"fragment","settings":{"packets":"1-1","lengths":"1-114","delays":"1","maxSplit":"11"}}]}`
+	masks, err := Build(parseOptions(t, content))
+	require.NoError(t, err)
+	require.NotNil(t, masks.TCP)
+}
+
 func TestBuildAllMaskTypes(t *testing.T) {
 	for _, content := range []string{
 		`{"tcp":[{"type":"fragment","settings":{"packets":"1-3","lengths":["5-10","20"],"delays":["1-2"]}}]}`,
+		`{"tcp":[{"type":"fragment","settings":{"packets":"tlshello","lengths":"1-104","delays":"0","maxSplit":"0"}}]}`,
 		`{"tcp":[{"type":"header-custom","settings":{"clients":[[{"type":"str","packet":"GET / HTTP/1.1\r\n\r\n"}]],"servers":[[{"rand":16}]]}}]}`,
 		`{"tcp":[{"type":"sudoku","settings":{"password":"p","ascii":"prefer_entropy","paddingMin":1,"paddingMax":10}}]}`,
 		`{"udp":[{"type":"noise","settings":{"reset":"10-20","noise":[{"rand":"10-20","delay":"5"},{"type":"hex","packet":"deadbeef"}]}}]}`,

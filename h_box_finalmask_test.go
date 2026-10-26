@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// An outbound with final_mask dials through the Xray masks: the first packet reaches the server
+// An outbound with finalmask dials through the Xray masks: the first packet reaches the server
 // in fragments and the connection still works end to end.
 func TestH_OutboundFinalMask(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -47,7 +47,7 @@ func TestH_OutboundFinalMask(t *testing.T) {
 		"outbounds": [{
 			"type": "direct",
 			"tag": "masked",
-			"final_mask": {"tcp": [{"type": "fragment", "settings": {"packets": "1-1", "length": "2-4", "delay": "5"}}]}
+			"finalmask": {"tcp": [{"type": "fragment", "settings": {"packets": "1-1", "length": "2-4", "delay": "5"}}]}
 		}]
 	}`
 	ctx := include.Context(context.Background())
@@ -79,8 +79,8 @@ func TestH_OutboundFinalMask(t *testing.T) {
 
 func TestH_OutboundFinalMaskInvalid(t *testing.T) {
 	ctx := include.Context(context.Background())
-	options, err := json.UnmarshalExtendedContext[option.Options](ctx, []byte(`{"outbounds":[{"type":"direct","tag":"d","final_mask":{"tcp":[{"type":"noise"}]}}]}`))
+	options, err := json.UnmarshalExtendedContext[option.Options](ctx, []byte(`{"outbounds":[{"type":"direct","tag":"d","finalmask":{"tcp":[{"type":"noise"}]}}]}`))
 	require.NoError(t, err)
 	_, err = box.New(box.Options{Context: ctx, Options: options})
-	require.ErrorContains(t, err, "final_mask.tcp[0]")
+	require.ErrorContains(t, err, "finalmask.tcp[0]")
 }
