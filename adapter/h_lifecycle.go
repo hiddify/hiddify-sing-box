@@ -10,25 +10,42 @@ import (
 // such a component in its own child scope, the way the box starts the rest, and close it by
 // closing that child scope alone. //H
 
-// AsLifecycle returns how a scope starts and closes a component. A component that only has
-// Close (outbounds may skip Lifecycle) is closed by the scope too, as the managers used to do.
+// AsLifecycle returns how a scope starts and closes a component. Components written for the
+// lifecycle before scopes (outbounds may skip Lifecycle) are driven the way the managers used
+// to drive them: PreStart at initialize, Start at start, PostStart once started, and Close
+// when the scope closes.
 func AsLifecycle(component any) (Lifecycle, bool) {
 	if lifecycle, isLifecycle := component.(Lifecycle); isLifecycle {
 		return lifecycle, true
 	}
-	if closer, isCloser := component.(io.Closer); isCloser {
-		return closeOnly{closer}, true
+	switch component.(type) {
+	case interface{ PreStart() error }, interface{ Start() error }, interface{ PostStart() error }, io.Closer:
+		return legacyLifecycle{component}, true
 	}
 	return nil, false
 }
 
-type closeOnly struct {
-	io.Closer
+type legacyLifecycle struct {
+	component any
 }
 
-func (c closeOnly) Start(stage StartStage, scope *Scope) error {
-	if stage == StartStateInitialize {
-		scope.Add(c.Close)
+func (c legacyLifecycle) Start(stage StartStage, scope *Scope) error {
+	switch stage {
+	case StartStateInitialize:
+		if closer, isCloser := c.component.(io.Closer); isCloser {
+			scope.Add(closer.Close)
+		}
+		if preStarter, isPreStarter := c.component.(interface{ PreStart() error }); isPreStarter {
+			return preStarter.PreStart()
+		}
+	case StartStateStart:
+		if starter, isStarter := c.component.(interface{ Start() error }); isStarter {
+			return starter.Start()
+		}
+	case StartStateStarted:
+		if postStarter, isPostStarter := c.component.(interface{ PostStart() error }); isPostStarter {
+			return postStarter.PostStart()
+		}
 	}
 	return nil
 }
