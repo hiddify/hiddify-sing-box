@@ -1,7 +1,6 @@
 package balancer
 
 import (
-	"math"
 	"sync"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -41,8 +40,7 @@ func (s *ConsistentHashing) UpdateOutboundsInfo(history map[string]*adapter.URLT
 	delayMap := getDelayMap(history)
 	res := map[string]uint16{}
 	for net, d := range minDelay {
-		acceptableDelay := uint16(math.Max(100, float64(d)) * s.delayAcceptableRatio)
-		res[net] = acceptableDelay
+		res[net] = getMaxAcceptableDelay(d, s.delayAcceptableRatio)
 	}
 	s.mu.Lock()
 	s.delays = delayMap

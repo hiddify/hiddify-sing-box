@@ -87,6 +87,18 @@ func getModifiedDelay(his *adapter.URLTestHistory) uint16 {
 	}
 	return delay
 }
+
+// getMaxAcceptableDelay returns the largest delay still accepted next to minDelay. It stays
+// below TimeoutDelay, so a timed out outbound is never accepted and a large ratio cannot
+// overflow uint16.
+func getMaxAcceptableDelay(minDelay uint16, delayAcceptableRatio float64) uint16 {
+	maxAcceptableDelay := math.Max(100, float64(minDelay)) * delayAcceptableRatio
+	if maxAcceptableDelay >= float64(monitoring.TimeoutDelay) {
+		return monitoring.TimeoutDelay - 1
+	}
+	return uint16(maxAcceptableDelay)
+}
+
 func getTagDelay(tag string, history map[string]*adapter.URLTestHistory) uint16 {
 	if his, ok := history[tag]; ok && his != nil {
 		return getModifiedDelay(his)
@@ -132,12 +144,12 @@ func getAcceptableIndex(sortedOutbounds map[string][]adapter.Outbound, history m
 	for net, outs := range sortedOutbounds {
 		minDelay := getTagDelay(outs[0].Tag(), history)
 
-		maxAcceptableDelay := float64(math.Max(100, float64(minDelay))) * delayAcceptableRatio
+		maxAcceptableDelay := getMaxAcceptableDelay(minDelay, delayAcceptableRatio)
 
 		maxAvailableIndex := 0
 		for i, outbound := range outs {
 			delay := getTagDelay(outbound.Tag(), history)
-			if delay <= uint16(maxAcceptableDelay) {
+			if delay <= maxAcceptableDelay {
 				maxAvailableIndex = i
 			}
 		}

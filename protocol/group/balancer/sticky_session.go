@@ -1,7 +1,6 @@
 package balancer
 
 import (
-	"math"
 	"sync"
 	"time"
 
@@ -81,8 +80,7 @@ func (s *StickySession) UpdateOutboundsInfo(history map[string]*adapter.URLTestH
 	delayMap := getDelayMap(history)
 	res := map[string]uint16{}
 	for net, d := range minDelay {
-		acceptableDelay := uint16(math.Max(100, float64(d)) * s.delayAcceptableRatio)
-		res[net] = acceptableDelay
+		res[net] = getMaxAcceptableDelay(d, s.delayAcceptableRatio)
 	}
 	s.mu.Lock()
 	s.delays = delayMap
