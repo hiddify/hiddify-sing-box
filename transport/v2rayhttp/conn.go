@@ -226,7 +226,7 @@ type ServerHTTPConn struct {
 }
 
 func (c *ServerHTTPConn) Write(b []byte) (n int, err error) {
-	n, err = c.writer.Write(b)
+	n, err = c.HTTP2Conn.Write(b) //H: wraps HTTP/2 stream errors and maps closes, as on the client
 	if err == nil {
 		c.Flusher.Flush()
 	}
