@@ -70,6 +70,9 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 	if options.Detour != "" && options.ListenPort != 0 {
 		return nil, E.New("`listen_port` is conflict with `detour`")
 	}
+	// H: let the kernel fragment WireGuard's UDP, as official WireGuard does; with DF a packet
+	// larger than the path MTU (a tunnel inside another tunnel) is dropped
+	options.UDPFragmentDefault = true //H
 	outboundDialer, err := dialer.NewWithOptions(dialer.Options{
 		Context: ctx,
 		Options: options.DialerOptions,
