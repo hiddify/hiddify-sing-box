@@ -11,10 +11,12 @@ import (
 	"net/http/httptrace"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	common "github.com/sagernet/sing-box/common/xray"
 	"github.com/sagernet/sing-box/common/xray/signal/done"
 	"github.com/sagernet/sing-box/option"
+	E "github.com/sagernet/sing/common/exceptions"
 )
 
 // interface to abstract between use of browser dialer, vs net/http
@@ -32,7 +34,7 @@ type DialerClient interface {
 type DefaultDialerClient struct {
 	options     *option.V2RayXHTTPBaseOptions
 	client      *http.Client
-	closed      bool
+	closed      atomic.Bool //H: set by stream goroutines, read by IsClosed
 	httpVersion string
 	// pool of net.Conn, created using dialUploadConn
 	uploadRawPool  *sync.Pool
@@ -40,7 +42,7 @@ type DefaultDialerClient struct {
 }
 
 func (c *DefaultDialerClient) IsClosed() bool {
-	return c.closed
+	return c.closed.Load() //H
 }
 
 func (c *DefaultDialerClient) OpenStream(ctx context.Context, url string, sessionId string, body io.Reader, uploadOnly bool) (wrc io.ReadCloser, remoteAddr, localAddr net.Addr, err error) {
@@ -84,29 +86,35 @@ func (c *DefaultDialerClient) OpenStream(ctx context.Context, url string, sessio
 	if method == c.options.GetNormalizedUplinkHTTPMethod() && !c.options.NoGRPCHeader {
 		req.Header.Set("Content-Type", "application/grpc")
 	}
-	wrc = &WaitReadCloser{ctx: ctx, Wait: make(chan struct{})}
+	reader := &WaitReadCloser{ctx: ctx, Wait: make(chan struct{})} //H: the goroutine keeps its own reference, wrc is a result
+	wrc = reader                                                   //H
+	var doErr atomic.Pointer[error]                                //H: a request that fails before connecting is returned, not hidden in a dead reader
 	go func() {
 		resp, err := c.client.Do(req)
 		if err != nil {
 			if !uploadOnly { // stream-down is enough
-				c.closed = true
+				c.closed.Store(true) //H
 			}
+			doErr.Store(&err) //H: published before gotConn is closed
 			gotConn.Close()
-			wrc.Close()
+			reader.Close() //H
 			return
 		}
 		if resp.StatusCode != 200 || uploadOnly { // stream-up
 			io.Copy(io.Discard, resp.Body)
 			resp.Body.Close() // if it is called immediately, the upload will be interrupted also
-			wrc.Close()
+			reader.Close()    //H
 			return
 		}
-		wrc.(*WaitReadCloser).Set(resp.Body)
+		reader.Set(resp.Body) //H
 	}()
 	select {
 	case <-gotConn.Wait():
 	case <-ctx.Done():
 	}
+	if failure := doErr.Load(); failure != nil { //H
+		return nil, nil, nil, *failure //H
+	} //H
 	return
 }
 
@@ -183,11 +191,14 @@ func (c *DefaultDialerClient) PostPacket(ctx context.Context, url string, sessio
 	if c.httpVersion != "1.1" {
 		resp, err := c.client.Do(req)
 		if err != nil {
-			c.closed = true
+			c.closed.Store(true) //H
 			return err
 		}
 		io.Copy(io.Discard, resp.Body)
 		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK { //H: as in Xray, a rejected upload is an error
+			return E.New("bad status code: ", resp.Status) //H
+		} //H
 	} else {
 		// stringify the entire HTTP/1.1 request so it can be
 		// safely retried. if instead req.Write is called multiple
@@ -215,7 +226,7 @@ func (c *DefaultDialerClient) PostPacket(ctx context.Context, url string, sessio
 				if h1UploadConn.UnreadedResponsesCount > 0 {
 					resp, err := http.ReadResponse(h1UploadConn.RespBufReader, req)
 					if err != nil {
-						c.closed = true
+						c.closed.Store(true) //H
 						return fmt.Errorf("error while reading response: %s", err.Error())
 					}
 					io.Copy(io.Discard, resp.Body)
