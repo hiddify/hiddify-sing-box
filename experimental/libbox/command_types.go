@@ -113,6 +113,7 @@ type ConnectionEventIterator interface {
 }
 
 type Connections struct {
+	access        sync.Mutex //H: the platform applies events and reads on different threads
 	connectionMap map[string]*Connection
 	input         []Connection
 	filtered      []Connection
@@ -130,6 +131,8 @@ func (c *Connections) ApplyEvents(events *ConnectionEvents) {
 	if events == nil {
 		return
 	}
+	c.access.Lock()         //H
+	defer c.access.Unlock() //H
 	if events.Reset {
 		c.connectionMap = make(map[string]*Connection)
 	}
@@ -171,7 +174,7 @@ func (c *Connections) ApplyEvents(events *ConnectionEvents) {
 		c.input = append(c.input, *conn)
 	}
 	if c.filterApplied {
-		c.FilterState(c.filterState)
+		c.filterStateLocked(c.filterState) //H
 	} else {
 		c.filtered = c.filtered[:0]
 		c.filtered = append(c.filtered, c.input...)
@@ -190,6 +193,12 @@ func (c *Connections) evictClosedConnections(nowMilliseconds int64) {
 }
 
 func (c *Connections) FilterState(state int32) {
+	c.access.Lock()            //H
+	defer c.access.Unlock()    //H
+	c.filterStateLocked(state) //H
+} //H
+
+func (c *Connections) filterStateLocked(state int32) { //H
 	c.filterApplied = true
 	c.filterState = state
 	c.filtered = c.filtered[:0]
@@ -212,6 +221,8 @@ func (c *Connections) FilterState(state int32) {
 }
 
 func (c *Connections) SortByDate() {
+	c.access.Lock()         //H
+	defer c.access.Unlock() //H
 	slices.SortStableFunc(c.filtered, func(x, y Connection) int {
 		if x.CreatedAt < y.CreatedAt {
 			return 1
@@ -224,6 +235,8 @@ func (c *Connections) SortByDate() {
 }
 
 func (c *Connections) SortByTraffic() {
+	c.access.Lock()         //H
+	defer c.access.Unlock() //H
 	slices.SortStableFunc(c.filtered, func(x, y Connection) int {
 		xTraffic := x.Uplink + x.Downlink
 		yTraffic := y.Uplink + y.Downlink
@@ -238,6 +251,8 @@ func (c *Connections) SortByTraffic() {
 }
 
 func (c *Connections) SortByTrafficTotal() {
+	c.access.Lock()         //H
+	defer c.access.Unlock() //H
 	slices.SortStableFunc(c.filtered, func(x, y Connection) int {
 		xTraffic := x.UplinkTotal + x.DownlinkTotal
 		yTraffic := y.UplinkTotal + y.DownlinkTotal
@@ -252,6 +267,8 @@ func (c *Connections) SortByTrafficTotal() {
 }
 
 func (c *Connections) Iterator() ConnectionIterator {
+	c.access.Lock()         //H
+	defer c.access.Unlock() //H
 	return newPtrIterator(c.filtered)
 }
 
