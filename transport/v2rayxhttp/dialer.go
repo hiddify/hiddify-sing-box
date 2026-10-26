@@ -50,10 +50,12 @@ func (c *DefaultDialerClient) OpenStream(ctx context.Context, url string, sessio
 	// and we can unblock the Dial function and print correct net addresses in
 	// logs
 	gotConn := done.New()
+	// the trace runs on the transport's goroutine, possibly after this function returned on ctx,
+	// so the addresses go through an atomic, not the named results
+	var connAddrs atomic.Pointer[[2]net.Addr]
 	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
 		GotConn: func(connInfo httptrace.GotConnInfo) {
-			remoteAddr = connInfo.Conn.RemoteAddr()
-			localAddr = connInfo.Conn.LocalAddr()
+			connAddrs.CompareAndSwap(nil, &[2]net.Addr{connInfo.Conn.RemoteAddr(), connInfo.Conn.LocalAddr()})
 			gotConn.Close()
 		},
 	})
@@ -115,6 +117,9 @@ func (c *DefaultDialerClient) OpenStream(ctx context.Context, url string, sessio
 	if failure := doErr.Load(); failure != nil { //H
 		return nil, nil, nil, *failure //H
 	} //H
+	if addrs := connAddrs.Load(); addrs != nil {
+		remoteAddr, localAddr = addrs[0], addrs[1]
+	}
 	return
 }
 
@@ -252,52 +257,58 @@ func (c *DefaultDialerClient) PostPacket(ctx context.Context, url string, sessio
 	return nil
 }
 
+// WaitReadCloser is the download stream of OpenStream: reads wait until the response arrives
+// (Set) or the stream is closed. Set runs on the request goroutine, so the reader is guarded.
 type WaitReadCloser struct {
-	ctx  context.Context
-	Wait chan struct{}
-	io.ReadCloser
+	ctx    context.Context
+	Wait   chan struct{}
+	access sync.Mutex
+	reader io.ReadCloser
+	closed bool
 }
 
 func (w *WaitReadCloser) Set(rc io.ReadCloser) {
-	w.ReadCloser = rc
-	defer func() {
-		if recover() != nil {
-			rc.Close()
-		}
-	}()
+	w.access.Lock()
+	if w.closed {
+		w.access.Unlock()
+		rc.Close()
+		return
+	}
+	w.reader = rc
 	close(w.Wait)
+	w.access.Unlock()
 }
 
 func (w *WaitReadCloser) Read(b []byte) (int, error) {
 	select {
 	case <-w.ctx.Done():
 		return 0, w.ctx.Err()
-	default:
+	case <-w.Wait:
 	}
-
-	if w.ReadCloser == nil {
-		select {
-		case <-w.ctx.Done():
-			return 0, w.ctx.Err()
-		case <-w.Wait:
-		}
-		if w.ReadCloser == nil {
-			return 0, io.ErrClosedPipe
-		}
+	w.access.Lock()
+	reader := w.reader
+	w.access.Unlock()
+	if reader == nil {
+		return 0, io.ErrClosedPipe
 	}
-	return w.ReadCloser.Read(b)
+	return reader.Read(b)
 }
 
 func (w *WaitReadCloser) Close() error {
-	if w.ReadCloser != nil {
-		return w.ReadCloser.Close()
+	w.access.Lock()
+	if w.closed {
+		w.access.Unlock()
+		return nil
 	}
-	defer func() {
-		if recover() != nil && w.ReadCloser != nil {
-			w.ReadCloser.Close()
-		}
-	}()
-	close(w.Wait)
+	w.closed = true
+	reader := w.reader
+	if reader == nil {
+		close(w.Wait)
+	}
+	w.access.Unlock()
+	if reader != nil {
+		return reader.Close()
+	}
 	return nil
 }
 
