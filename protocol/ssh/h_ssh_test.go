@@ -508,3 +508,14 @@ func TestH_SSHInboundMalformedForwardKeepsConnection(t *testing.T) {
 	echoOnce(t, conn, "still alive")
 	conn.Close()
 }
+
+// without udp_over_tcp the outbound cannot carry UDP, so it must not offer it to the router
+func TestH_SSHOutboundNetworks(t *testing.T) {
+	t.Parallel()
+	f := startInbound(t, nil)
+	require.Equal(t, []string{N.NetworkTCP}, newTestOutbound(t, f, nil).Network())
+	withUoT := newTestOutbound(t, f, func(o *option.SSHOutboundOptions) {
+		o.UDPOverTCP = &option.UDPOverTCPOptions{Enabled: true, Version: 2}
+	})
+	require.Contains(t, withUoT.Network(), N.NetworkUDP)
+}

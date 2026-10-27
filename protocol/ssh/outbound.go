@@ -75,8 +75,14 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 		return nil, err
 	}
 
+	networks := options.Network.Build()                           //H
+	if options.UDPOverTCP == nil || !options.UDPOverTCP.Enabled { //H: SSH carries UDP only over TCP
+		networks = common.Filter(networks, func(network string) bool { //H
+			return network != N.NetworkUDP //H
+		}) //H
+	} //H
 	outbound := &Outbound{
-		Adapter:           outbound.NewAdapterWithDialerOptions(C.TypeSSH, tag, options.Network.Build(), options.DialerOptions),
+		Adapter:           outbound.NewAdapterWithDialerOptions(C.TypeSSH, tag, networks, options.DialerOptions), //H
 		ctx:               ctx,
 		logger:            logger,
 		dialer:            outboundDialer,
