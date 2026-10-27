@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"strings"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -53,6 +54,13 @@ func NewInbound(
 	}
 
 	serverConfig := &ssh.ServerConfig{}
+	if options.ServerVersion != "" {
+		// the identification string must start with SSH-2.0-, so a bare name such as OpenSSH_9.6 gets it
+		serverConfig.ServerVersion = options.ServerVersion
+		if !strings.HasPrefix(serverConfig.ServerVersion, "SSH-2.0-") {
+			serverConfig.ServerVersion = "SSH-2.0-" + serverConfig.ServerVersion
+		}
+	}
 
 	// Password auth
 	serverConfig.PasswordCallback = func(c ssh.ConnMetadata, pass []byte) (*ssh.Permissions, error) {
