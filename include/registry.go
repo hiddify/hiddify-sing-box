@@ -70,6 +70,7 @@ func InboundRegistry() *inbound.Registry {
 	direct.RegisterInbound(registry)
 	registerSudokuInbound(registry) //H
 	registerBondInbound(registry)   //H
+	registerCallInbound(registry)   //H
 
 	socks.RegisterInbound(registry)
 	http.RegisterInbound(registry)
@@ -128,6 +129,7 @@ func OutboundRegistry() *outbound.Registry {
 	group.RegisterFallback(registry) //H
 	registerSudokuOutbound(registry) //H
 	registerBondOutbound(registry)   //H
+	registerCallOutbound(registry)   //H
 	registerMASQUEOutbound(registry)
 	legacyWireguard.RegisterOutbound(registry) //H
 	trusttunnel.RegisterOutbound(registry)
