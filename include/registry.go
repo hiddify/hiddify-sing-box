@@ -68,6 +68,7 @@ func InboundRegistry() *inbound.Registry {
 	redirect.RegisterRedirect(registry)
 	redirect.RegisterTProxy(registry)
 	direct.RegisterInbound(registry)
+	registerSudokuInbound(registry) //H
 
 	socks.RegisterInbound(registry)
 	http.RegisterInbound(registry)
@@ -124,6 +125,7 @@ func OutboundRegistry() *outbound.Registry {
 	gooserelay.RegisterOutbound(registry)
 	balancer.RegisterLoadBalance(registry)
 	group.RegisterFallback(registry) //H
+	registerSudokuOutbound(registry) //H
 	registerMASQUEOutbound(registry)
 	legacyWireguard.RegisterOutbound(registry) //H
 	trusttunnel.RegisterOutbound(registry)

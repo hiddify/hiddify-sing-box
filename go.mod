@@ -19,6 +19,7 @@ require (
 	github.com/enfein/mieru/v3 v3.38.2
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/go-chi/render v1.0.3
+	github.com/gobwas/ws v1.4.0
 	github.com/godbus/dbus/v5 v5.2.2
 	github.com/gofrs/uuid/v5 v5.5.1
 	github.com/google/uuid v1.6.0
@@ -101,7 +102,7 @@ require (
 )
 
 require (
-	filippo.io/edwards25519 v1.2.0 // indirect
+	filippo.io/edwards25519 v1.2.0
 	github.com/AdguardTeam/golibs v0.32.7 // indirect
 	github.com/RyuaNerin/go-krypto v1.3.0 // indirect
 	github.com/ajg/form v1.5.1 // indirect
