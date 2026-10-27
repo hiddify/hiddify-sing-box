@@ -57,9 +57,12 @@ Limits:
   - Video: data is encrypted with XChaCha20-Poly1305 and sent as frames of a VP8 video track,
     and on some services also a screen-share track.
   - Data channel: data is sent over the call's WebRTC data channel.
-- **Start-up.** Both sides connect once, when sing-box starts. The server side gives up after
-  60 seconds. If either side fails to start, it logs the error and does not try again until
-  sing-box restarts. Until then the outbound fails with "call: tunnel not initialized".
+- **Start-up.** Both sides connect when sing-box starts. A try gives up after 60 seconds. When a
+  try fails, the side logs the error and tries again after 5 seconds, then 10 seconds, then 30
+  seconds, then every minute until sing-box stops. Connections to the outbound wait for its
+  first try. While it is not connected, they fail with "call: not connected to the call yet".
+- **Reconnects.** When the call reconnects, connections that arrive through it still go to the
+  router, so route rules keep working.
 
 ## Configuration
 
@@ -101,7 +104,7 @@ cookies of your own logged-in browser session.
 | `join_link` | string | `""` | The call to join. Required on the outbound. On the inbound, leave it empty to create a new call and read its link from the log. |
 | `mode` | string | see below | How data is carried, for `wbstream` and `bitrix` only: `dc` (data channel) or `video`. Both sides must use the same mode. |
 | `cookies` | list of `{name, value}` | `[]` | Inbound only. The cookies of your logged-in session on the service. |
-| `email` | string | `""` | Inbound, `dion` only. Used to log in again when the refresh cookie is missing or expired. |
+| `email` | string | `""` | Inbound, `dion` only. With `password`, logs in without cookies, or again when the refresh cookie is missing or expired. |
 | `password` | string | `""` | Inbound, `dion` only. Goes with `email`. |
 | `read_buffer` | number | `32768` | Read buffer size, in bytes, for data-channel tunnels. |
 
@@ -127,9 +130,9 @@ service needs, as far as the code shows:
 
 - `vk`: your vk.ru login cookies. The code sends them to login.vk.ru to get a token.
 - `telemost`: your Yandex login cookies. The code sends them to the Telemost API.
-- `dion`: the list must not be empty. The code reads `vc-refresh-token` and `vc-access-token`.
-  If `vc-refresh-token` is missing or rejected and `email` and `password` are set, it logs in
-  with them instead.
+- `dion`: the code reads `vc-refresh-token` and `vc-access-token`. If `vc-refresh-token` is
+  missing or rejected and `email` and `password` are set, it logs in with them instead. With
+  `email` and `password`, the list can be empty. Without them, it must not be.
 - `wbstream`: must include `__wb_device_id`. Of the rest, only `wbx-refresh`, `x_wbaas_token`,
   `_wbauid` and `wbx-validation-key` are sent.
 
@@ -142,10 +145,11 @@ config can use your account.
   unsupported platform bitrix", so a Hiddify server cannot be the other side.
 - The outbound accepts `cookies`, but they are not used: the client always joins as a guest.
 - `max_buffered_amount` and `memory_limit` are accepted and have no effect.
-- On `vk`, `telemost` and `dion`, when the call reconnects, the server side may open new
-  connections straight from the inbound's dial settings instead of passing them to the router,
-  so route rules no longer apply until sing-box restarts.
-- When the server side creates a new call, the link changes each time it starts. Set
+- On `wbstream`, a `mode` other than `dc` or `video` makes the config fail to load with
+  "call: unknown wbstream mode …, use dc or video".
+- On `telemost`, when the relay fails to start, the error is logged and sing-box keeps running.
+- On `vk`, the log does not show the call's join token, which is part of the tunnel key.
+- When the server side creates a new call, the link changes each time it connects. Set
   `join_link` on the inbound to keep it the same.
 
 ## See also

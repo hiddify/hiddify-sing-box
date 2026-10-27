@@ -83,7 +83,7 @@ connection goes.
 | `resolvers` | list of strings | required | Resolvers to use. `"1.1.1.1:53"` is plain DNS over UDP, `"https://..."` is DoH, `"dot://host:853"` is DoT. `"auto"` (or an empty string) adds the built-in list of about 58,000 public resolvers. At least one is needed. |
 | `pretest-domain` | string | `"www.google.com"` | Name queried to check that a resolver answers. |
 | `pretest-record-type` | string | `"a"` | Record type of that query: `a`, `aaaa`, `cname`, `mx`, `ns`, `ptr`, `soa`, `srv` or `txt`. |
-| `record-type` | string | `"txt"` | Not used for the tunnel in this build, which always uses TXT answers. It only names the saved resolver history. |
+| `record-type` | string | `"txt"` | Record type of the answers that carry data back from the server: `txt`, `cname`, `a`, `aaaa`, `mx`, `ns` or `srv`. It must match the server. Another value uses TXT. Each record type keeps its own saved resolver history. |
 | `utls` | string | `""` | TLS fingerprint for DoH and DoT, for example `"Chrome"`, `"Firefox"`, `"iOS"` or `"random"`. Empty uses Go's own TLS. |
 | `single-resolver` | bool | `false` | One tunnel per resolver instead of one tunnel over all of them. |
 | `smart_pool` | bool | `false` | Send queries through a local resolver pool, as described above. |
@@ -105,9 +105,12 @@ connection goes.
 | `udp-workers` | int | `100` | For plain UDP resolvers: queries in flight at once. |
 | `udp-shared-socket` | bool | `false` | For plain UDP resolvers: send every query from one socket instead of one socket per query. |
 | `udp-accept-errors` | bool | `false` | For plain UDP resolvers: accept answers with an error code instead of dropping them. |
-| `tunnel-per-resolver` | int | | Old field, ignored. |
+| `tunnel-per-resolver` | int | | Deprecated and ignored. |
 
-The usual dial fields are accepted, but the DNS queries do not go through `detour`.
+The sockets that send the DNS queries use the outbound's socket settings, such as
+`bind_interface` and `routing_mark`, and the platform's socket protection. So on a VPN the queries
+do not loop back into the tunnel. `detour` is not supported: the queries go out directly, and the
+log shows a warning.
 
 `dnstt-compat` and `clientid-size` change the wire format, so they must match your server.
 

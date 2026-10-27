@@ -32,11 +32,14 @@ slow down or block long or busy SSH sessions. Use it where SSH is allowed.
 - A user logs in with a password or a public key from `users`. Both checks look up the user by
   name.
 - The server accepts only port forwarding requests (`direct-tcpip` channels). Requests for a
-  shell, a command or a subsystem are rejected.
+  shell, a command or a subsystem are rejected. A forward request the server cannot read is
+  refused alone; the SSH connection and its other forwards go on.
 - Each forwarded connection is routed like a connection from any other inbound. The user name is
-  set, so stats and `auth_user` route rules work.
+  set, so stats and `auth_user` route rules work. Read and write deadlines work on forwarded
+  connections.
 - A forwarded connection to the UDP over TCP address of sing-box carries UDP. So a Hiddify SSH
-  outbound with `udp_over_tcp` can send UDP through this server.
+  outbound with `udp_over_tcp` can send UDP through this server. When `network` does not list
+  `udp`, this is turned off.
 
 ### Outbound: UDP over TCP
 
@@ -44,7 +47,8 @@ With `udp_over_tcp` turned on, the outbound sends each UDP session inside a forw
 connection, in the sing-box UDP over TCP format. The server must understand this format: the
 Hiddify SSH inbound does, a normal OpenSSH server does not.
 
-Without `udp_over_tcp`, UDP through the SSH outbound fails.
+Without `udp_over_tcp`, the outbound does not accept UDP, even when `network` lists `udp`.
+Route UDP to another outbound.
 
 ### Outbound: background connection
 
@@ -88,11 +92,11 @@ Without `udp_over_tcp`, UDP through the SSH outbound fails.
 | `users[].user` | string | none | User name. |
 | `users[].password` | string | none | Password. Leave it empty to turn off password login for this user. |
 | `users[].public_key` | string | none | One public key, as a line of an `authorized_keys` file. Leave it empty to turn off key login for this user. |
-| `server_version` | string | Go SSH default | The version string the server sends, such as `SSH-2.0-OpenSSH_9.6`. |
+| `server_version` | string | Go SSH default | The version string the server sends, such as `SSH-2.0-OpenSSH_9.6`. Without the `SSH-2.0-` prefix, it is added. |
+| `host_key_algorithms` | list of strings | all | Host key algorithms the server offers. An RSA key signs only with the listed `rsa-sha2-512`, `rsa-sha2-256` or `ssh-rsa`. Another key is used only when its type is listed, such as `ssh-ed25519`. If no host key is left, the config fails to load. |
+| `network` | `"tcp"` or `"udp"` | both | Without `udp`, the server does not carry UDP over TCP. The server always listens on TCP. |
 
-The usual listen fields (`listen`, `listen_port` and the rest) work as for other inbounds. The
-inbound also accepts `network` and `host_key_algorithms`, but does not use them: it always listens
-on TCP and offers every algorithm its host keys support.
+The usual listen fields (`listen`, `listen_port` and the rest) work as for other inbounds.
 
 ### Outbound
 
@@ -115,7 +119,7 @@ on TCP and offers every algorithm its host keys support.
 | Field | Type | Default | Meaning |
 |---|---|---|---|
 | `udp_over_tcp` | bool or object | off | Send UDP inside forwarded TCP connections. `true` uses version 2. The object form is `{"enabled": true, "version": 1}` or `2`. |
-| `network` | `"tcp"` or `"udp"` | both | Networks the outbound accepts. Upstream accepts only TCP. Set `"tcp"` when the server does not understand UDP over TCP, so UDP is not routed to this outbound. |
+| `network` | `"tcp"` or `"udp"` | both | Networks the outbound accepts. Upstream accepts only TCP. UDP is accepted only when `udp_over_tcp` is on. |
 
 ## See also
 

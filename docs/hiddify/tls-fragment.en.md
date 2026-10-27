@@ -80,8 +80,9 @@ Errors: with `tcp_fast_open` on the same outbound, the config does not load (the
 sent with the TCP handshake, before it can be split). An unknown `method`, or `range` without a
 `range`, is also a configuration error.
 
-A `tls_fragment` inside the `tls` block is accepted so old templates load, but sing-box does not
-apply it there; Hiddify's config patching moves it to the outbound.
+Old templates put `tls_fragment` inside the `tls` block. When the outbound is created, an enabled
+`tls_fragment` there is moved to the outbound's dial fields and applied, unless the outbound
+already has its own enabled `tls_fragment`. Then the one in the `tls` block is ignored.
 
 ## See also
 

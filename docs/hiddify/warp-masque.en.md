@@ -39,7 +39,8 @@ accepts.
 Cloudflare's endpoints. It takes the first one it finds:
 
 1. The saved profile in the cache file, when `cache_file.store_masque_config` is on and
-   `profile.recreate` is off. It is saved under the outbound's tag.
+   `profile.recreate` is off. It is saved under `unique_identifier`, or under the tag when that
+   is empty.
 2. A new one: it registers a free WARP device, or uses the device given by `profile.id` and
    `profile.auth_token`, and enrolls a new MASQUE key on it. The requests go through
    `profile.detour` when set.
@@ -126,6 +127,7 @@ and drops the tunnel connection. The next use connects again.
 | `udp_initial_packet_size` | number | QUIC default | QUIC initial packet size. When set, path MTU discovery is off. |
 | `mtu` | number | `1280` | MTU of the tunnel, `1280` to `9000`. Over HTTP/3, a packet larger than the path carries gets an ICMP "packet too big" back, so TCP adjusts to it. |
 | `reconnect_delay` | duration | `0` | Wait between failed connects of the tunnel. |
+| `unique_identifier` | string | the tag | Key of the saved profile and scanner scores in the cache file. |
 
 Dial fields (`detour`, `bind_interface` and the rest) apply to the tunnel, the scanner probes
 and the network name check.
@@ -165,8 +167,9 @@ Notes:
 - The outbound needs the `with_masque` build tag. It is in the default tags of the Makefile.
   Without it, the config fails to load with "MASQUE outbound is not included in this build".
 - The profile and the scores live in the cache file. Without `cache_file`, each start registers
-  a new device and the scanner starts with no history. The profile is saved under the tag, so
-  renaming the outbound registers a new device.
+  a new device and the scanner starts with no history. Without `unique_identifier`, the profile
+  is saved under the tag, so renaming the outbound registers a new device. Set
+  `unique_identifier` to keep the device when you rename the outbound.
 - The tunnel starts in the background. Connections wait for the first start to finish. If it
   failed, they fail with "tunnel not initialized".
 - When a connect fails, the tunnel logs the error and tries again after `reconnect_delay`.

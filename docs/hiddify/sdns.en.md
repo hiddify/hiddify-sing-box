@@ -25,12 +25,13 @@ the queries through a proxy with `detour`.
 ## How it works
 
 - The stamp holds the resolver's address, its provider name and its public key.
-- For each query, the server first asks the resolver for its current certificate and checks it
+- Before the first query, the server asks the resolver for its current certificate and checks it
   with the public key from the stamp. Then it sends the encrypted query and decrypts the answer.
-  So each query takes two round trips.
+- The server keeps the certificate for later queries, so they take one round trip. It fetches a
+  new one when the certificate expires, when a query fails, or when the network changes.
 - Queries go over UDP. Each step gives up after 10 seconds.
-- Only DNSCrypt stamps work. A stamp for DNS over HTTPS, DNS over TLS or plain DNS is rejected
-  when the server is used.
+- Only DNSCrypt stamps work. A stamp for DNS over HTTPS, DNS over TLS or plain DNS is refused when
+  the config loads. Use the `https`, `tls` or `udp` server type for it.
 
 ## Configuration
 

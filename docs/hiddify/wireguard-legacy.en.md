@@ -30,7 +30,7 @@ obfuscation, use the [WireGuard endpoint](wireguard-hiddify.en.md) with noise, o
   peer that receives all traffic (`0.0.0.0/0` and `::/0`).
 - A domain as destination is resolved with the default DNS rules, then the connection goes
   through the tunnel. A peer given by domain is resolved the same way.
-- TCP, UDP and ping go through the tunnel.
+- TCP, UDP and ping go through the tunnel. `network` limits TCP and UDP; ping is always offered.
 - The type is still reported as `wireguard`, so the app shows it as WireGuard.
 
 ## Configuration
@@ -65,10 +65,11 @@ obfuscation, use the [WireGuard endpoint](wireguard-hiddify.en.md) with noise, o
 | `workers` | int | number of CPUs | WireGuard worker count. |
 | `system_interface` | bool | `false` | Use a system network interface instead of the user-space stack. |
 | `interface_name` | string | none | Name of the system interface. |
-| `gso` | bool | `false` | Accepted for old configs. It cannot be used with `detour`. |
+| `network` | `"tcp"` or `"udp"` | both | Networks the outbound accepts, as in upstream's old outbound. Ping is always accepted. |
+| `gso` | bool | `false` | Accepted for old configs, but not used. It cannot be used with `detour`. |
 
-The dial fields (`detour`, `bind_interface` and the rest) work as for other outbounds. The
-outbound also accepts `network`, but does not use it. Peers have no keepalive setting.
+The dial fields (`detour`, `bind_interface` and the rest) work as for other outbounds. There is no
+keepalive option, as in upstream's old outbound.
 
 ## See also
 
