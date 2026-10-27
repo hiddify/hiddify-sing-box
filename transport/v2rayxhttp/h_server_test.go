@@ -159,7 +159,6 @@ func TestH_XHTTPServerStreamDownHeaders(t *testing.T) {
 }
 
 func TestH_XHTTPServerObfsHeaderPadding(t *testing.T) {
-	t.Skip("BUG: obfs-mode request padding (placement=header) is never read by the server, which only checks Referer/query x_padding (server.go:121-133); valid requests get 400")
 	server := hNewServer(t, `{"mode":"packet-up","x_padding_obfs_mode":true,"x_padding_placement":"header",`+hBase+`}`)
 	request := hRequest("POST", "/xh/sid/0", []byte("x"), -1)
 	ApplyXPaddingToRequest(request, XPaddingConfig{

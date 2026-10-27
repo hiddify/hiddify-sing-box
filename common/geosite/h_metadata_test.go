@@ -62,7 +62,6 @@ func TestH_GeositeMetadataTruncated(t *testing.T) {
 }
 
 func TestH_GeositeMetadataHugeCodeLength(t *testing.T) {
-	t.Skip("BUG: geosite reader.go readMetadata uses varbin.ReadValue[string], which allocates the attacker-claimed code length up front (the old readString grew incrementally)")
 	data := []byte{0x00}
 	data = binary.AppendUvarint(data, 1)
 	data = binary.AppendUvarint(data, 256<<20)

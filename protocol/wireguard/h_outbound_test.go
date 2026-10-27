@@ -99,7 +99,6 @@ func TestH_LegacyOutboundMetadata(t *testing.T) {
 }
 
 func TestH_LegacyOutboundStartWithoutInitialize(t *testing.T) {
-	t.Skip("BUG: legacy Outbound.Start never calls endpoint.Initialize, so StartStateStart dereferences a nil tun device and panics")
 	o, err := hNewLegacy(t, hLegacyOptions(t))
 	require.NoError(t, err)
 	require.NotPanics(t, func() {

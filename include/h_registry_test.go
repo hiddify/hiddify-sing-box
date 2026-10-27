@@ -117,7 +117,6 @@ func TestH_TunnelEndpointInvalidUUID(t *testing.T) {
 }
 
 func TestH_OutboundRegistryConcurrent(t *testing.T) {
-	t.Skip("BUG: dnstt.RegisterOutbound calls loadResolvers which writes package-global maps unsynchronized (protocol/hiddify/dnstt/tools.go:21-29); concurrent OutboundRegistry() crashes with 'concurrent map writes'")
 	var wg sync.WaitGroup
 	for i := 0; i < 8; i++ {
 		wg.Add(1)
