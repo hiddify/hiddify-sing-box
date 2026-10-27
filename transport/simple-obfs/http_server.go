@@ -107,7 +107,7 @@ func (hos *HTTPObfsServer) Write(b []byte) (int, error) {
 	if hos.firstResponse {
 		randBytes := make([]byte, 16)
 		rand.Read(randBytes)
-		date := time.Now().Format(time.RFC1123)
+		date := time.Now().UTC().Format(http.TimeFormat) // GMT, as nginx sends it
 		resp := fmt.Sprintf(httpResponseTemplate, randInt()%11, randInt()%12, date, base64.URLEncoding.EncodeToString(randBytes))
 		if _, err := hos.Conn.Write([]byte(resp)); err != nil {
 			return 0, err

@@ -136,7 +136,6 @@ func TestH_HTTPObfsServerResponseFormat(t *testing.T) {
 }
 
 func TestH_HTTPObfsServerDateIsHTTPDate(t *testing.T) {
-	t.Skip("BUG: HTTPObfsServer formats Date with time.RFC1123 in local zone instead of http.TimeFormat (GMT), unlike real nginx")
 	rawClient, rawServer := hTCPPair(t)
 	server := NewHTTPObfsServer(rawServer)
 	writeErr := hWriteAsync(server, []byte("x"))
