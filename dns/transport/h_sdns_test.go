@@ -5,6 +5,7 @@ import (
 	"github.com/sagernet/sing-box/adapter/htest"
 	"log/slog"
 	"net"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -156,4 +157,26 @@ func TestH_SDNSAdapterMetadata(t *testing.T) {
 	transport := hNewSDNS(t, "sdns://")
 	require.Equal(t, "sdns-test", transport.Tag())
 	require.Equal(t, C.DNSTypeSDNS, transport.Type())
+}
+
+// the resolver certificate is fetched once and reused, not before every query
+func TestH_SDNSReusesCertificate(t *testing.T) {
+	t.Parallel()
+	transport := hNewSDNS(t, hStartDNSCryptServer(t))
+	var dials atomic.Int32
+	dial := transport.client.DialContext
+	transport.client.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		dials.Add(1)
+		return dial(ctx, network, addr)
+	}
+	for range 3 {
+		_, err := transport.Exchange(context.Background(), hQuery())
+		require.NoError(t, err)
+	}
+	require.EqualValues(t, 4, dials.Load(), "one certificate fetch and three queries")
+
+	transport.Reset() // a new network fetches it again
+	_, err := transport.Exchange(context.Background(), hQuery())
+	require.NoError(t, err)
+	require.EqualValues(t, 6, dials.Load())
 }

@@ -29,7 +29,8 @@ type SDNSTransport struct {
 	name   string
 	stamp  string
 
-	mtx sync.Mutex
+	mtx  sync.Mutex
+	info *dnscrypt.ResolverInfo // the cached resolver certificate
 }
 
 func NewSDNSTransport(ctx context.Context, logger log.ContextLogger, tag string, options option.SDNSDNSServerOptions) (adapter.DNSTransport, error) {
@@ -75,14 +76,45 @@ func (t *SDNSTransport) ExchangeAsync(ctx context.Context, message *mDNS.Msg, ca
 }
 
 func (t *SDNSTransport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error) {
-	resolverInfo, err := t.client.Dial(t.stamp)
+	resolverInfo, err := t.resolverInfo()
 	if err != nil {
 		return nil, err
 	}
-	return t.client.Exchange(message, resolverInfo)
+	response, err := t.client.Exchange(message, resolverInfo)
+	if err != nil {
+		t.forget(resolverInfo) // the resolver may have rotated its certificate
+	}
+	return response, err
+}
+
+// resolverInfo returns the resolver certificate, fetching it only when there is none or it has
+// expired: fetching costs a round trip before every query.
+func (t *SDNSTransport) resolverInfo() (*dnscrypt.ResolverInfo, error) {
+	t.mtx.Lock()
+	defer t.mtx.Unlock()
+	if t.info != nil && time.Now().Unix() < int64(t.info.ResolverCert.NotAfter) {
+		return t.info, nil
+	}
+	info, err := t.client.Dial(t.stamp)
+	if err != nil {
+		return nil, err
+	}
+	t.info = info
+	return info, nil
+}
+
+func (t *SDNSTransport) forget(info *dnscrypt.ResolverInfo) {
+	t.mtx.Lock()
+	if t.info == info {
+		t.info = nil
+	}
+	t.mtx.Unlock()
 }
 
 func (t *SDNSTransport) Reset() {
+	t.mtx.Lock()
+	t.info = nil // a new network may reach another instance of the resolver
+	t.mtx.Unlock()
 }
 
 // sdnsPacketConn presents a connected UDP connection as a net.PacketConn. miekg/dns, which
