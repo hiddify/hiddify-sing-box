@@ -92,7 +92,7 @@ func (t *Transport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg,
 				return dns.FixedResponse(message.Id, question, addresses, C.DefaultDNSTTL), nil
 			}
 		}
-		addresses := getIpOfSslip(domain)
+		addresses := getIpOfSslip(strings.TrimSuffix(domain, ".")) //H: the question name ends with a dot
 		if len(addresses) > 0 {
 			return dns.FixedResponse(message.Id, question, addresses, C.DefaultDNSTTL), nil
 		}
@@ -112,8 +112,8 @@ func (t *Transport) ExchangeAsync(ctx context.Context, message *mDNS.Msg, callba
 }
 
 const (
-	ipv4Pattern = `((25[0-5]|2[0-4][0-9]|[0-1]?[0-9]?[0-9])[\.-](25[0-5]|2[0-4][0-9]|[0-1]?[0-9]?[0-9])[\.-](25[0-5]|2[0-4][0-9]|[0-1]?[0-9]?[0-9])[\.-](25[0-5]|2[0-4][0-9]|[0-1]?[0-9]?[0-9])).sslip.io$`
-	ipv6Pattern = `((([0-9a-fA-F]{1,4}-){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}-){1,7}-|([0-9a-fA-F]{1,4}-){1,6}-[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}-){1,5}(-[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}-){1,4}(-[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}-){1,3}(-[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}-){1,2}(-[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}-((-[0-9a-fA-F]{1,4}){1,6})|-((-[0-9a-fA-F]{1,4}){1,7}|-)|fe80-(-[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|--(ffff(-0{1,4}){0,1}-){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}-){1,4}-((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))).sslip.io$`
+	ipv4Pattern = `(?:^|[.-])((25[0-5]|2[0-4][0-9]|[0-1]?[0-9]?[0-9])[\.-](25[0-5]|2[0-4][0-9]|[0-1]?[0-9]?[0-9])[\.-](25[0-5]|2[0-4][0-9]|[0-1]?[0-9]?[0-9])[\.-](25[0-5]|2[0-4][0-9]|[0-1]?[0-9]?[0-9])).sslip.io$`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       //H
+	ipv6Pattern = `(?:^|\.)((([0-9a-fA-F]{1,4}-){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}-){1,7}-|([0-9a-fA-F]{1,4}-){1,6}-[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}-){1,5}(-[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}-){1,4}(-[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}-){1,3}(-[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}-){1,2}(-[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}-((-[0-9a-fA-F]{1,4}){1,6})|-((-[0-9a-fA-F]{1,4}){1,7}|-)|fe80-(-[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|--(ffff(-0{1,4}){0,1}-){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}-){1,4}-((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))).sslip.io$` //H
 )
 
 var (
@@ -125,16 +125,12 @@ func getIpOfSslip(sni string) []netip.Addr {
 	if !strings.HasSuffix(sni, ".sslip.io") {
 		return nil
 	}
-	submatches := ipv4Regex.FindStringSubmatch(sni)
+	//H: IPv6 first, from the start of a label: the IPv4 pattern also matches the tail of an IPv6 name
 	ipstr := ""
-	if len(submatches) > 1 {
-		ipstr = strings.ReplaceAll(submatches[1], "-", ".")
-
-	} else {
-		submatches := ipv6Regex.FindStringSubmatch(sni)
-		if len(submatches) > 1 {
-			ipstr = strings.ReplaceAll(submatches[1], "-", ":")
-		}
+	if submatches := ipv6Regex.FindStringSubmatch(sni); len(submatches) > 1 { //H
+		ipstr = strings.ReplaceAll(submatches[1], "-", ":") //H
+	} else if submatches := ipv4Regex.FindStringSubmatch(sni); len(submatches) > 1 { //H
+		ipstr = strings.ReplaceAll(submatches[1], "-", ".") //H
 	}
 	ip, err := netip.ParseAddr(ipstr)
 	if err != nil {

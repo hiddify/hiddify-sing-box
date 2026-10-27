@@ -43,7 +43,6 @@ func TestH_GetIpOfSslip(t *testing.T) {
 }
 
 func TestH_GetIpOfSslipIPv6WithDecimalTail(t *testing.T) {
-	t.Skip("BUG: hosts.go getIpOfSslip tries the IPv4 regex first with an unanchored search, so 2001-db8-0-0-0-0-0-1.sslip.io resolves to 0.0.0.1 instead of 2001:db8::1")
 	t.Parallel()
 	require.Equal(t, []netip.Addr{netip.MustParseAddr("2001:db8::1")}, getIpOfSslip("2001-db8-0-0-0-0-0-1.sslip.io"))
 	require.Equal(t, []netip.Addr{netip.MustParseAddr("2001:db8:1:2:3:4:5:6")}, getIpOfSslip("2001-db8-1-2-3-4-5-6.sslip.io"))
@@ -75,7 +74,6 @@ func TestH_HostsExchangeNonSslipUnchanged(t *testing.T) {
 }
 
 func TestH_HostsExchangeResolvesSslip(t *testing.T) {
-	t.Skip("BUG: hosts.go Exchange passes mDNS.CanonicalName (trailing dot) to getIpOfSslip, whose HasSuffix(\".sslip.io\") check and `sslip.io$` regex never match, so sslip.io names are never resolved")
 	t.Parallel()
 	transport := hNewHostsTransport(t)
 	message := new(mDNS.Msg)
