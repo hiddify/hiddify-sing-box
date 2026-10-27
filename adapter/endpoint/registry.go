@@ -63,9 +63,9 @@ func (m *Registry) CreateOptions(outboundType string) (any, bool) {
 }
 
 func (m *Registry) Create(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, outboundType string, options any) (adapter.Endpoint, error) {
-	m.access.Lock()
-	defer m.access.Unlock()
+	m.access.Lock() //H: not held while the constructor runs, so a constructor can create nested inbounds or outbounds (bond)
 	constructor, loaded := m.constructor[outboundType]
+	m.access.Unlock() //H
 	if !loaded {
 		return nil, E.New("outbound type not found: " + outboundType)
 	}
