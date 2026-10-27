@@ -151,7 +151,7 @@ type V2RayXHTTPBaseOptions struct {
 	Host                 string                 `json:"host,omitempty"`
 	Path                 string                 `json:"path,omitempty"`
 	Headers              map[string]string      `json:"headers,omitempty"`
-	DomainStrategy       DomainStrategy         `json:"domain_strategy,omitempty"`
+	DomainStrategy       DomainStrategy         `json:"domain_strategy,omitempty"` //H: accepted for configs from other forks, not used: the outbound's domain_strategy applies
 	XPaddingBytes        Xbadoption.Range       `json:"x_padding_bytes"`
 	NoGRPCHeader         bool                   `json:"no_grpc_header,omitempty"`
 	NoSSEHeader          bool                   `json:"no_sse_header,omitempty"`
