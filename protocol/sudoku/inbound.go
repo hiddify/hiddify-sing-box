@@ -31,6 +31,8 @@ type Inbound struct {
 	protoConf sudoku.ProtocolConfig
 	tunnelSrv *sudoku.HTTPMaskTunnelServer
 	fallback  string
+	// fallbackDialer reaches the fallback address
+	fallbackDialer N.Dialer
 }
 
 func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.SudokuInboundOptions) (adapter.Inbound, error) {
@@ -71,15 +73,13 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 	if err := protoConf.Validate(); err != nil { // checked here, not only when a client connects
 		return nil, E.Cause(err, "sudoku")
 	}
-	if strings.TrimSpace(options.Fallback) != "" {
-		logger.Warn("sudoku: fallback is not implemented, rejected connections are closed")
-	}
 	inbound := &Inbound{
-		Adapter:   inbound.NewAdapter(C.TypeSudoku, tag),
-		router:    router,
-		logger:    logger,
-		protoConf: protoConf,
-		fallback:  strings.TrimSpace(options.Fallback),
+		Adapter:        inbound.NewAdapter(C.TypeSudoku, tag),
+		router:         router,
+		logger:         logger,
+		protoConf:      protoConf,
+		fallback:       strings.TrimSpace(options.Fallback),
+		fallbackDialer: N.SystemDialer,
 	}
 	if inbound.fallback != "" {
 		inbound.tunnelSrv = sudoku.NewHTTPMaskTunnelServerWithFallback(&inbound.protoConf)
@@ -116,6 +116,11 @@ func (h *Inbound) NewConnection(ctx context.Context, conn net.Conn, metadata ada
 func (h *Inbound) handleConn(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
 	metadata.Inbound = h.Tag() // without them no inbound route rule matches sudoku connections
 	metadata.InboundType = h.Type()
+	var recorder *recordingConn
+	if h.fallback != "" { // keep what is read, to replay it to the fallback if this is not Sudoku
+		recorder = newRecordingConn(conn)
+		conn = recorder
+	}
 	handshakeConn := conn
 	handshakeCfg := &h.protoConf
 
@@ -139,6 +144,10 @@ func (h *Inbound) handleConn(ctx context.Context, conn net.Conn, metadata adapte
 	cConn, meta, err := sudoku.ServerHandshake(handshakeConn, handshakeCfg)
 	if err != nil {
 		h.logger.DebugContext(ctx, "handshake failed: ", err)
+		if recorder != nil && handshakeConn == conn {
+			h.serveFallback(ctx, recorder)
+			return
+		}
 		conn.Close()
 		if handshakeConn != conn {
 			handshakeConn.Close()
@@ -146,6 +155,9 @@ func (h *Inbound) handleConn(ctx context.Context, conn net.Conn, metadata adapte
 		return
 	}
 
+	if recorder != nil {
+		recorder.stop()
+	}
 	session, err := sudoku.ReadServerSession(cConn, meta)
 	if err != nil {
 		h.logger.WarnContext(ctx, "read session failed: ", err)

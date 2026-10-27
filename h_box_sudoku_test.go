@@ -4,8 +4,12 @@ package box_test
 
 import (
 	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"testing"
+	"time"
 
 	box "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/include"
@@ -50,4 +54,24 @@ func TestH_SudokuInboundValidates(t *testing.T) {
 	require.NoError(t, err)
 	_, err = box.New(box.Options{Context: ctx, Options: options})
 	require.Error(t, err)
+}
+
+// a connection that is not Sudoku is passed to the fallback, with what it already sent
+func TestH_SudokuFallback(t *testing.T) {
+	site := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("decoy page"))
+	}))
+	defer site.Close()
+	sudokuPort := hFreeTCPPort(t)
+	hStartInteropBox(t, `{
+		"log": {"disabled": true},
+		"inbounds": [{"type": "sudoku", "listen": "127.0.0.1", "listen_port": `+strconv.Itoa(sudokuPort)+`, "key": "hiddify-test-key",
+			"disable_http_mask": true, "fallback": "`+site.Listener.Addr().String()+`"}],
+		"outbounds": [{"type": "direct"}]
+	}`, nil)
+	response, err := (&http.Client{Timeout: 5 * time.Second}).Get("http://127.0.0.1:" + strconv.Itoa(sudokuPort) + "/")
+	require.NoError(t, err)
+	defer response.Body.Close()
+	body, _ := io.ReadAll(response.Body)
+	require.Equal(t, "decoy page", string(body))
 }

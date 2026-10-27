@@ -123,8 +123,10 @@ The usual listen fields (`listen`, `listen_port`, …), plus:
 
 The inbound has no TLS. For HTTPS, put a CDN or a reverse proxy that ends TLS in front of it.
 
-`fallback` is accepted, but this build does not forward anything to it yet; the log warns when it
-is set.
+`fallback` is a `host:port`. A connection that is not Sudoku, such as a browser or a prober, is
+passed to it with what it already sent, so the server looks like the site there. It works when the
+HTTP mask is off (`disable_http_mask`); a connection that sends more than 64 KiB before failing is
+closed instead.
 
 ### Client (outbound) fields
 
