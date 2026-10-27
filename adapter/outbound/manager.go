@@ -2,6 +2,7 @@ package outbound
 
 import (
 	"context"
+	"github.com/sagernet/sing-box/option"
 	"os"
 	"slices"
 	"strings"
@@ -240,6 +241,7 @@ func (m *Manager) Create(ctx context.Context, router adapter.Router, logger log.
 	if tag == "" {
 		return os.ErrInvalid
 	}
+	option.MigrateTLSFragment(options) //H: a tls_fragment in the tls block applies like the dialer's
 	outbound, err := m.registry.CreateOutbound(ctx, router, logger, tag, inboundType, options)
 	if err != nil {
 		return err

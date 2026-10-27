@@ -138,7 +138,7 @@ type OutboundTLSOptions struct {
 
 	TLSTricks *TLSTricksOptions `json:"tls_tricks,omitempty"` //H
 	// H: dialer-style tls_fragment nested under tls (legacy editor templates).
-	// Prefer DialerOptions.TLSFragment; config patching migrates this when present.
+	// Prefer DialerOptions.TLSFragment; the outbound manager moves this there (MigrateTLSFragment).
 	TLSFragment *TLSFragmentOptions `json:"tls_fragment,omitempty"`
 }
 
