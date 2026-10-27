@@ -420,3 +420,12 @@ func (c peerConfig) GenerateIpcLines() string {
 	}
 	return ipcLines.String()
 }
+
+// IpcGet returns the device's state in the UAPI format (peers, handshakes, traffic). //H
+func (e *Endpoint) IpcGet() (string, error) {
+	wgDevice := e.device.Load()
+	if wgDevice == nil {
+		return "", os.ErrInvalid
+	}
+	return wgDevice.IpcGet()
+}

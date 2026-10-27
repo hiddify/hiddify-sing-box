@@ -372,3 +372,8 @@ func (w *Endpoint) PreferredAddress(metadata *adapter.InboundContext, address ne
 	}
 	return w.endpoint.Lookup(address) != nil
 }
+
+// IpcGet returns the device's state in the UAPI format; WARP reads handshakes and traffic from it. //H
+func (w *Endpoint) IpcGet() (string, error) {
+	return w.endpoint.IpcGet()
+}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"os"
 	"strings"
 
 	"github.com/amnezia-vpn/amneziawg-go/conn"
@@ -106,4 +107,12 @@ func (d *Device) DialContext(ctx context.Context, network string, destination me
 
 func (d *Device) ListenPacket(ctx context.Context, destination metadata.Socksaddr) (net.PacketConn, error) {
 	return d.tun.ListenPacket(ctx, destination)
+}
+
+// IpcGet returns the device's state in the UAPI format; WARP reads handshakes and traffic from it.
+func (d *Device) IpcGet() (string, error) {
+	if d.awgDevice == nil {
+		return "", os.ErrInvalid
+	}
+	return d.awgDevice.IpcGet()
 }

@@ -34,6 +34,8 @@ var (
 		netip.MustParsePrefix("188.114.97.0/24"),
 		netip.MustParsePrefix("188.114.98.0/24"),
 		netip.MustParsePrefix("188.114.99.0/24"),
+		netip.MustParsePrefix("2606:4700:d0::/64"),
+		netip.MustParsePrefix("2606:4700:d1::/64"),
 	}
 )
 

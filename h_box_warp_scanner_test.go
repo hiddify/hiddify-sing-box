@@ -11,6 +11,7 @@ import (
 	"time"
 
 	box "github.com/sagernet/sing-box"
+	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/hiddify/warpscan"
 	"github.com/sagernet/sing-box/include"
 	"github.com/sagernet/sing-box/option"
@@ -26,22 +27,35 @@ import (
 // and public key.
 func hWireGuardServer(t *testing.T, clientPublic string, echoAddress ...string) (uint16, string) {
 	t.Helper()
+	serverPrivate, serverPublic := hWireGuardKey(t)
+	port := hFreeUDPPort(t)
+	hWireGuardServerOn(t, port, serverPrivate, clientPublic, echoAddress...)
+	return uint16(port), serverPublic
+}
+
+// hWireGuardServerOn starts a WireGuard server on port and returns a function that stops it.
+func hWireGuardServerOn(t *testing.T, port int, serverPrivate string, clientPublic string, echoAddress ...string) func() {
+	t.Helper()
 	route := `"final": "direct"`
 	if len(echoAddress) > 0 {
 		echo := M.ParseSocksaddr(echoAddress[0])
 		route = `"rules": [{"inbound": ["server"], "action": "route-options", "override_address": "` + echo.AddrString() + `", "override_port": ` + strconv.Itoa(int(echo.Port)) + `}]`
 	}
-	serverPrivate, serverPublic := hWireGuardKey(t)
-	port := hFreeUDPPort(t)
-	hStartInteropBox(t, `{
+	ctx := include.Context(context.Background())
+	options, err := json.UnmarshalExtendedContext[option.Options](ctx, []byte(`{
 		"log": {"disabled": true},
 		"endpoints": [{"type": "wireguard", "tag": "server", "address": ["172.16.9.1/32"], "private_key": "`+serverPrivate+`",
 			"listen_port": `+strconv.Itoa(port)+`,
 			"peers": [{"public_key": "`+clientPublic+`", "allowed_ips": ["172.16.9.2/32"]}]}],
 		"outbounds": [{"type": "direct", "tag": "direct"}],
 		"route": {`+route+`}
-	}`, nil)
-	return uint16(port), serverPublic
+	}`))
+	require.NoError(t, err)
+	instance, err := box.New(box.Options{Context: ctx, Options: options})
+	require.NoError(t, err)
+	require.NoError(t, instance.Start())
+	t.Cleanup(func() { instance.Close() })
+	return func() { instance.Close() }
 }
 
 // The scanner's WireGuard probe completes a real handshake: the server only answers a valid
@@ -121,4 +135,74 @@ func TestH_WARPEndpointScanner(t *testing.T) {
 	run("127.0.0.1/32")
 	// the server is not in this range: only the saved endpoint can answer
 	run("192.0.2.1/32")
+}
+
+func hWARPDialEcho(t *testing.T, endpoint adapter.Endpoint, timeout time.Duration) {
+	t.Helper()
+	var conn net.Conn
+	require.Eventually(t, func() bool {
+		dialCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		var err error
+		conn, err = endpoint.DialContext(dialCtx, N.NetworkTCP, M.ParseSocksaddr("10.9.9.9:80"))
+		if err != nil {
+			return false
+		}
+		conn.SetDeadline(time.Now().Add(time.Second))
+		if _, err = conn.Write([]byte("ping")); err != nil {
+			conn.Close()
+			return false
+		}
+		reply := make([]byte, 4)
+		if _, err = io.ReadFull(conn, reply); err != nil || string(reply) != "ping" {
+			conn.Close()
+			return false
+		}
+		return true
+	}, timeout, 100*time.Millisecond, "no traffic through WARP")
+	conn.Close()
+}
+
+// When the endpoint in use stops answering, a network change makes WARP find another one and
+// switch to it.
+func TestH_WARPEndpointFailover(t *testing.T) {
+	echoAddress := hStartEcho(t)
+	clientPrivate, clientPublic := hWireGuardKey(t)
+	serverPrivate, serverPublic := hWireGuardKey(t)
+	firstPort, releaseFirst := hReserveUDPPort(t)
+	secondPort, releaseSecond := hReserveUDPPort(t)
+	releaseFirst()
+	stopFirst := hWireGuardServerOn(t, firstPort, serverPrivate, clientPublic, echoAddress)
+	ctx := include.Context(context.Background())
+	options, err := json.UnmarshalExtendedContext[option.Options](ctx, []byte(`{
+		"log": {"disabled": true},
+		"experimental": {"cache_file": {"enabled": true, "path": "`+filepath.Join(t.TempDir(), "cache.db")+`"}},
+		"endpoints": [{"type": "warp", "tag": "warp",
+			"private_key": "`+clientPrivate+`",
+			"interface": {"addresses": {"v4": "172.16.9.2"}},
+			"peers": [{"public_key": "`+serverPublic+`", "endpoint": {"host": "127.0.0.1", "ports": [`+strconv.Itoa(firstPort)+`]}}],
+			"scanner": {"enabled": true, "cidrs": ["127.0.0.1/32"], "ports": [`+strconv.Itoa(firstPort)+`, `+strconv.Itoa(secondPort)+`], "timeout": "500ms"}}],
+		"outbounds": [{"type": "direct"}]
+	}`))
+	require.NoError(t, err)
+	instance, err := box.New(box.Options{Context: ctx, Options: options})
+	require.NoError(t, err)
+	defer instance.Close()
+	require.NoError(t, instance.Start())
+	endpoint, _ := instance.Endpoint().Get("warp")
+	hWARPDialEcho(t, endpoint, 10*time.Second)
+
+	stopFirst()
+	releaseSecond()
+	hWireGuardServerOn(t, secondPort, serverPrivate, clientPublic, echoAddress)
+	endpoint.(adapter.InterfaceUpdateListener).InterfaceUpdated(context.Background())
+	hWARPDialEcho(t, endpoint, 15*time.Second)
+}
+
+// hReserveUDPPort holds a free UDP port until release is called, so nothing else takes it.
+func hReserveUDPPort(t *testing.T) (int, func()) {
+	t.Helper()
+	conn, err := net.ListenPacket("udp", "127.0.0.1:0")
+	require.NoError(t, err)
+	return conn.LocalAddr().(*net.UDPAddr).Port, func() { conn.Close() }
 }

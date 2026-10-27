@@ -18,8 +18,6 @@ var (
 	MASQUEPorts = []uint16{443}
 	MASQUECIDRs = []netip.Prefix{
 		netip.MustParsePrefix("162.159.198.0/24"),
-	}
-	MASQUECIDRsIPv6 = []netip.Prefix{
 		netip.MustParsePrefix("2606:4700:103::/64"),
 	}
 )

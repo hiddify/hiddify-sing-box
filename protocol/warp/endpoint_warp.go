@@ -35,6 +35,17 @@ type WARPEndpoint struct {
 	scope        *adapter.Scope // H: the inner endpoint is started as a child of it, so it closes with WARP
 
 	mtx sync.Mutex
+
+	// H: failover (h_failover.go)
+	ctx       context.Context
+	router    adapter.Router
+	logger    log.ContextLogger
+	tag       string
+	uniqueID  string
+	options   option.WARPEndpointOptions
+	failover  *warpFailover
+	done      chan struct{}
+	closeOnce sync.Once
 }
 
 func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.WARPEndpointOptions) (adapter.Endpoint, error) {
@@ -45,12 +56,19 @@ func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.Cont
 	if options.Profile.Detour != "" {
 		dependencies = append(dependencies, options.Profile.Detour)
 	}
-	warpEndpoint := &WARPEndpoint{
-		Adapter: endpoint.NewAdapter(C.TypeWARP, tag, []string{N.NetworkTCP, N.NetworkUDP}, dependencies),
-	}
 	uniqueId := options.UniqueIdentifier
 	if uniqueId == "" {
 		uniqueId = tag
+	}
+	warpEndpoint := &WARPEndpoint{
+		Adapter:  endpoint.NewAdapter(C.TypeWARP, tag, []string{N.NetworkTCP, N.NetworkUDP}, dependencies),
+		ctx:      ctx,                 //H
+		router:   router,              //H
+		logger:   logger,              //H
+		tag:      tag,                 //H
+		uniqueID: uniqueId,            //H
+		options:  options,             //H
+		done:     make(chan struct{}), //H
 	}
 	warpEndpoint.mtx.Lock()
 	warpEndpoint.startHandler = func() {
@@ -91,37 +109,7 @@ func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.Cont
 				})
 			}
 		}
-		peerAddr, perrPort, err := warpPeerEndpoint(config, options.ServerOptions) //H: a config without peers or ports crashed the process
-		if err != nil {                                                            //H
-			logger.ErrorContext(ctx, err) //H
-			return                        //H
-		} //H
-		if options.Scanner != nil && options.Scanner.Enabled && options.Server == "" { //H: look for an endpoint that answers
-			scanned, err := scanWARPEndpoint(ctx, logger, uniqueId, options, config) //H
-			if err != nil {                                                          //H
-				logger.WarnContext(ctx, err, ", using the profile's endpoint") //H
-			} else { //H
-				peerAddr, perrPort = scanned.Addr().String(), scanned.Port() //H
-			} //H
-		} //H
-		var innerEndpoint adapter.Endpoint
-		if options.AWG != nil && options.AWG.IsAvailble() {
-			innerEndpoint, err = createWARPAwgEndpoint(ctx, router, logger, tag, options, config, peerAddr, perrPort, config.Peers[0].PublicKey) //H
-		} else {
-			innerEndpoint, err = createWARPWireGuardEndpoint(ctx, router, logger, tag, options, config, peerAddr, perrPort, config.Peers[0].PublicKey) //H
-		}
-		if err != nil {
-			logger.ErrorContext(ctx, err)
-			return
-		}
-		// run every start stage: the WireGuard device is only created in StartStateInitialize,
-		// so skipping it panics in Start (nil tun device); a failed start is closed again
-		if err = adapter.StartLate(warpEndpoint.scope, "endpoint/"+innerEndpoint.Type()+"["+tag+"]", innerEndpoint); err != nil {
-			logger.ErrorContext(ctx, E.Cause(err, "start WARP endpoint"))
-			return
-		}
-		// publish only a fully started endpoint
-		warpEndpoint.endpoint = innerEndpoint
+		warpEndpoint.connect(config) //H: pick the endpoint (scanning when enabled) and start it
 	}
 	return warpEndpoint, nil
 }
@@ -167,10 +155,11 @@ func GetWarpProfileDialer(ctx context.Context, dialer N.Dialer, profile *option.
 	}
 }
 func (w *WARPEndpoint) IsReady() bool {
-	if ok := w.isEndpointInitialized(); !ok {
+	inner := w.currentEndpoint() //H
+	if inner == nil {
 		return false
 	}
-	return w.endpoint.IsReady()
+	return inner.IsReady()
 }
 func (w *WARPEndpoint) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage == adapter.StartStateInitialize {
@@ -184,27 +173,34 @@ func (w *WARPEndpoint) Start(stage adapter.StartStage, scope *adapter.Scope) err
 }
 
 func (w *WARPEndpoint) Close() error {
-	return adapter.CloseLate(w.scope, w.endpoint)
+	w.closeOnce.Do(func() { close(w.done) }) //H: stops the failover checks
+	w.mtx.Lock()                             //H
+	inner := w.endpoint                      //H
+	w.mtx.Unlock()                           //H
+	return adapter.CloseLate(w.scope, inner)
 }
 
 func (w *WARPEndpoint) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
-	if ok := w.isEndpointInitialized(); !ok {
+	inner := w.currentEndpoint() //H: the failover replaces it
+	if inner == nil {
 		return nil, E.New("endpoint not initialized")
 	}
-	return w.endpoint.DialContext(ctx, network, destination)
+	return inner.DialContext(ctx, network, destination)
 }
 
 func (w *WARPEndpoint) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
-	if ok := w.isEndpointInitialized(); !ok {
+	inner := w.currentEndpoint() //H
+	if inner == nil {
 		return nil, E.New("endpoint not initialized")
 	}
-	return w.endpoint.ListenPacket(ctx, destination)
+	return inner.ListenPacket(ctx, destination)
 }
 
-func (w *WARPEndpoint) isEndpointInitialized() bool {
+// currentEndpoint returns the inner endpoint, waiting for the first start to finish. //H
+func (w *WARPEndpoint) currentEndpoint() adapter.Endpoint {
 	w.mtx.Lock()
 	defer w.mtx.Unlock()
-	return w.endpoint != nil
+	return w.endpoint
 }
 
 func (w *WARPEndpoint) DisplayType() string {
