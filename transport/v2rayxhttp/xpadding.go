@@ -43,7 +43,7 @@ func randStringFromCharset(n int, charset string) (string, bool) {
 		return "", false
 	}
 	m := len(charset)
-	limit := byte(256 - (256 % m))
+	limit := 256 - (256 % m) // an int: as a byte, 256 wraps to 0 when m divides 256
 	result := make([]byte, n)
 	i := 0
 	buf := make([]byte, 256)
@@ -52,7 +52,7 @@ func randStringFromCharset(n int, charset string) (string, bool) {
 			return "", false
 		}
 		for _, rb := range buf {
-			if rb >= limit {
+			if int(rb) >= limit {
 				continue
 			}
 			result[i] = charset[int(rb)%m]
