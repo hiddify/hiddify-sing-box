@@ -57,7 +57,7 @@ func New() UUID {
 func ParseBytes(b []byte) (UUID, error) {
 	var uuid UUID
 	if len(b) != 16 {
-		return uuid, E.New("invalid UUID: ", b)
+		return uuid, E.New("invalid UUID length: ", len(b)) // E.New panics on a []byte
 	}
 	copy(uuid[:], b)
 	return uuid, nil

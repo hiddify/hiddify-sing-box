@@ -89,7 +89,6 @@ func TestH_ParseBytesAndEquals(t *testing.T) {
 }
 
 func TestH_ParseBytesInvalidLength(t *testing.T) {
-	t.Skip("BUG: ParseBytes passes a []byte to E.New (uuid.go:60); sing's format.ToString panics with \"unknown value\" instead of returning an error")
 	t.Parallel()
 	require.NotPanics(t, func() {
 		_, err := ParseBytes(make([]byte, 15))
