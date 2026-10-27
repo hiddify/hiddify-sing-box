@@ -243,7 +243,6 @@ func TestH_TrafficUDPTrackerMatchOutbound(t *testing.T) {
 }
 
 func TestH_TrafficBalancerChainIncludesRealOutbound(t *testing.T) {
-	t.Skip("BUG: TrackerMetadata.MarshalJSON builds a balancer chain with the real outbound but serialises t.Chain instead")
 	md := newFakeTracker(C.TypeBalancer).metadata
 	md.Chain = []string{"lb"}
 	md.Metadata.SetRealOutbound("node-1")

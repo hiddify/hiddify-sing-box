@@ -86,7 +86,7 @@ func (t TrackerMetadata) MarshalJSON() ([]byte, error) {
 		"upload":      t.Upload.Load(),
 		"download":    t.Download.Load(),
 		"start":       t.CreatedAt,
-		"chains":      t.Chain,
+		"chains":      chains, //H: the balancer chain built above was not used
 		"rule":        rule,
 		"rulePayload": "",
 	})
