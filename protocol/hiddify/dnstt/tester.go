@@ -280,6 +280,8 @@ func (h *Outbound) Resolve(resolver dnstt.Resolver, name string, qtype uint16) (
 	if err != nil { // the conn is nil on error
 		return nil, err
 	}
+	defer conn.Close()                                     // one connection per resolver test
+	_ = conn.SetDeadline(time.Now().Add(10 * time.Second)) // a resolver that never answers must not block the test
 	msg := buildDNSQuery(name, qtype)
 
 	data, err := msg.Pack()
