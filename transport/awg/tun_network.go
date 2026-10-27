@@ -5,8 +5,8 @@ import (
 	"net"
 	"net/netip"
 
-	"github.com/amnezia-vpn/amneziawg-go/tun"
-	"github.com/amnezia-vpn/amneziawg-go/tun/netstack"
+	"github.com/amnezia-vpn/amneziawg-go/v3/tun"
+	"github.com/amnezia-vpn/amneziawg-go/v3/tun/netstack"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing/common/metadata"
 )

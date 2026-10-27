@@ -177,7 +177,6 @@ func TestH_GenIpcConfigAcceptedByDevice(t *testing.T) {
 }
 
 func TestH_GenIpcConfigS3S4AcceptedByDevice(t *testing.T) {
-	t.Skip("BUG: genIpcConfig emits s3=/s4= but the pinned amneziawg-go fork rejects them (invalid UAPI device key: s3)")
 	ipc, err := genIpcConfig(option.AwgEndpointOptions{
 		PrivateKey: hKey(t).String(),
 		Awg:        option.AwgOptions{S3: 20, S4: 25},

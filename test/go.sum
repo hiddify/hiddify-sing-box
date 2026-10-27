@@ -256,8 +256,6 @@ github.com/hiddify/hmrd_multi_resolver_dns v0.0.0-20260429114007-8d809dc33d0e h1
 github.com/hiddify/hmrd_multi_resolver_dns v0.0.0-20260429114007-8d809dc33d0e/go.mod h1:7u9Ece+I3gvMFzcpqhROWaykNUyoE21g/fYQMBasAWY=
 github.com/hiddify/vaydns v0.0.0-20260401180616-890dc987a6a9 h1:KXnaABX8hHmkcL0jbL769hEIGI5+z/DajCrlO+Bkzcc=
 github.com/hiddify/vaydns v0.0.0-20260401180616-890dc987a6a9/go.mod h1:+8kEfQsZJn7/4aIppVekrSuqhrKjGBIgnacTJkdAlS8=
-github.com/hiddifydeveloper/amneziawg-go v0.0.0-20261001141816-70b344f2f78b h1:UrPcaC2kr8DZayasD8AXVX+vncdhaCqB1Qrj/gcwe9s=
-github.com/hiddifydeveloper/amneziawg-go v0.0.0-20261001141816-70b344f2f78b/go.mod h1:Ll63vG+NEbR2Ud0lNCitBWrIqq3qGLvqSQRa4Phkhgk=
 github.com/huin/goupnp v1.3.0 h1:UvLUlWDNpoUdYzb2TCn+MuTWtcjXKSza2n6CBdQ0xXc=
 github.com/huin/goupnp v1.3.0/go.mod h1:gnGPsThkYa7bFi/KWmEysQRf48l2dvR5bxr2OFckNX8=
 github.com/insomniacslk/dhcp v0.0.0-20260220084031-5adc3eb26f91 h1:u9i04mGE3iliBh0EFuWaKsmcwrLacqGmq1G3XoaM7gY=

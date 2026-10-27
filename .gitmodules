@@ -22,3 +22,7 @@
 	path = replace/gvisor
 	url = https://github.com/hiddify/gvisor.git
 	branch = go
+[submodule "replace/amneziawg-go"]
+	path = replace/amneziawg-go
+	url = https://github.com/hiddify/amneziawg-go.git
+	branch = v5

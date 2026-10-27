@@ -8,8 +8,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/amnezia-vpn/amneziawg-go/conn"
-	"github.com/amnezia-vpn/amneziawg-go/device"
+	"github.com/amnezia-vpn/amneziawg-go/v3/conn"
+	"github.com/amnezia-vpn/amneziawg-go/v3/device"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing/common/exceptions"

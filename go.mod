@@ -6,7 +6,7 @@ require (
 	github.com/Diniboy1123/connect-ip-go v0.0.0-20260613064811-66cba32d7d33
 	github.com/Psiphon-Labs/psiphon-tunnel-core v1.0.11-0.20260126173038-c86a1497a760
 	github.com/ameshkov/dnscrypt/v2 v2.4.0
-	github.com/amnezia-vpn/amneziawg-go v1.0.4
+	github.com/amnezia-vpn/amneziawg-go/v3 v3.1.20260828
 	github.com/anthropics/anthropic-sdk-go v1.26.0
 	github.com/biter777/countries v1.7.5
 	github.com/caddyserver/certmagic v0.25.3-0.20260421143802-60d9d8b415d6
@@ -122,7 +122,7 @@ require (
 	github.com/dunglas/httpsfv v1.0.2 // indirect
 	github.com/ebitengine/purego v0.10.0 // indirect
 	github.com/florianl/go-nfqueue/v2 v2.1.0 // indirect
-	github.com/flynn/noise v1.1.0 // indirect
+	github.com/flynn/noise v1.1.0
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
 	github.com/gaissmai/bart v0.26.1 // indirect
@@ -307,7 +307,7 @@ replace github.com/net2share/vaydns => github.com/hiddify/vaydns v0.0.0-20260401
 
 replace github.com/kianmhz/GooseRelayVPN => github.com/hiddify/GooseRelayVPN v0.0.0-20260429125124-0e68c2a3ae4c
 
-replace github.com/amnezia-vpn/amneziawg-go => github.com/hiddifydeveloper/amneziawg-go v0.0.0-20261001141816-70b344f2f78b
+replace github.com/amnezia-vpn/amneziawg-go/v3 => ./replace/amneziawg-go
 
 replace github.com/sagernet/sing-tun => ./replace/sing-tun
 
