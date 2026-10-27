@@ -61,7 +61,11 @@ func (u *RuleSetUpdater) loopUpdate() {
 			if now.Before(nextUpdates[i]) {
 				continue
 			}
-			ruleSet.updateOnce()
+			if ruleSet.updateOnce() != nil { //H: retry a failed fetch with backoff, not after update_interval
+				nextUpdates[i] = now.Add(ruleSet.nextRetryDelay()) //H
+				continue                                           //H
+			} //H
+			ruleSet.retries = 0 //H
 			nextUpdates[i] = now.Add(ruleSet.updateInterval)
 			updated = true
 		}

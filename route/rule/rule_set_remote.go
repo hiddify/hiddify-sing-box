@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -56,8 +55,7 @@ type RemoteRuleSet struct {
 	metadata       adapter.RuleSetMetadata
 	lastUpdated    time.Time
 	lastEtag       string
-	updateTicker   *time.Ticker
-	fetchFailed    bool            //H: initial fetch failed, retry in background
+	retries        int             //H: failed fetches in a row, for the updater's backoff
 	retryDelays    []time.Duration //H: overrides hRuleSetRetryDelays (tests)
 	cacheFile      adapter.CacheFile
 	pauseManager   pause.Manager
@@ -126,7 +124,6 @@ func (s *RemoteRuleSet) StartContext(ctx context.Context, startContext *adapter.
 			}
 		}
 	}
-	var loadedFromInitialPath bool
 	if s.lastUpdated.IsZero() && s.initialPath != "" {
 		var content []byte
 		content, err = filemanager.ReadFile(s.ctx, s.initialPath)
@@ -135,22 +132,11 @@ func (s *RemoteRuleSet) StartContext(ctx context.Context, startContext *adapter.
 		}
 		if err != nil {
 			s.logger.Warn(E.Cause(err, "load initial rule-set from ", s.initialPath))
-		} else {
-			loadedFromInitialPath = true
 		}
 	}
 	// H: no download here: the start, and with it the tunnel, would wait for it, through an outbound
 	// that is itself still starting, and a stop could not cut it short. The rule-set starts empty and
-	// loopUpdate fetches it as soon as the service is up.
-	if s.lastUpdated.IsZero() && !loadedFromInitialPath {
-		s.fetchFailed = true
-	}
-	s.updateTicker = time.NewTicker(s.updateInterval)
-	return nil
-}
-
-func (s *RemoteRuleSet) PostStart() error {
-	go s.loopUpdate()
+	// the RuleSetUpdater fetches it as soon as the service is up, retrying with backoff.
 	return nil
 }
 
@@ -240,52 +226,16 @@ func (s *RemoteRuleSet) loadBytes(content []byte) error {
 	return nil
 }
 
-func (s *RemoteRuleSet) loopUpdate() {
-	// H: while the rule-set is missing or stale, retry with backoff (hRuleSetRetryDelays),
-	// keeping the cached rules (if any) in use; then fall back to the regular update interval.
+// nextRetryDelay returns the wait before the next try after a failed fetch; the last delay
+// repeats until a fetch succeeds. //H
+func (s *RemoteRuleSet) nextRetryDelay() time.Duration {
 	retryDelays := s.retryDelays
 	if len(retryDelays) == 0 {
 		retryDelays = hRuleSetRetryDelays
 	}
-	retrying := s.fetchFailed || time.Since(s.lastUpdated) > s.updateInterval
-	retryIndex := 0
-	if retrying {
-		// missing (the start does not download it) or stale: fetch right away, back off only if
-		// that fails
-		if s.updateOnce() == nil {
-			retrying = false
-			s.fetchFailed = false
-		}
-	}
-	for {
-		if retrying {
-			delay := retryDelays[min(retryIndex, len(retryDelays)-1)]
-			timer := time.NewTimer(delay)
-			select {
-			case <-s.ctx.Done():
-				timer.Stop()
-				return
-			case <-timer.C:
-			}
-			if s.updateOnce() == nil {
-				retrying = false
-				s.fetchFailed = false
-			} else {
-				retryIndex++
-			}
-			continue
-		}
-		runtime.GC()
-		select {
-		case <-s.ctx.Done():
-			return
-		case <-s.updateTicker.C:
-			if s.updateOnce() != nil {
-				retrying = true
-				retryIndex = 0
-			}
-		}
-	}
+	delay := retryDelays[min(s.retries, len(retryDelays)-1)]
+	s.retries++
+	return delay
 }
 
 func (s *RemoteRuleSet) updateOnce() error {
@@ -391,9 +341,6 @@ func (s *RemoteRuleSet) resolveTransport() (adapter.HTTPTransport, error) {
 func (s *RemoteRuleSet) Close() error {
 	s.rules = nil
 	s.cancel()
-	if s.updateTicker != nil {
-		s.updateTicker.Stop()
-	}
 	return nil
 }
 
