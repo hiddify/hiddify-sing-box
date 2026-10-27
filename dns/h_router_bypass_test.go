@@ -16,6 +16,7 @@ import (
 	"github.com/sagernet/sing/common/json/badoption"
 	"github.com/sagernet/sing/contrab/freelru"
 	"github.com/sagernet/sing/contrab/maphash"
+	"github.com/sagernet/sing/service"
 
 	mDNS "github.com/miekg/dns"
 	"github.com/stretchr/testify/require"
@@ -347,7 +348,6 @@ func (c *hOptionsCaptureClient) Exchange(ctx context.Context, transport adapter.
 }
 
 func TestH_LegacyRouteActionTimeoutApplied(t *testing.T) {
-	t.Skip("BUG: commit 58602a9e2 removed `options.Timeout = action.Timeout` from matchDNS/applyDNSRouteOptions, so a DNS rule's `timeout` is silently ignored")
 	t.Parallel()
 	rule := hRouteRule("example.com", "primary", false)
 	rule.DefaultOptions.RouteOptions.Timeout = badoption.Duration(3 * time.Second)
@@ -369,13 +369,19 @@ func TestH_LegacyRouteActionTimeoutApplied(t *testing.T) {
 	require.Equal(t, 3*time.Second, client.options[0].Timeout)
 }
 
+type hNetworkManager struct {
+	adapter.NetworkManager
+}
+
+func (hNetworkManager) FlushSystemDNSCache() {}
+
 func TestH_ClearCachePurgesReverseMapping(t *testing.T) {
-	t.Skip("BUG: commit 58602a9e2 removed dnsReverseMapping.Purge() from Router.ClearCache, so cleared caches still serve stale reverse mappings")
 	t.Parallel()
 	router := newTestRouter(t, nil, hTransportManager("default"), &fakeDNSClient{})
 	cache, err := freelru.New[netip.Addr, string](16, maphash.NewHasher[netip.Addr]().Hash32, true)
 	require.NoError(t, err)
 	router.dnsReverseMapping = cache
+	router.ctx = service.ContextWith[adapter.NetworkManager](router.ctx, hNetworkManager{}) // ClearCache flushes the system cache
 	message := hQuery("example.com")
 	router.recordReverseMapping(message, FixedResponse(0, message.Question[0], []netip.Addr{netip.MustParseAddr("1.2.3.4")}, 60), nil)
 	domain, loaded := router.LookupReverseMapping(netip.MustParseAddr("1.2.3.4"))
