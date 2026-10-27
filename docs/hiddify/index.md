@@ -40,6 +40,7 @@ an English and a Persian version.
 - [Balancer](balancer.en.md) ([فارسی](balancer.fa.md)): spread connections over members by round robin, lowest delay, consistent hashing or sticky sessions.
 - [Fallback](fallback.en.md) ([فارسی](fallback.fa.md)): try members in order and skip one that failed for a while.
 - [URL test: Hiddify additions](urltest.en.md) ([فارسی](urltest.fa.md)): more test URLs, a `failover` mode, and a move to another member on the first failed connection.
+- [Bond](bond.en.md) ([فارسی](bond.fa.md)): split each connection over several outbounds at once and join it on the server, to add up throttled connections (build tag `with_bond`).
 - [Monitoring](monitoring.en.md) ([فارسی](monitoring.fa.md)): background tests of every outbound for delay and exit IP, which feed the groups.
 - [Unified delay](unified-delay.en.md) ([فارسی](unified-delay.fa.md)): URL tests time one HTTP round trip on an open connection, so delays compare across protocols.
 
