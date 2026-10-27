@@ -37,8 +37,9 @@ you put a CDN in front of it. Without TLS (or REALITY), the requests are readabl
     path must allow a streaming request body.
   - `stream-one`: upload and download share one streaming request. Needs a path that passes
     streaming in both directions, such as a direct TLS or REALITY connection.
-  - `auto`: on the server, it accepts all three modes. On the client, it uses `packet-up`. Set the
-    mode on the client yourself if you want `stream-up` or `stream-one`.
+  - `auto`: on the server, it accepts all three modes. On the client, it picks as Xray's client
+    does: `stream-one` over REALITY, `stream-up` over REALITY with a separate `download`, and
+    `packet-up` otherwise. An empty mode is `auto`.
 - The upload and download requests of one connection carry the same random session ID. By
   default it is part of the path; `session_placement` and `seq_placement` move the session ID and
   the sequence number into a query parameter, a header or a cookie.
