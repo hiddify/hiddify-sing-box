@@ -23,6 +23,7 @@ type TunnelDevice interface {
 
 type Tunnel struct {
 	ctx          context.Context
+	cancel       context.CancelFunc // ends the loops and a connect in progress on close
 	logger       logger.ContextLogger
 	options      TunnelOptions
 	tunDevice    Device
@@ -48,8 +49,10 @@ func NewTunnel(ctx context.Context, logger logger.ContextLogger, options TunnelO
 	if err != nil {
 		return nil, E.Cause(err, "create MASQUE device")
 	}
+	ctx, cancel := context.WithCancel(ctx)
 	return &Tunnel{
 		ctx:          ctx,
+		cancel:       cancel,
 		logger:       logger,
 		options:      options,
 		tunDevice:    tunDevice,
@@ -83,6 +86,8 @@ func (e *Tunnel) ListenPacket(ctx context.Context, destination M.Socksaddr) (net
 }
 
 func (e *Tunnel) Close() error {
+	// cancel first: a connect in progress holds the lock until the context ends
+	e.cancel()
 	e.mtx.Lock()
 	defer e.mtx.Unlock()
 	if e.ipConn != nil {
@@ -104,6 +109,10 @@ func (e *Tunnel) maintainTunnel() {
 		for e.ctx.Err() == nil {
 			n, err := e.tunnelDevice.ReadPacket(buf)
 			if err != nil {
+				if e.ctx.Err() != nil {
+					// closed: the device read fails at once, so going on would spin
+					return
+				}
 				e.logger.ErrorContext(e.ctx, fmt.Errorf("failed to read from TUN device: %v", err))
 				continue
 			}
