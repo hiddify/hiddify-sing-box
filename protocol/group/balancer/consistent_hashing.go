@@ -17,6 +17,7 @@ type ConsistentHashing struct {
 	maxAcceptableDelay   map[string]uint16
 	mu                   sync.Mutex
 	delayAcceptableRatio float64
+	alive                map[string]string
 }
 
 func NewConsistentHashing(outbounds []adapter.Outbound, options option.BalancerOutboundOptions) *ConsistentHashing {
@@ -42,11 +43,14 @@ func (s *ConsistentHashing) UpdateOutboundsInfo(history map[string]*adapter.URLT
 	for net, d := range minDelay {
 		res[net] = getMaxAcceptableDelay(d, s.delayAcceptableRatio)
 	}
+	alive := aliveSet(s.outbounds, delayMap, res)
 	s.mu.Lock()
+	changed := aliveSetChanged(s.alive, alive) // not every update: interrupt_exist_connections would close all connections each time
 	s.delays = delayMap
 	s.maxAcceptableDelay = res
+	s.alive = alive
 	s.mu.Unlock()
-	return true
+	return changed
 }
 func (g *ConsistentHashing) Select(metadata adapter.InboundContext, net string, touch bool) adapter.Outbound {
 	g.mu.Lock()

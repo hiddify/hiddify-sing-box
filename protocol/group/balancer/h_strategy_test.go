@@ -294,3 +294,20 @@ func TestH_BalancerStickySessionAvoidsDead(t *testing.T) {
 		require.Equal(t, "a", s.Select(md, N.NetworkTCP, true).Tag(), "iteration %d", i)
 	}
 }
+
+// The hashing strategies report a change only when the set of usable members changes, so
+// interrupt_exist_connections does not close every connection on each monitoring update.
+func TestH_BalancerHashingChangedOnlyOnAliveSet(t *testing.T) {
+	o := []*fakeOutbound{newFake("a"), newFake("b"), newFake("c")}
+	options := option.BalancerOutboundOptions{DelayAcceptableRatio: 2, MaxRetry: 3}
+	for name, s := range map[string]Strategy{
+		"consistent-hashing": NewConsistentHashing(outs(o...), options),
+		"sticky-sessions":    NewStickySession(outs(o...), options),
+	} {
+		history := map[string]*adapter.URLTestHistory{"a": his(100), "b": his(120), "c": his(monitoring.TimeoutDelay)}
+		require.True(t, s.UpdateOutboundsInfo(history), name)
+		require.False(t, s.UpdateOutboundsInfo(history), name+": same members")
+		require.False(t, s.UpdateOutboundsInfo(map[string]*adapter.URLTestHistory{"a": his(110), "b": his(105), "c": his(monitoring.TimeoutDelay)}), name+": new delays, same members")
+		require.True(t, s.UpdateOutboundsInfo(map[string]*adapter.URLTestHistory{"a": his(100), "b": his(monitoring.TimeoutDelay), "c": his(90)}), name+": members changed")
+	}
+}

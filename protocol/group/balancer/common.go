@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/netip"
 	"sort"
+	"strings"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/monitoring"
@@ -188,4 +189,33 @@ func getDelayMap(history map[string]*adapter.URLTestHistory) map[string]uint16 {
 
 	return delayMap
 
+}
+
+// aliveSet names the members within the acceptable delay, per network, so a strategy can tell
+// whether an update changed which members it uses.
+func aliveSet(outbounds map[string][]adapter.Outbound, delays map[string]uint16, maxAcceptableDelay map[string]uint16) map[string]string {
+	result := make(map[string]string, len(outbounds))
+	for network, members := range outbounds {
+		var alive strings.Builder
+		for _, member := range members {
+			if delay, loaded := delays[member.Tag()]; loaded && delay <= maxAcceptableDelay[network] {
+				alive.WriteString(member.Tag())
+				alive.WriteByte(0)
+			}
+		}
+		result[network] = alive.String()
+	}
+	return result
+}
+
+func aliveSetChanged(previous, current map[string]string) bool {
+	if previous == nil {
+		return true
+	}
+	for network, alive := range current {
+		if previous[network] != alive {
+			return true
+		}
+	}
+	return false
 }

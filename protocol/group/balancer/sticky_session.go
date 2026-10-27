@@ -22,6 +22,7 @@ type StickySession struct {
 	mu                   sync.Mutex
 	delayAcceptableRatio float64
 	lruCache             *freelru.Cache[uint64, int]
+	alive                map[string]string // members within the acceptable delay, per network
 }
 
 func NewStickySession(outbounds []adapter.Outbound, options option.BalancerOutboundOptions) *StickySession {
@@ -93,11 +94,14 @@ func (s *StickySession) UpdateOutboundsInfo(history map[string]*adapter.URLTestH
 	for net, d := range minDelay {
 		res[net] = getMaxAcceptableDelay(d, s.delayAcceptableRatio)
 	}
+	alive := aliveSet(s.outbounds, delayMap, res)
 	s.mu.Lock()
+	changed := aliveSetChanged(s.alive, alive) // not every update: interrupt_exist_connections would close all connections each time
 	s.delays = delayMap
 	s.maxAcceptableDelay = res
+	s.alive = alive
 	s.mu.Unlock()
-	return true
+	return changed
 }
 
 func (s *StickySession) Alive(proxy adapter.Outbound, net string) bool {
