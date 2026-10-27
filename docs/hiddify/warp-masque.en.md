@@ -124,6 +124,7 @@ and drops the tunnel connection. The next use connects again.
 | `udp_timeout` | duration | sing-box default | Idle timeout of UDP sessions in the tunnel. |
 | `udp_keepalive_period` | duration | `30s` | QUIC keepalive period. |
 | `udp_initial_packet_size` | number | QUIC default | QUIC initial packet size. When set, path MTU discovery is off. |
+| `mtu` | number | `1280` | MTU of the tunnel, `1280` to `9000`. Over HTTP/3, a packet larger than the path carries gets an ICMP "packet too big" back, so TCP adjusts to it. |
 | `reconnect_delay` | duration | `0` | Wait between failed connects of the tunnel. |
 
 Dial fields (`detour`, `bind_interface` and the rest) apply to the tunnel, the scanner probes

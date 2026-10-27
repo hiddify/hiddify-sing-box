@@ -26,8 +26,11 @@ type MASQUEOutboundOptions struct { //H
 	UDPTimeout               badoption.Duration       `json:"udp_timeout,omitempty"`
 	UDPKeepalivePeriod       badoption.Duration       `json:"udp_keepalive_period,omitempty"`
 	UDPInitialPacketSize     uint16                   `json:"udp_initial_packet_size,omitempty"`
-	ReconnectDelay           badoption.Duration       `json:"reconnect_delay,omitempty"`
-	Scanner                  *WARPScannerOptions      `json:"scanner,omitempty"`
+	// MTU of the tunnel, 1280 (the IPv6 minimum, and the default) to 9000. Over HTTP/3, a packet
+	// larger than the path carries gets an ICMP "packet too big" back, so TCP adjusts.
+	MTU            uint32              `json:"mtu,omitempty"`
+	ReconnectDelay badoption.Duration  `json:"reconnect_delay,omitempty"`
+	Scanner        *WARPScannerOptions `json:"scanner,omitempty"`
 	// VHTTP is the HTTP version: "h3", "h2" or "auto" (HTTP/3, falling back to HTTP/2); empty
 	// is "auto", or "h2" with use_http2.
 	VHTTP string `json:"vhttp,omitempty"`

@@ -92,6 +92,7 @@ WARP روی MASQUE شما را با MASQUE، پروتکلی که اپ‌های �
 | `udp_timeout` | duration | پیش‌فرض sing-box | مهلت بیکاری نشست‌های UDP درون تونل. |
 | `udp_keepalive_period` | duration | `30s` | فاصلهٔ keepalive در QUIC. |
 | `udp_initial_packet_size` | number | پیش‌فرض QUIC | اندازهٔ بستهٔ اولیهٔ QUIC. اگر تنظیم شود، کشف MTU مسیر خاموش می‌شود. |
+| `mtu` | number | `1280` | MTU تونل، از `1280` تا `9000`. روی HTTP/3، بسته‌ای بزرگ‌تر از ظرفیت مسیر یک ICMP «packet too big» برمی‌گرداند تا TCP خودش را تنظیم کند. |
 | `reconnect_delay` | duration | `0` | فاصلهٔ میان اتصال‌های ناموفق تونل. |
 
 فیلدهای dial (`detour`، `bind_interface` و بقیه) روی تونل، probeهای اسکنر و بررسی نام شبکه اعمال می‌شوند.

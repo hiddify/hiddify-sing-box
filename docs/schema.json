@@ -15476,6 +15476,11 @@
               "minimum": 0,
               "maximum": 65535
             },
+            "mtu": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
             "reconnect_delay": {
               "$ref": "#/$defs/Duration"
             },

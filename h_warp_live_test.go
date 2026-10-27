@@ -96,3 +96,42 @@ func TestH_WARPLiveQUICNoise(t *testing.T) {
 	hWARPTrace(t, `"endpoints": [{"type": "warp", "tag": "warp", "scanner": {"enabled": true},
 		"noise": {"fake_packet": {"enabled": true, "count": {"from": 2, "to": 3}, "delay": {"from": 5, "to": 10}, "mode": "quic", "sni": "www.google.com"}}}]`)
 }
+
+// A large download through MASQUE with an MTU above 1280, over HTTP/3 and HTTP/2.
+func TestH_WARPLiveMASQUEMTU(t *testing.T) {
+	if os.Getenv("HIDDIFY_WARP_E2E") == "" {
+		t.Skip("HIDDIFY_WARP_E2E is not set")
+	}
+	for _, vhttp := range []string{"h3", "h2"} {
+		t.Run(vhttp, func(t *testing.T) {
+			mixedPort := hFreeTCPPort(t)
+			ctx := include.Context(context.Background())
+			options, err := json.UnmarshalExtendedContext[option.Options](ctx, []byte(`{
+				"log": {"level": "warn"},
+				"inbounds": [{"type": "mixed", "listen": "127.0.0.1", "listen_port": `+strconv.Itoa(mixedPort)+`}],
+				"outbounds": [{"type": "masque", "tag": "warp", "vhttp": "`+vhttp+`", "mtu": 1400}],
+				"route": {"final": "warp"}
+			}`))
+			require.NoError(t, err)
+			instance, err := box.New(box.Options{Context: ctx, Options: options})
+			require.NoError(t, err)
+			defer instance.Close()
+			require.NoError(t, instance.Start())
+			proxy, _ := url.Parse("http://127.0.0.1:" + strconv.Itoa(mixedPort))
+			client := &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxy)}, Timeout: 30 * time.Second}
+			require.Eventually(t, func() bool {
+				response, err := client.Get("https://speed.cloudflare.com/__down?bytes=2000000")
+				if err != nil {
+					t.Log(err)
+					return false
+				}
+				defer response.Body.Close()
+				n, err := io.Copy(io.Discard, response.Body)
+				if err != nil {
+					t.Log(err)
+				}
+				return err == nil && n == 2000000
+			}, 90*time.Second, 2*time.Second)
+		})
+	}
+}

@@ -144,3 +144,25 @@ func TestH_TunnelMissingAddressFamily(t *testing.T) {
 	_, err = tunnel.DialContext(context.Background(), N.NetworkTCP, M.ParseSocksaddr("[2001:db8::1]:443"))
 	require.ErrorContains(t, err, "missing IPv6 local address")
 }
+
+// the tunnel's device takes the configured MTU, within the IPv6 minimum and 9000
+func TestH_TunnelMTU(t *testing.T) {
+	newTunnel := func(mtu uint32) (*Tunnel, error) {
+		return NewTunnel(context.Background(), log.NewNOPFactory().NewLogger("masque"), TunnelOptions{
+			Address: []netip.Prefix{netip.MustParsePrefix("172.16.0.2/32")},
+			MTU:     mtu,
+		})
+	}
+	for _, mtu := range []uint32{0, 1400} {
+		tunnel, err := newTunnel(mtu)
+		require.NoError(t, err)
+		deviceMTU, err := tunnel.tunDevice.MTU()
+		require.NoError(t, err)
+		require.Equal(t, int(max(mtu, DefaultMTU)), deviceMTU)
+		tunnel.Close()
+	}
+	for _, mtu := range []uint32{1000, 9001} {
+		_, err := newTunnel(mtu)
+		require.Error(t, err, mtu)
+	}
+}

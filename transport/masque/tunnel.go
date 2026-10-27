@@ -46,12 +46,18 @@ type Tunnel struct {
 }
 
 func NewTunnel(ctx context.Context, logger logger.ContextLogger, options TunnelOptions) (*Tunnel, error) {
+	if options.MTU == 0 { //H
+		options.MTU = DefaultMTU //H
+	} //H
+	if options.MTU < DefaultMTU || options.MTU > 9000 { //H
+		return nil, E.New("MASQUE mtu must be between ", DefaultMTU, " and 9000") //H
+	} //H
 	deviceOptions := DeviceOptions{
 		Context:    ctx,
 		Logger:     logger,
 		Handler:    options.Handler,
 		UDPTimeout: options.UDPTimeout,
-		MTU:        1280,
+		MTU:        options.MTU, //H
 		Address:    options.Address,
 	}
 	tunDevice, err := NewDevice(deviceOptions)
@@ -115,7 +121,7 @@ func (e *Tunnel) Close() error {
 
 func (e *Tunnel) maintainTunnel() {
 	go func() {
-		buf := make([]byte, 1280)
+		buf := make([]byte, e.options.MTU) //H: a packet as large as the MTU, not cut at 1280
 		for e.ctx.Err() == nil {
 			n, err := e.tunnelDevice.ReadPacket(buf)
 			if err != nil {
@@ -153,7 +159,7 @@ func (e *Tunnel) maintainTunnel() {
 		}
 	}()
 	go func() {
-		buf := make([]byte, 1280)
+		buf := make([]byte, e.options.MTU) //H: a packet as large as the MTU, not cut at 1280
 		for e.ctx.Err() == nil {
 			ipConn, err := e.getIpConn()
 			if err != nil {

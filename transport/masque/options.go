@@ -20,6 +20,7 @@ type TunnelOptions struct {
 	UDPTimeout           time.Duration
 	UDPKeepalivePeriod   time.Duration
 	UDPInitialPacketSize uint16
+	MTU                  uint32 // H: 0 is DefaultMTU
 	ReconnectDelay       time.Duration
 	// Mode is the HTTP version (ModeHTTP3, ModeHTTP2 or ModeAuto); empty follows UseHTTP2.
 	Mode string
