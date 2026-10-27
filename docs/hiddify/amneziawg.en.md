@@ -106,16 +106,33 @@ WireGuard.
 | `jmax` | number | `0` | Largest junk packet, in bytes. Must not be smaller than `jmin`. |
 | `s1` | number | `0` | Random bytes in front of the handshake initiation. Must match the server. |
 | `s2` | number | `0` | Random bytes in front of the handshake response. Must match the server. `148 + s1` must differ from `92 + s2`. |
-| `s3` | number | `0` | Not supported in this build: any value other than `0` stops the endpoint from starting. |
-| `s4` | number | `0` | Not supported in this build: any value other than `0` stops the endpoint from starting. |
-| `h1` | string | `""` | Message type of the handshake initiation, a decimal number written as a string. Must match the server. |
+| `s3` | number | `0` | Random bytes in front of the cookie reply. Must match the server. |
+| `s4` | number | `0` | Random bytes in front of each data packet. Must match the server. |
+| `h1` | string | `""` | Message type of the handshake initiation: a number, or a range `"min-max"` from which each packet takes a random value. Must match the server. |
 | `h2` | string | `""` | Message type of the handshake response. Must match the server. |
 | `h3` | string | `""` | Message type of the cookie reply. Must match the server. |
 | `h4` | string | `""` | Message type of data packets. Must match the server. |
 | `i1` … `i5` | string | `""` | Special packets sent before each handshake, in order. Each is built from tags, see below. |
 
-The four `h` values must be different from each other and larger than `4`. Each is a single
-number from `5` to `4294967295`; ranges are not accepted.
+The four `h` values must be different from each other, and their ranges must not overlap. Each
+is a number from `5` to `4294967295`, or a range of them.
+
+AmneziaWG 3.x adds these settings. A range is a number or `"min-max"`; each use takes a random
+value from it.
+
+| Field | Type | Default | Meaning |
+|---|---|---|---|
+| `header_protection_key` | string | `""` | 64 hex digits. Encrypts the message headers, so the message types cannot be read. Each of `s1`–`s4` must then be at least `12`. Must match the server. |
+| `content_padding_addition` | range | | Random bytes added to each data packet. |
+| `rekey_after_time` | range | | Seconds before a new handshake. |
+| `rekey_timeout` | range | | Seconds to wait for a handshake response before trying again. |
+| `reject_after_time` | range | | Seconds after which keys are no longer used. |
+| `keepalive_timeout` | range | | Seconds without a packet before a keepalive is sent. |
+| `max_handshake_attempts` | range | | Handshake attempts before giving up. |
+| `random_trailers` | bool | `false` | Adds random bytes at the end of packets. |
+| `disable_cookies` | bool | `false` | Turns off cookie replies under load. |
+
+Empty values keep amneziawg-go's defaults, which match WireGuard's timings.
 
 Each `i` packet is a list of tags joined together, for example `<b 0xc0ffee><r 16><t>`:
 
@@ -143,16 +160,16 @@ Each `i` packet is a list of tags joined together, for example `<b 0xc0ffee><r 1
 
 - The endpoint needs the `with_awg` build tag. Hiddify's builds include it. Without it, starting
   the config fails with "Awg is not included in this build, rebuild with -tags with_awg".
-- The message types and handshake padding are shared by the whole process. Use the same `s1`,
-  `s2` and `h1`–`h4` for every AmneziaWG endpoint in one config, including a `warp` endpoint with
-  an `awg` block.
+- Each AmneziaWG endpoint has its own values, so endpoints in one config can talk to servers
+  with different settings.
 - If a value is invalid (for example `jmax` smaller than `jmin`, or two `h` values the same), the
   endpoint fails to start and the log names the value.
 - WireGuard UDP packets from this endpoint may be fragmented by the system, as with official
   WireGuard. Set `"udp_fragment": false` to turn that off.
 - The `warp` endpoint uses this endpoint when its `awg` block has any value set. It then talks to
   Cloudflare WARP with junk packets and the other values you give. Cloudflare's servers run plain
-  WireGuard, so changed `s1`, `s2` or `h1`–`h4` make the handshake fail. For WARP, set only the
+  WireGuard, so changed `s1`–`s4`, `h1`–`h4` or a `header_protection_key` make the handshake
+  fail. For WARP, set only the
   values that change what the client sends: `jc`, `jmin`, `jmax` and i1–i5.
 
 ## See also
