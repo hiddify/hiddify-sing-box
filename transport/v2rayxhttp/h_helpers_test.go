@@ -199,7 +199,6 @@ func TestH_MetaPlacementRoundTrip(t *testing.T) {
 }
 
 func TestH_MetaSessionQuerySeqPath(t *testing.T) {
-	t.Skip("pending")
 	options := hOptions(t, `{"mode":"packet-up","x_padding_bytes":"100-1000","session_placement":"query"}`)
 	require.Equal(t, option.PlacementPath, options.SeqPlacement)
 	base := options.GetNormalizedPath()
