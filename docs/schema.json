@@ -14431,6 +14431,18 @@
             "url": {
               "type": "string"
             },
+            "urls": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "failover"
+              ]
+            },
             "interval": {
               "$ref": "#/$defs/Duration"
             },

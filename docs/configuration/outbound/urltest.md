@@ -11,6 +11,8 @@
     "proxy-c"
   ],
   "url": "",
+  "urls": [],
+  "mode": "",
   "interval": "",
   "tolerance": 0,
   "idle_timeout": "",
@@ -29,6 +31,17 @@ List of outbound tags to test.
 #### url
 
 The URL to test. `https://www.gstatic.com/generate_204` will be used if empty.
+
+#### urls
+
+More URLs to test. A member is up when any of `url` and `urls` answers.
+
+#### mode
+
+`failover` keeps the selected outbound until it fails, testing only it each interval, then
+selects the fastest. Empty selects the fastest at every test.
+
+See [URL test in Hiddify](../../hiddify/urltest.en.md) for these fields and for dial penalties.
 
 #### interval
 
