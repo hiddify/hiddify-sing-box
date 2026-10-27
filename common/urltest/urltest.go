@@ -203,11 +203,11 @@ func urlTest(ctx context.Context, link string, detour N.Dialer) (t uint16, err e
 	if IsUnifiedDelayFromContext(ctx) {
 		select {
 		case <-ctx.Done():
-			return
+			return 0, ctx.Err() //H: a bare return reported the first request as the result
 		default:
 		}
 		second := time.Now()
-		resp, err = client.Do(req)
+		resp, err = client.Do(req.WithContext(ctx)) //H: a cancel did not stop the second request
 		if err != nil {
 			return
 		}

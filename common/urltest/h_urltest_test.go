@@ -133,3 +133,31 @@ func TestH_HistoryStorage(t *testing.T) {
 	s.StoreURLTestHistory("d", &adapter.URLTestHistory{Delay: 1})
 	require.Equal(t, 0, drain(), "hooks are dropped on close")
 }
+
+// canceling a unified delay test stops its second request at once
+func TestH_URLTestUnifiedDelaySecondRequestCanceled(t *testing.T) {
+	var hits atomic.Int32
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if hits.Add(1) == 2 {
+			select {
+			case <-release:
+			case <-r.Context().Done():
+			}
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(server.Close)
+	t.Cleanup(func() { close(release) })
+	ctx, cancel := context.WithCancel(ContextWithIsUnifiedDelay(context.Background()))
+	go func() {
+		for hits.Load() < 2 {
+			time.Sleep(5 * time.Millisecond)
+		}
+		cancel()
+	}()
+	start := time.Now()
+	_, err := URLTest(ctx, "http://probe.example/generate_204", &loopbackDialer{addr: server.Listener.Addr().String()})
+	require.Error(t, err)
+	require.Less(t, time.Since(start), 2*time.Second, "the second request ignored the cancel")
+}
