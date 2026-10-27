@@ -11,7 +11,7 @@ import (
 // first, then random addresses in cidrs on ports.
 type WARPScannerOptions struct {
 	Enabled bool `json:"enabled,omitempty"`
-	// Ports to probe; the profile's ports (WireGuard) or 443 (MASQUE) when empty.
+	// Ports to probe; the profile's ports (WireGuard) or warpscan.MASQUEPorts (MASQUE) when empty.
 	Ports badoption.Listable[uint16] `json:"ports,omitempty"`
 	// CIDRs to pick addresses from; Cloudflare's WARP ranges when empty.
 	CIDRs badoption.Listable[netip.Prefix] `json:"cidrs,omitempty"`

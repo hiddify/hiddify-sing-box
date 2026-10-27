@@ -28,7 +28,7 @@ type SmartDNSPoolUpstreamOptions struct {
 //
 // Typical use: configure this with the recursive resolvers you want to
 // distribute load across, then point dnstt's `resolvers` at the local
-// listen address (e.g. udp://127.0.0.1:19876) instead of a fixed
+// listen address (e.g. 127.0.0.1:19876, without udp://) instead of a fixed
 // `8.8.8.8` etc. dnstt sees a normal local resolver; the pool transparently
 // handles failover, AIMD rate-limit throttling, and recovery probing for
 // the real upstreams.
