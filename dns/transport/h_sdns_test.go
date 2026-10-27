@@ -152,7 +152,6 @@ func TestH_SDNSOptionsJSON(t *testing.T) {
 }
 
 func TestH_SDNSAdapterMetadata(t *testing.T) {
-	t.Skip("BUG: sdns.go NewSDNSTransport never initializes the embedded dns.TransportAdapter, so Tag() and Type() are empty")
 	t.Parallel()
 	transport := hNewSDNS(t, "sdns://")
 	require.Equal(t, "sdns-test", transport.Tag())

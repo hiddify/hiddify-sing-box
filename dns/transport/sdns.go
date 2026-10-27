@@ -38,6 +38,8 @@ func NewSDNSTransport(ctx context.Context, logger log.ContextLogger, tag string,
 		return nil, err
 	}
 	return &SDNSTransport{
+		TransportAdapter: dns.NewTransportAdapterWithRemoteOptions(C.DNSTypeSDNS, tag, options.RemoteDNSServerOptions), // tag, type and detour dependencies
+		name:             tag,
 		client: &dnscrypt.Client{
 			Net:     "udp",
 			Timeout: 10 * time.Second,
