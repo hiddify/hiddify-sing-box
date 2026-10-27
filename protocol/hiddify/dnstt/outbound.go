@@ -3,6 +3,7 @@ package dnstt
 import (
 	"context"
 	"fmt"
+	"github.com/sagernet/sing-box/common/dialer"
 	"net"
 	"sync"
 	"time"
@@ -83,6 +84,20 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 
 	if len(resolvers) == 0 {
 		return nil, E.New("at least one resolver is required")
+	}
+	// the resolver sockets are opened by the DNSTT client, not through a sing-box dialer: give
+	// them the socket control of one (bind_interface, routing_mark, the platform's protect), or
+	// on a VPN their queries loop back into the tunnel
+	defaultDialer, err := dialer.NewDefault(ctx, options.DialerOptions)
+	if err != nil {
+		return nil, err
+	}
+	dialerControl, _ := defaultDialer.UDPListenerControl()
+	for i := range resolvers {
+		resolvers[i].Resolver.DialerControl = dialerControl
+	}
+	if options.Detour != "" {
+		logger.Warn("dnstt: detour is not supported, the DNS queries go out directly")
 	}
 	if options.RecordType == "" {
 		options.RecordType = "txt"

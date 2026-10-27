@@ -328,3 +328,15 @@ func TestH_DnsttRecordType(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "cname", tServer.RecordType)
 }
+
+// the resolver sockets get the dialer's socket control, so bind_interface and the platform's
+// protect apply to them
+func TestH_DnsttResolverSocketControl(t *testing.T) {
+	options := validOptions()
+	options.BindInterface = "lo0"
+	out := newTestOutbound(t, options)
+	require.NotEmpty(t, out.candidateResolvers)
+	for _, resolver := range out.candidateResolvers {
+		require.NotNil(t, resolver.Resolver.DialerControl)
+	}
+}
