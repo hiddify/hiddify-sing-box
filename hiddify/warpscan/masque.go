@@ -13,10 +13,18 @@ import (
 	aTLS "github.com/sagernet/sing/common/tls"
 )
 
-// The ranges and port of Cloudflare's WARP MASQUE endpoints.
+// Cloudflare's WARP MASQUE endpoints, as measured: over QUIC only the first two addresses of
+// each family answer, over HTTP/2 the whole ranges do (but not the first address); both accept
+// the same ports.
 var (
-	MASQUEPorts = []uint16{443}
-	MASQUECIDRs = []netip.Prefix{
+	MASQUEPorts     = []uint16{443, 500, 1701, 4443, 4500, 8095, 8443}
+	MASQUEQUICCIDRs = []netip.Prefix{
+		netip.MustParsePrefix("162.159.198.1/32"),
+		netip.MustParsePrefix("162.159.198.2/32"),
+		netip.MustParsePrefix("2606:4700:103::1/128"),
+		netip.MustParsePrefix("2606:4700:103::2/128"),
+	}
+	MASQUEHTTP2CIDRs = []netip.Prefix{
 		netip.MustParsePrefix("162.159.198.0/24"),
 		netip.MustParsePrefix("2606:4700:103::/64"),
 	}
@@ -50,7 +58,10 @@ func MASQUEProbe(dialer N.Dialer, tlsConfig aTLS.Config, useHTTP2 bool) Probe {
 			return 0, err
 		}
 		defer packetConn.Close()
-		conn, err := qtls.Dial(ctx, bufio.NewBindPacketConn(packetConn, M.SocksaddrFromNetIP(addrPort).UDPAddr()), tlsConfig, &quic.Config{})
+		conn, err := qtls.Dial(ctx, bufio.NewBindPacketConn(packetConn, M.SocksaddrFromNetIP(addrPort).UDPAddr()), tlsConfig, &quic.Config{
+			// as the tunnel: Cloudflare refuses the handshake of a client without QUIC datagrams
+			EnableDatagrams: true,
+		})
 		if err != nil {
 			return 0, err
 		}

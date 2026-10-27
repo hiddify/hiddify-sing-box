@@ -24,11 +24,15 @@ func scanMASQUEEndpoint(ctx context.Context, logger log.ContextLogger, key strin
 	if options.UseIPv6 {
 		ipv4, ipv6 = false, true
 	}
+	defaults := warpscan.Defaults{CIDRs: warpscan.MASQUEQUICCIDRs, Ports: warpscan.MASQUEPorts}
+	if options.UseHTTP2 {
+		defaults.CIDRs = warpscan.MASQUEHTTP2CIDRs
+	}
 	cacheFile := service.FromContext[adapter.CacheFile](ctx)
 	book := warpscan.Load(cacheFile, key)
 	results, err := warpscan.Scan(ctx, logger, warpscan.Request{
 		Options:  options.Scanner,
-		Defaults: warpscan.Defaults{CIDRs: warpscan.MASQUECIDRs, Ports: warpscan.MASQUEPorts},
+		Defaults: defaults,
 		IPv4:     ipv4,
 		IPv6:     ipv6,
 		Book:     book,
