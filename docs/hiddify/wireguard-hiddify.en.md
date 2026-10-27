@@ -143,9 +143,8 @@ A range is written as a number (`3`), a string (`"2-4"` or `"3"`), or an object
 ### Notes
 
 - The `warp` endpoint takes the same `noise` block and passes it to its WireGuard connection.
-- The endpoint also has an `awg` field in the option struct, but the `wireguard` endpoint does not
-  use it. For AmneziaWG obfuscation use the [`awg` endpoint](amneziawg.en.md), or the `awg` block
-  of a `warp` endpoint.
+- A `wireguard` endpoint with an `awg` block fails to start: use the [`awg` endpoint](amneziawg.en.md)
+  for AmneziaWG obfuscation, or the `awg` block of a `warp` endpoint.
 - Noise works with any WireGuard server. The server needs no change.
 
 ## See also

@@ -144,6 +144,27 @@ Each `i` packet is a list of tags joined together, for example `<b 0xc0ffee><r 1
 | `<c>` | A packet counter, 8 bytes. |
 | `<wt N>` | No bytes; waits `N` milliseconds (at most 5000) before the packet is sent. |
 
+### Masquerade (`ip`, `id`, `ib`)
+
+Instead of writing `i1` by hand, the first decoy packet can be generated. With `"ip": "quic"`,
+`i1` becomes a QUIC v1 client Initial for the domain in `id`: a real, decryptable TLS 1.3
+ClientHello for that domain with ALPN h3, as a browser opening an HTTP/3 connection sends. It is
+built afresh before every handshake, with new connection IDs, random and key share, so a censor
+never sees the same blob twice.
+
+```json
+"awg": { "jc": 4, "jmin": 40, "jmax": 70, "ip": "quic", "id": "www.google.com" }
+```
+
+| Field | Type | Default | Meaning |
+|---|---|---|---|
+| `ip` | string | `""` | The protocol to look like. Only `quic` is supported. |
+| `id` | string | `""` | The domain in the decoy. Required with `quic`. |
+| `ib` | string | `""` | The client profile: `chrome`, `firefox` or `curl`, accepted for configs written for sing-box-lx. This build sends one browser-like ClientHello for all of them. |
+
+`ip`, `id` and `ib` replace `i1`: a config with both fails to start. `i2`–`i5` still apply.
+The server needs no change: it ignores the decoy, as it ignores every `i` packet.
+
 ### Peer fields (`peers`)
 
 | Field | Type | Default | Meaning |

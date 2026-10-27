@@ -145,9 +145,8 @@ WireGuard بسته‌ای را از یک peer فقط وقتی می‌پذیرد 
 ### نکته‌ها
 
 - endpoint `warp` هم همین بلوک `noise` را می‌پذیرد و آن را به اتصال WireGuard خود می‌دهد.
-- در ساختار گزینه‌های این endpoint فیلد `awg` هم هست، ولی endpoint `wireguard` از آن استفاده
-  نمی‌کند. برای پنهان‌سازی AmneziaWG از [endpoint `awg`](amneziawg.fa.md) یا بلوک `awg` در endpoint
-  `warp` استفاده کنید.
+- endpoint ‏`wireguard` با بلوک `awg` بالا نمی‌آید: برای پنهان‌سازی AmneziaWG از
+  [endpoint `awg`](amneziawg.fa.md) یا بلوک `awg` در endpoint ‏`warp` استفاده کنید.
 - Noise با هر سرور WireGuard کار می‌کند و سرور به تغییری نیاز ندارد.
 
 ## همچنین ببینید
