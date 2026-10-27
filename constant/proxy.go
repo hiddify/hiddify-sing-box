@@ -54,14 +54,15 @@ const (
 	TypeTunnelClient       = "tunnel_client"
 	TypeTunnelServer       = "tunnel_server"
 
-	TypeHInvalidConfig = "hinvalid"        //H
-	TypeXray           = "xray"            //H
-	TypeCustom         = "custom"          //H
-	TypeAwg            = "awg"             //H
-	TypeBalancer       = "balancer"        //H
-	TypeDNSTT          = "dnstt"           //H
-	TypeGooseRelay     = "gooserelay"      //H
-	TypeSmartDNSPool   = "smart_dns_pool"  //H — local recursive-resolver pool with AIMD throttling + recovery probing (github.com/hiddify/hmrd_multi_resolver_dns)
+	TypeHInvalidConfig = "hinvalid"       //H
+	TypeXray           = "xray"           //H
+	TypeCustom         = "custom"         //H
+	TypeAwg            = "awg"            //H
+	TypeBalancer       = "balancer"       //H
+	TypeFallback       = "fallback"       //H
+	TypeDNSTT          = "dnstt"          //H
+	TypeGooseRelay     = "gooserelay"     //H
+	TypeSmartDNSPool   = "smart_dns_pool" //H — local recursive-resolver pool with AIMD throttling + recovery probing (github.com/hiddify/hmrd_multi_resolver_dns)
 	TypeTrustTunnel    = "trusttunnel"
 )
 
@@ -160,6 +161,8 @@ func ProxyDisplayName(proxyType string) string {
 		return "Awg"
 	case TypeBalancer:
 		return "Balancer"
+	case TypeFallback: //H
+		return "Fallback" //H
 	case TypeDNSTT:
 		return "DNSTT"
 	case TypeGooseRelay:

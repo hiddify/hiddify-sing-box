@@ -123,6 +123,7 @@ func OutboundRegistry() *outbound.Registry {
 	dnstt.RegisterOutbound(registry)
 	gooserelay.RegisterOutbound(registry)
 	balancer.RegisterLoadBalance(registry)
+	group.RegisterFallback(registry) //H
 	registerMASQUEOutbound(registry)
 	legacyWireguard.RegisterOutbound(registry) //H
 	trusttunnel.RegisterOutbound(registry)
