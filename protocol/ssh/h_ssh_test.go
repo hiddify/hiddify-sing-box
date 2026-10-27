@@ -490,3 +490,21 @@ func TestH_SSHOutboundLifecycleConnectsInBackground(t *testing.T) {
 	require.Eventually(t, func() bool { return !out.IsReady() }, 5*time.Second, 20*time.Millisecond)
 	require.Never(t, out.IsReady, time.Second, 50*time.Millisecond, "reconnected after close")
 }
+
+// a forward request that cannot be parsed is refused, and the connection keeps serving others
+func TestH_SSHInboundMalformedForwardKeepsConnection(t *testing.T) {
+	t.Parallel()
+	f := startInbound(t, nil)
+	client, err := f.dial("alice", ssh.Password("wonderland"))
+	require.NoError(t, err)
+	defer client.Close()
+	_, _, err = client.OpenChannel("direct-tcpip", []byte{1, 2, 3})
+	var openErr *ssh.OpenChannelError
+	require.ErrorAs(t, err, &openErr)
+	require.Equal(t, ssh.ConnectionFailed, openErr.Reason)
+
+	conn, err := client.Dial("tcp", "10.0.0.1:1")
+	require.NoError(t, err)
+	echoOnce(t, conn, "still alive")
+	conn.Close()
+}

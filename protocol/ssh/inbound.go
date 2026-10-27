@@ -167,7 +167,7 @@ func (h *Inbound) NewConnection(ctx context.Context, rawConn net.Conn, metadata 
 		forward := forwardData{}
 		if err := ssh.Unmarshal(newChannel.ExtraData(), &forward); err != nil {
 			newChannel.Reject(ssh.ConnectionFailed, "error parsing forward data: "+err.Error())
-			return
+			continue // only this channel is refused, not the whole connection
 		}
 		channel, requests, err := newChannel.Accept()
 		if err != nil {
