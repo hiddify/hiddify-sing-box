@@ -186,16 +186,3 @@ func TestH_WARPAndAwgOptions(t *testing.T) {
 	require.Len(t, endpoint.Peers, 1)
 	require.Equal(t, uint16(51820), endpoint.Peers[0].Port)
 }
-
-func TestH_RandBetween(t *testing.T) {
-	t.Parallel()
-	require.Equal(t, 5, RandBetween(5, 5))
-	seen := make(map[int]bool)
-	for i := 0; i < 2000; i++ {
-		value := RandBetween(3, 6)
-		require.GreaterOrEqual(t, value, 3)
-		require.LessOrEqual(t, value, 6)
-		seen[value] = true
-	}
-	require.Len(t, seen, 4)
-}

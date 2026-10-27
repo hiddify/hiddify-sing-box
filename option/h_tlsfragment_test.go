@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/sagernet/sing-box/include"
 	C "github.com/sagernet/sing-box/constant"
+	"github.com/sagernet/sing-box/include"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing/common/json"
 

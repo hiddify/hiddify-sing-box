@@ -63,19 +63,17 @@ func NewWithOptions(options Options) (N.Dialer, error) {
 			return nil, err
 		}
 	}
-	// H: Xray-style final mask, inside the resolve dialer so its interfaces stay visible
-	masks, err := finalmask.Build(dialOptions.FinalMask)
+	// H: Xray-style final mask, inside the resolve dialer so its interfaces stay visible; the
+	// legacy tls_fragment is applied as its first (outermost) mask
+	finalMask, err := withTLSFragment(dialOptions.FinalMask, dialOptions.TLSFragment, dialOptions.TCPFastOpen) //H
+	if err != nil {
+		return nil, err
+	}
+	masks, err := finalmask.Build(finalMask) //H
 	if err != nil {
 		return nil, err
 	}
 	dialer = newFinalMaskDialer(dialer, masks)
-	// H: dialer-level TLS ClientHello fragmentation (size/sleep); outermost so
-	// isClientHelloPacket sees the handshake bytes the TLS stack writes.
-	tlsFragment, err := buildTLSFragment(dialOptions.TLSFragment, dialOptions.TCPFastOpen)
-	if err != nil {
-		return nil, err
-	}
-	dialer = newTLSFragmentDialer(dialer, tlsFragment)
 	if options.RemoteIsDomain && (!hasDetour || options.ResolverOnDetour || dialOptions.DomainResolver != nil && dialOptions.DomainResolver.Server != "") {
 		var (
 			server          string
