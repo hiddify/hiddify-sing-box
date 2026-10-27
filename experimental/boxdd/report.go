@@ -193,10 +193,7 @@ func exportReportArchive(reportsDirectory string, name string, userID string, wi
 		os.Remove(filepath.Join(strippedPath, goLogFileName))
 		os.Remove(filepath.Join(strippedPath, nativeLogFileName))
 	}
-	fileName := name + ".zip"
-	if encrypt {
-		fileName += ".age"
-	}
+	fileName := name + ".zip" //H: reports are not encrypted; CreateZipArchive scrubs them
 	archivePath := filepath.Join(tempDirectory, fileName)
 	err = libbox.CreateZipArchive(strippedPath, archivePath, encrypt)
 	if err != nil {

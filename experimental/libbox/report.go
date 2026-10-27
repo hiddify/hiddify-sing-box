@@ -30,6 +30,7 @@ type reportMetadata struct {
 func baseReportMetadata() reportMetadata {
 	processPath, _ := os.Executable()
 	processName := filepath.Base(processPath)
+	processPath = processName //H: the full path can hold the user name
 	if processName == "." {
 		processName = ""
 	}

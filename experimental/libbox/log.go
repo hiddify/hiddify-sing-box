@@ -98,13 +98,9 @@ func redirectStderr(path string) error {
 	return nil
 }
 
-// CreateZipArchive zips sourcePath into destinationPath. encrypt is accepted
-// for API compatibility with callers that already request encrypted
-// archives (the ".age" filename suffix), but encryption itself is not yet
-// implemented: callers currently get a plain zip regardless of encrypt.
-//
-// TODO: wire up real age-based encryption once a recipient/passphrase
-// source is decided.
+// CreateZipArchive zips sourcePath into destinationPath. The archive is not encrypted: encrypt is
+// kept for callers and ignored. The configuration and open connections are left out, and text
+// files are scrubbed of addresses, links, user IDs and secrets (h_report_sanitize.go). //H
 func CreateZipArchive(sourcePath string, destinationPath string, encrypt bool) error {
 	sourceInfo, err := os.Stat(sourcePath)
 	if err != nil {
@@ -144,6 +140,9 @@ func CreateZipArchive(sourcePath string, destinationPath string, encrypt bool) e
 			return err
 		}
 
+		if sensitiveReportFile(d.Name()) { //H
+			return nil //H
+		} //H
 		fileInfo, err := d.Info()
 		if err != nil {
 			return err
@@ -160,6 +159,14 @@ func CreateZipArchive(sourcePath string, destinationPath string, encrypt bool) e
 			return err
 		}
 
+		if textReportFile(d.Name()) { //H
+			content, err := os.ReadFile(path) //H
+			if err != nil {                   //H
+				return err //H
+			} //H
+			_, err = writer.Write(sanitizeReportText(content)) //H
+			return err                                         //H
+		} //H
 		sourceFile, err := os.Open(path)
 		if err != nil {
 			return err

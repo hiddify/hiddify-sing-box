@@ -7,6 +7,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/binary"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -166,16 +167,42 @@ func TestH_CreateZipArchive(t *testing.T) {
 	require.Error(t, CreateZipArchive(filepath.Join(temp, "missing"), filepath.Join(temp, "y.zip"), false))
 }
 
-func TestH_CreateZipArchiveEncrypt(t *testing.T) {
-	t.Skip("BUG: CreateZipArchive ignores encrypt=true and writes a plaintext zip (experimental/libbox/log.go:107), so '.age' crash/report archives are unencrypted")
+// a report archive leaves out the configuration and connections, and scrubs its text
+func TestH_CreateZipArchiveRemovesSensitiveData(t *testing.T) {
 	t.Parallel()
 	temp := t.TempDir()
 	source := filepath.Join(temp, "report")
-	hWriteTree(t, source, map[string]string{"secret.txt": "token=abc"})
-	destination := filepath.Join(temp, "report.zip.age")
+	hWriteTree(t, source, map[string]string{
+		"configuration.json": `{"password": "hunter2"}`,
+		"1.connections.json": `[{"destination": "secret.example:443"}]`,
+		"go.log":             "dial 203.0.113.7:443 via vless://b831381d-6324-4d53-ad4f-8cda48b30811@1.2.3.4:443?sni=x failed; token=abc123 user me@example.com at https://api.example.com/v1/reg?key=zz [2001:db8::1]:53",
+		"metadata.json":      `{"coreVersion": "1.15"}`,
+	})
+	destination := filepath.Join(temp, "report.zip")
 	require.NoError(t, CreateZipArchive(source, destination, true))
-	_, err := zip.OpenReader(destination)
-	require.Error(t, err)
+	reader, err := zip.OpenReader(destination)
+	require.NoError(t, err)
+	defer reader.Close()
+	files := map[string]string{}
+	for _, file := range reader.File {
+		if file.FileInfo().IsDir() {
+			continue
+		}
+		content, err := file.Open()
+		require.NoError(t, err)
+		data, err := io.ReadAll(content)
+		content.Close()
+		require.NoError(t, err)
+		files[filepath.Base(file.Name)] = string(data)
+	}
+	require.NotContains(t, files, "configuration.json")
+	require.NotContains(t, files, "1.connections.json")
+	require.Equal(t, `{"coreVersion": "1.15"}`, files["metadata.json"])
+	log := files["go.log"]
+	for _, secret := range []string{"203.0.113.7", "1.2.3.4", "b831381d", "abc123", "me@example.com", "api.example.com", "zz", "2001:db8"} {
+		require.NotContains(t, log, secret)
+	}
+	require.Contains(t, log, "failed")
 }
 
 func TestH_ContextHelpers(t *testing.T) {
