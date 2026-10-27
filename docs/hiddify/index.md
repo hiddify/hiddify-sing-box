@@ -33,6 +33,7 @@ an English and a Persian version.
 - [TLS tricks](tls-tricks.en.md) ([فارسی](tls-tricks.fa.md)): a mixed-case server name and a padding extension in the ClientHello.
 - [REALITY in Hiddify](reality-hiddify.en.md) ([فارسی](reality-hiddify.fa.md)): the post-quantum key share, the `key_share` option, and fragmentation on REALITY.
 - [Shadowsocks simple-obfs server](shadowsocks-obfs.en.md) ([فارسی](shadowsocks-obfs.fa.md)): a simple-obfs server on Shadowsocks inbounds, with a decoy when obfs or login fails.
+- [rmux](rmux.en.md) ([فارسی](rmux.fa.md)): one more multiplex protocol, with a buffer per stream so a slow stream does not hold up the others.
 - [PROXY protocol](proxy-protocol.en.md) ([فارسی](proxy-protocol.fa.md)): inbounds read the PROXY protocol header and the direct outbound sends it.
 
 ### Groups and testing
