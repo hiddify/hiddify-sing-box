@@ -79,7 +79,6 @@ func TestH_MatchRuleTunnelSource(t *testing.T) {
 }
 
 func TestH_MatchRuleOverrideTunnelDestination(t *testing.T) {
-	t.Skip("BUG: override_tunnel_destination is parsed into RuleActionRouteOptions but never applied to metadata.TunnelDestination in route/route.go matchRule")
 	t.Parallel()
 	router := hNewTunnelRouter(t,
 		option.Rule{

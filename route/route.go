@@ -481,6 +481,9 @@ func applyRouteOptionsOverride(metadata *adapter.InboundContext, routeOptions *R
 	if routeOptions.UDPTimeout > 0 {
 		metadata.UDPTimeout = routeOptions.UDPTimeout
 	}
+	if routeOptions.OverrideTunnelDestination != "" { //H: parsed but never applied, so a tunnel had no destination
+		metadata.TunnelDestination = routeOptions.OverrideTunnelDestination //H
+	} //H
 }
 
 func (r *Router) preMatchFlow(ctx context.Context, metadata *adapter.InboundContext, packetDestination M.Socksaddr, matchedRule adapter.Rule, outboundTag string) adapter.PreMatchResult {
