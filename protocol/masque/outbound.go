@@ -52,13 +52,17 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 		options:   options,
 		await:     make(chan struct{}),
 	}
+	profileKey := options.UniqueIdentifier //H
+	if profileKey == "" {                  //H
+		profileKey = tag //H
+	} //H
 	outbound.startHandler = func() {
 		defer close(outbound.await)
 		cacheFile := service.FromContext[adapter.CacheFile](ctx)
 		var appConfig *Config
 		var err error
 		if !options.Profile.Recreate && cacheFile != nil && cacheFile.StoreMASQUEConfig() {
-			savedProfile := cacheFile.LoadBinary(tag)
+			savedProfile := cacheFile.LoadBinary(profileKey) //H: unique_identifier, so renaming the outbound keeps the device
 			if savedProfile != nil {
 				if err = json.Unmarshal(savedProfile.Content, &appConfig); err != nil {
 					logger.ErrorContext(ctx, err)
@@ -78,7 +82,7 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 					logger.ErrorContext(ctx, err)
 					return
 				}
-				cacheFile.SaveBinary(tag, &adapter.SavedBinary{
+				cacheFile.SaveBinary(profileKey, &adapter.SavedBinary{ //H
 					LastUpdated: time.Now(),
 					Content:     content,
 					LastEtag:    "",
@@ -139,8 +143,8 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 		var scanner *masqueScanner                             //H
 		var scan func(http2 bool) (net.Addr, error)            //H
 		if options.Scanner != nil && options.Scanner.Enabled { //H: look for endpoints that answer
-			scanner, err = newMASQUEScanner(ctx, logger, tag, options, outboundDialer, tlsConfig) //H
-			if err != nil {                                                                       //H
+			scanner, err = newMASQUEScanner(ctx, logger, profileKey, options, outboundDialer, tlsConfig) //H
+			if err != nil {                                                                              //H
 				logger.WarnContext(ctx, "WARP scanner: ", err) //H
 				scanner = nil                                  //H
 			} else { //H
@@ -281,7 +285,11 @@ func (w *Outbound) isTunnelInitialized(ctx context.Context) error {
 func (w *Outbound) createConfig() (*Config, error) {
 	opts := make([]cloudflare.CloudflareApiOption, 0, 1)
 	if w.options.Profile.Detour != "" {
-		detour, ok := service.FromContext[adapter.OutboundManager](w.ctx).Outbound(w.options.Profile.Detour)
+		outboundManager := service.FromContext[adapter.OutboundManager](w.ctx) //H: missing in some contexts; it was dereferenced
+		if outboundManager == nil {                                            //H
+			return nil, E.New("missing outbound manager") //H
+		} //H
+		detour, ok := outboundManager.Outbound(w.options.Profile.Detour)
 		if !ok {
 			return nil, E.New("outbound detour not found: ", w.options.Profile.Detour)
 		}
