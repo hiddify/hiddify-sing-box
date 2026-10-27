@@ -5,7 +5,10 @@ import (
 	"context"
 	"crypto/ecdh"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
+	"encoding/pem"
 	"io"
 	"net"
 	"net/http"
@@ -334,6 +337,85 @@ func TestH_XrayREALITYKeyShare(t *testing.T) {
 					hEchoThroughSOCKS(t, mixedPort, echoAddress)
 				})
 			}
+		}
+	}
+}
+
+// VLESS encryption, with and without Vision and TLS, in both directions.
+func TestH_XrayVLESSEncryption(t *testing.T) {
+	binaries := hXrayBinaries(t)
+	certPEM, keyPEM := hSelfSignedPEM(t)
+	target := hTLSEchoServer(t, certPEM, keyPEM)
+	certDir := t.TempDir()
+	certFile, keyFile := filepath.Join(certDir, "cert.pem"), filepath.Join(certDir, "key.pem")
+	require.NoError(t, os.WriteFile(certFile, []byte(certPEM), 0o600))
+	require.NoError(t, os.WriteFile(keyFile, []byte(keyPEM), 0o600))
+	block, _ := pem.Decode([]byte(certPEM))
+	certSum := sha256.Sum256(block.Bytes)
+	certHash := hex.EncodeToString(certSum[:]) // the Xray client pins the test certificate
+	cases := []hVLESSCase{
+		{name: "native", encryption: "native"},
+		{name: "xorpub", encryption: "xorpub"},
+		{name: "random", encryption: "random"},
+		{name: "native-vision", encryption: "native", flow: "xtls-rprx-vision"},
+		{name: "xorpub-vision", encryption: "xorpub", flow: "xtls-rprx-vision"},
+		{name: "random-vision", encryption: "random", flow: "xtls-rprx-vision"},
+		{name: "tls-native-vision", tls: true, encryption: "native", flow: "xtls-rprx-vision"},
+		{name: "tls-random-vision", tls: true, encryption: "random", flow: "xtls-rprx-vision"},
+	}
+	for _, binary := range binaries {
+		version := hXrayVersion(t, binary)
+		for _, testCase := range cases {
+			decryption, encryption := hVLESSEncryptionPair(t, testCase.encryption)
+			xrayTLS := `"security": "none"`
+			if testCase.tls {
+				xrayTLS = `"security": "tls", "tlsSettings": {"serverName": "example.com",
+					"certificates": [{"certificateFile": "` + certFile + `", "keyFile": "` + keyFile + `"}]}`
+			}
+			t.Run(version+"/sing-box-client/"+testCase.name, func(t *testing.T) {
+				xrayPort := hFreeTCPPort(t)
+				hStartXray(t, binary, `{
+					"log": {"loglevel": "warning"},
+					"inbounds": [{"listen": "127.0.0.1", "port": `+strconv.Itoa(xrayPort)+`, "protocol": "vless",
+						"settings": {"clients": [{"id": "`+hInteropUUID+`", "flow": "`+testCase.flow+`"}], "decryption": "`+decryption+`"},
+						"streamSettings": {"network": "tcp", `+xrayTLS+`}}],
+					"outbounds": [{"protocol": "freedom", "settings": {"finalRules": [{"action": "allow", "ip": ["127.0.0.0/8"]}]}}]
+				}`, xrayPort)
+				tls := ""
+				if testCase.tls {
+					tls = `, "tls": {"enabled": true, "server_name": "example.com", "insecure": true}`
+				}
+				mixedPort := hFreeTCPPort(t)
+				hStartInteropBox(t, `{
+					"log": {"disabled": true},
+					"inbounds": [{"type": "mixed", "listen": "127.0.0.1", "listen_port": `+strconv.Itoa(mixedPort)+`}],
+					"outbounds": [{"type": "vless", "server": "127.0.0.1", "server_port": `+strconv.Itoa(xrayPort)+`,
+						"uuid": "`+hInteropUUID+`", "flow": "`+testCase.flow+`", "encryption": "`+encryption+`"`+tls+`}]
+				}`, nil)
+				hVLESSRoundTrip(t, mixedPort, target)
+			})
+			t.Run(version+"/xray-client/"+testCase.name, func(t *testing.T) {
+				vlessPort := hFreeTCPPort(t)
+				tls := ""
+				if testCase.tls {
+					tls = `, "tls": {"enabled": true, "server_name": "example.com", "certificate_path": "` + certFile + `", "key_path": "` + keyFile + `"}`
+				}
+				hStartInteropBox(t, `{
+					"log": {"disabled": true},
+					"inbounds": [{"type": "vless", "listen": "127.0.0.1", "listen_port": `+strconv.Itoa(vlessPort)+`,
+						"users": [{"uuid": "`+hInteropUUID+`", "flow": "`+testCase.flow+`"}], "decryption": "`+decryption+`"`+tls+`}],
+					"outbounds": [{"type": "direct"}]
+				}`, nil)
+				httpPort := hFreeTCPPort(t)
+				hStartXray(t, binary, `{
+					"log": {"loglevel": "warning"},
+					"inbounds": [{"listen": "127.0.0.1", "port": `+strconv.Itoa(httpPort)+`, "protocol": "http"}],
+					"outbounds": [{"protocol": "vless", "settings": {"vnext": [{"address": "127.0.0.1", "port": `+strconv.Itoa(vlessPort)+`,
+						"users": [{"id": "`+hInteropUUID+`", "flow": "`+testCase.flow+`", "encryption": "`+encryption+`"}]}]},
+						"streamSettings": {"network": "tcp", `+strings.Replace(xrayTLS, `"certificates": [{"certificateFile": "`+certFile+`", "keyFile": "`+keyFile+`"}]`, `"pinnedPeerCertSha256": "`+certHash+`"`, 1)+`}}]
+				}`, httpPort)
+				hVLESSRoundTrip(t, httpPort, target)
+			})
 		}
 	}
 }
