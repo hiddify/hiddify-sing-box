@@ -419,3 +419,40 @@ func TestH_XrayVLESSEncryption(t *testing.T) {
 		}
 	}
 }
+
+// XHTTP auto mode over REALITY picks what Xray's client picks (stream-one), so it works with an
+// Xray server that allows only stream-one.
+func TestH_XrayXHTTPAutoOverREALITY(t *testing.T) {
+	binaries := hXrayBinaries(t)
+	echoAddress := hStartEcho(t)
+	target := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	defer target.Close()
+	for _, binary := range binaries {
+		version := hXrayVersion(t, binary)
+		for _, serverMode := range []string{"auto", "stream-one"} {
+			t.Run(version+"/server="+serverMode, func(t *testing.T) {
+				privateKey, publicKey := hREALITYKeys(t)
+				xrayPort := hFreeTCPPort(t)
+				hStartXray(t, binary, `{
+					"log": {"loglevel": "warning"},
+					"inbounds": [{"listen": "127.0.0.1", "port": `+strconv.Itoa(xrayPort)+`, "protocol": "vless",
+						"settings": {"clients": [{"id": "`+hInteropUUID+`"}], "decryption": "none"},
+						"streamSettings": {"network": "xhttp", "xhttpSettings": {"path": "/x", "mode": "`+serverMode+`"},
+							"security": "reality", "realitySettings": {"target": "`+target.Listener.Addr().String()+`",
+							"serverNames": ["example.com"], "privateKey": "`+privateKey+`", "shortIds": ["0123abcd"]}}}],
+					"outbounds": [{"protocol": "freedom", "settings": {"finalRules": [{"action": "allow", "ip": ["127.0.0.0/8"]}]}}]
+				}`, xrayPort)
+				mixedPort := hFreeTCPPort(t)
+				hStartInteropBox(t, `{
+					"log": {"disabled": true},
+					"inbounds": [{"type": "mixed", "listen": "127.0.0.1", "listen_port": `+strconv.Itoa(mixedPort)+`}],
+					"outbounds": [{"type": "vless", "server": "127.0.0.1", "server_port": `+strconv.Itoa(xrayPort)+`,
+						"uuid": "`+hInteropUUID+`", "transport": {"type": "xhttp", "path": "/x", "mode": "auto"},
+						"tls": {"enabled": true, "server_name": "example.com", "utls": {"enabled": true, "fingerprint": "chrome"},
+							"reality": {"enabled": true, "public_key": "`+publicKey+`", "short_id": "0123abcd"}}}]
+				}`, nil)
+				hEchoThroughSOCKS(t, mixedPort, echoAddress)
+			})
+		}
+	}
+}

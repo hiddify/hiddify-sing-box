@@ -182,7 +182,9 @@ func TestH_XHTTPRoundTripDownloadSplit(t *testing.T) {
 	hRoundTrip(t, clientOptions, nil, addr, hPayloads(t, 300)...)
 }
 
-func TestH_XHTTPClientRequiresMode(t *testing.T) {
-	_, err := NewClient(context.Background(), N.SystemDialer, M.ParseSocksaddr("127.0.0.1:1"), option.V2RayXHTTPOptions{}, nil)
-	require.EqualError(t, err, "mode is not set")
+// an empty mode is auto, as in Xray
+func TestH_XHTTPClientEmptyModeIsAuto(t *testing.T) {
+	client, err := NewClient(context.Background(), N.SystemDialer, M.ParseSocksaddr("127.0.0.1:1"), option.V2RayXHTTPOptions{}, nil)
+	require.NoError(t, err)
+	require.Equal(t, "packet-up", client.(*Client).options.Mode)
 }

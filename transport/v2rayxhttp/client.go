@@ -44,8 +44,8 @@ type Client struct {
 }
 
 func NewClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr, options option.V2RayXHTTPOptions, tlsConfig tls.Config) (adapter.V2RayClientTransport, error) {
-	if options.Mode == "" {
-		return nil, E.New("mode is not set")
+	if options.Mode == "" || options.Mode == "auto" {
+		options.Mode = autoMode(tls.IsReality(tlsConfig), options.Download != nil)
 	}
 	dest := serverAddr
 	baseRequestURL, err := getBaseRequestURL(&options.V2RayXHTTPBaseOptions, dest, tlsConfig)
@@ -364,4 +364,16 @@ func createHTTPClient(dest M.Socksaddr, dialer N.Dialer, options *option.V2RayXH
 		dialUploadConn: dialContext,
 	}
 	return client
+}
+
+// autoMode picks the mode for auto as Xray's client does: stream-one over REALITY, or
+// stream-up when the download goes elsewhere, and packet-up otherwise.
+func autoMode(reality bool, splitDownload bool) string {
+	if !reality {
+		return "packet-up"
+	}
+	if splitDownload {
+		return "stream-up"
+	}
+	return "stream-one"
 }

@@ -371,3 +371,9 @@ func (c *realityClientConnWrapper) ReaderReplaceable() bool {
 func (c *realityClientConnWrapper) WriterReplaceable() bool {
 	return false
 }
+
+// IsReality reports whether a client config is REALITY. //H
+func IsReality(config Config) bool {
+	_, isReality := config.(*RealityClientConfig)
+	return isReality
+}

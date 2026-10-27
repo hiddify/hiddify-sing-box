@@ -454,3 +454,10 @@ func TestH_SplitConnCloseReaderError(t *testing.T) {
 	conn := &splitConn{writer: hErrCloser{}, reader: hErrCloser{err: readerErr}}
 	require.ErrorIs(t, conn.Close(), readerErr)
 }
+
+func TestH_AutoMode(t *testing.T) {
+	require.Equal(t, "packet-up", autoMode(false, false))
+	require.Equal(t, "packet-up", autoMode(false, true))
+	require.Equal(t, "stream-one", autoMode(true, false))
+	require.Equal(t, "stream-up", autoMode(true, true))
+}
