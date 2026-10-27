@@ -10,8 +10,7 @@ the server. It comes from sing-box-extended (github.com/shtorm-7/rmux).
 
 - Fewer connections to the server: each new connection opens a stream in a session that already
   exists, with no new handshake, so it starts faster and shows fewer connections to the network.
-- rmux gives each stream its own buffer (64 KiB), so one slow stream does not hold up the others
-  in the session.
+- You want a multiplexer other than the usual ones; rmux is newer and less common on the wire.
 
 ## How it gets past filtering
 
