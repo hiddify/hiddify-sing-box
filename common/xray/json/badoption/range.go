@@ -56,9 +56,9 @@ func (c *Range) UnmarshalJSON(content []byte) error {
 			rangeValue.From, rangeValue.To = int32(from), int32(to)
 		}
 	} else {
-		var intValue int
+		var intValue int32 // a number outside int32 is an error, as in the string form
 		if err := json.Unmarshal(content, &intValue); err == nil {
-			rangeValue.From, rangeValue.To = int32(intValue), int32(intValue)
+			rangeValue.From, rangeValue.To = intValue, intValue
 		} else if err := json.Unmarshal(content, &rangeValue); err != nil {
 			return err
 		}

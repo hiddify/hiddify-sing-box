@@ -31,7 +31,6 @@ func TestH_RangeUnmarshal(t *testing.T) {
 }
 
 func TestH_RangeUnmarshalNumberOverflow(t *testing.T) {
-	t.Skip("BUG: a JSON number outside int32 is silently truncated (range.go:59-61): 9999999999 becomes 1410065407 instead of an error, while the string form \"9999999999\" is rejected")
 	t.Parallel()
 	var r Range
 	require.Error(t, json.Unmarshal([]byte(`9999999999`), &r))
