@@ -75,6 +75,27 @@ func (rb *RelayBridge) SetUDPAcceptHandler(fn func(conn net.Conn, destination st
 	rb.udpAcceptHandlerMu.Unlock()
 }
 
+// InheritHandlers gives this bridge the accept handlers of the one it replaces after a
+// reconnect. Hiddify: without them a creator bridge dialed each destination itself, past the
+// router and its route rules.
+func (rb *RelayBridge) InheritHandlers(previous *RelayBridge) {
+	if previous == nil {
+		return
+	}
+	previous.acceptHandlerMu.Lock()
+	accept := previous.acceptHandler
+	previous.acceptHandlerMu.Unlock()
+	previous.udpAcceptHandlerMu.Lock()
+	udpAccept := previous.udpAcceptHandler
+	previous.udpAcceptHandlerMu.Unlock()
+	if accept != nil {
+		rb.SetAcceptHandler(accept)
+	}
+	if udpAccept != nil {
+		rb.SetUDPAcceptHandler(udpAccept)
+	}
+}
+
 func (rb *RelayBridge) SetOnPeerConfig(fn func(fps, batch, trackCount int)) {
 	rb.onPeerConfigMu.Lock()
 	rb.onPeerConfig = fn

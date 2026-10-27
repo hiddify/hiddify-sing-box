@@ -3,6 +3,7 @@ package call
 import (
 	"context"
 	"net"
+	"sync/atomic"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/outbound"
@@ -30,9 +31,10 @@ type Outbound struct {
 	logger       logger.ContextLogger
 	options      option.CallOutboundOptions
 	dialer       N.Dialer
-	bridge       *call.Bridge
+	bridge       atomic.Pointer[call.Bridge] // set by the connect loop, read by dials and close
 	startHandler func()
 	await        chan struct{}
+	cancel       context.CancelFunc // stops the connect retries on close
 }
 
 func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.CallOutboundOptions) (adapter.Outbound, error) {
@@ -55,24 +57,22 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 		await:   make(chan struct{}),
 	}
 	dnsRouter := service.FromContext[adapter.DNSRouter](ctx)
+	connectCtx, cancel := context.WithCancel(ctx)
+	ob.cancel = cancel
 	ob.startHandler = func() {
-		defer close(ob.await)
-		bridge, err := call.Connect(ctx, call.Config{
-			Platform:     options.Platform,
-			Mode:         options.Mode,
-			JoinLink:     options.JoinLink,
-			CookieString: options.Cookies.Header(),
-			ReadBuffer:   options.ReadBuffer,
-			Role:         call.RoleJoiner,
-			Dialer:       outboundDialer,
-			DNSRouter:    dnsRouter,
-			Logger:       logger,
-		})
-		if err != nil {
-			logger.ErrorContext(ctx, err)
-			return
-		}
-		ob.bridge = bridge
+		connectWithRetry(connectCtx, logger, func() (*call.Bridge, error) {
+			return call.Connect(connectCtx, call.Config{
+				Platform:     options.Platform,
+				Mode:         options.Mode,
+				JoinLink:     options.JoinLink,
+				CookieString: options.Cookies.Header(),
+				ReadBuffer:   options.ReadBuffer,
+				Role:         call.RoleJoiner,
+				Dialer:       outboundDialer,
+				DNSRouter:    dnsRouter,
+				Logger:       logger,
+			})
+		}, ob.bridge.Store, func() { close(ob.await) })
 	}
 	return ob, nil
 }
@@ -82,10 +82,11 @@ func (o *Outbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 		return nil
 	}
 	scope.Add(func() error {
-		if o.bridge == nil {
-			return nil
+		o.cancel()
+		if bridge := o.bridge.Load(); bridge != nil {
+			return bridge.Close()
 		}
-		return o.bridge.Close()
+		return nil
 	})
 	go o.startHandler()
 	return nil
@@ -98,7 +99,7 @@ func (o *Outbound) DialContext(ctx context.Context, network string, destination 
 	switch N.NetworkName(network) {
 	case N.NetworkTCP:
 		o.logger.InfoContext(ctx, "outbound connection to ", destination)
-		conn, err := o.bridge.DialContext(ctx, destination.String())
+		conn, err := o.bridge.Load().DialContext(ctx, destination.String())
 		if err != nil {
 			return nil, err
 		}
@@ -113,7 +114,7 @@ func (o *Outbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (n
 		return nil, err
 	}
 	o.logger.InfoContext(ctx, "outbound packet connection to ", destination)
-	conn, err := o.bridge.ListenPacket(ctx, destination.String())
+	conn, err := o.bridge.Load().ListenPacket(ctx, destination.String())
 	if err != nil {
 		return nil, err
 	}
@@ -126,8 +127,8 @@ func (o *Outbound) awaitBridge(ctx context.Context) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	}
-	if o.bridge == nil {
-		return E.New("call: tunnel not initialized")
+	if o.bridge.Load() == nil {
+		return E.New("call: not connected to the call yet")
 	}
 	return nil
 }

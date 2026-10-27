@@ -53,6 +53,7 @@ type Bridge struct {
 	peers        map[string]string
 	readBuf      int
 	activeBridge *tunnel.RelayBridge
+	bridgeAccess sync.Mutex // Hiddify: activeBridge is polled by ConnectCreator and replaced on reconnect
 	selfName     string
 	dialer       N.Dialer
 	logger       logger.ContextLogger
@@ -737,11 +738,16 @@ func (b *Bridge) initRelay() {
 		b.logger.Debug("[relay] pub PC connected")
 	}
 	relay.OnConnected = func(tun tunnel.DataTunnel) {
-		if b.activeBridge != nil {
-			b.activeBridge.Reset()
+		next := tunnel.NewRelayBridge(tun, "creator", common.VP8BufSize, b.dialer, b.logger)
+		b.bridgeAccess.Lock()
+		previous := b.activeBridge
+		b.activeBridge = next
+		b.bridgeAccess.Unlock()
+		if previous != nil {
+			previous.Reset()
 		}
-		b.activeBridge = tunnel.NewRelayBridge(tun, "creator", common.VP8BufSize, b.dialer, b.logger)
-		b.activeBridge.SetOnPeerConfig(func(fps, batch, trackCount int) {
+		next.InheritHandlers(previous) // Hiddify: keep routing after a reconnect
+		next.SetOnPeerConfig(func(fps, batch, trackCount int) {
 			if trackCount >= 2 {
 				b.enableScreenshare()
 			} else {
@@ -751,9 +757,9 @@ func (b *Bridge) initRelay() {
 		b.logger.Debug("[relay] tunnel connected")
 	}
 	relay.OnPeerRestart = func() {
-		if b.activeBridge != nil {
+		if active := b.getActiveBridge(); active != nil {
 			b.logger.Info("[relay] new peer detected, resetting relay bridge")
-			b.activeBridge.Reset()
+			active.Reset()
 		}
 	}
 	relay.OnPubICE = func(cand *webrtc.ICECandidate) {
@@ -913,4 +919,10 @@ func extractUfrag(candidate string) string {
 		}
 	}
 	return ""
+}
+
+func (b *Bridge) getActiveBridge() *tunnel.RelayBridge {
+	b.bridgeAccess.Lock()
+	defer b.bridgeAccess.Unlock()
+	return b.activeBridge
 }

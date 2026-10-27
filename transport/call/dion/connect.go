@@ -18,8 +18,10 @@ func ConnectCreator(ctx context.Context, cookieStr, roomID, email, password stri
 	if err != nil {
 		return nil, "", fmt.Errorf("dion: new session: %w", err)
 	}
-	if err := auth.LoadCookieString(cookieStr); err != nil {
-		return nil, "", fmt.Errorf("dion: load cookies: %w", err)
+	if cookieStr != "" || email == "" || password == "" { // Hiddify: email and password alone log in
+		if err := auth.LoadCookieString(cookieStr); err != nil {
+			return nil, "", fmt.Errorf("dion: load cookies: %w", err)
+		}
 	}
 	auth.SetCredentials(email, password)
 	if err := auth.EnsureValidToken(); err != nil {
@@ -66,7 +68,9 @@ func ConnectCreator(ctx context.Context, cookieStr, roomID, email, password stri
 		if _, ok := tun.(*rtc.DCTunnel); ok {
 			bridgeReadBuf = readBuf
 		}
+		previous := activeRelay
 		activeRelay = tunnel.NewRelayBridge(tun, "creator", bridgeReadBuf, dialer, logger)
+		activeRelay.InheritHandlers(previous) // Hiddify: keep routing after a reconnect
 		activeRelay.MarkReady()
 		select {
 		case relayCh <- activeRelay:

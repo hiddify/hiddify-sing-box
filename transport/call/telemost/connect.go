@@ -41,7 +41,7 @@ func ConnectCreator(ctx context.Context, cookieStr, joinLink string, readBuf int
 	}
 	go bridge.Run()
 	deadline := time.Now().Add(60 * time.Second)
-	for bridge.activeBridge == nil {
+	for bridge.getActiveBridge() == nil {
 		if time.Now().After(deadline) {
 			return nil, "", fmt.Errorf("telemost: creator tunnel timed out")
 		}
@@ -51,7 +51,7 @@ func ConnectCreator(ctx context.Context, cookieStr, joinLink string, readBuf int
 		case <-time.After(200 * time.Millisecond):
 		}
 	}
-	return bridge.activeBridge, connInfo.ConferenceURI, nil
+	return bridge.getActiveBridge(), connInfo.ConferenceURI, nil
 }
 
 func ConnectJoiner(ctx context.Context, joinLink, displayName string, readBuf int, dialer N.Dialer, dnsRouter adapter.DNSRouter, logger logger.ContextLogger) (*tunnel.RelayBridge, error) {
