@@ -49,6 +49,7 @@ type RealityClientConfig struct {
 	uClient   *UTLSClientConfig
 	publicKey []byte
 	shortID   [8]byte
+	classical bool //H: key_share "classical", no X25519MLKEM768
 }
 
 func NewRealityClient(ctx context.Context, logger logger.ContextLogger, serverAddress string, options option.OutboundTLSOptions) (Config, error) {
@@ -90,7 +91,15 @@ func newRealityClient(ctx context.Context, logger logger.ContextLogger, serverAd
 		return nil, E.New("invalid short_id")
 	}
 
-	var config Config = &RealityClientConfig{ctx, uClient.(*UTLSClientConfig), publicKey, shortID}
+	var classical bool //H: key_share
+	switch options.Reality.KeyShare {
+	case "", "hybrid":
+	case "classical":
+		classical = true
+	default:
+		return nil, E.New("unknown reality key_share: ", options.Reality.KeyShare, ` (expected "hybrid" or "classical")`)
+	}
+	var config Config = &RealityClientConfig{ctx, uClient.(*UTLSClientConfig), publicKey, shortID, classical} //H
 	if options.KernelRx || options.KernelTx {
 		if !C.IsLinux {
 			return nil, E.New("kTLS is only supported on Linux")
@@ -153,7 +162,7 @@ func (e *RealityClientConfig) ClientHandshake(ctx context.Context, conn net.Conn
 	// H: the fingerprint is changed to pass both older and v26.10+ Xray servers (see
 	// realityClientHelloSpec). The auth key comes from the X25519 share (KeyShareKeys.Ecdhe),
 	// which REALITY servers check first, as Xray's own client does.
-	spec, err := realityClientHelloSpec(e.uClient.id, uConfig)
+	spec, err := realityClientHelloSpec(e.uClient.id, uConfig, e.classical) //H
 	if err != nil {
 		return nil, err
 	}
@@ -283,6 +292,7 @@ func (e *RealityClientConfig) Clone() Config {
 		e.uClient.Clone().(*UTLSClientConfig),
 		e.publicKey,
 		e.shortID,
+		e.classical, //H
 	}
 }
 

@@ -12,7 +12,10 @@ import (
 // to pass every REALITY server: Xray servers from v26.10 reject a ClientHello without an
 // X25519MLKEM768 key share before the X25519 one, and REALITY needs TLS 1.3 with an X25519 key
 // share, which some fingerprints (old browsers, Android OkHttp, 360) do not send.
-func realityClientHelloSpec(id utls.ClientHelloID, config *utls.Config) (*utls.ClientHelloSpec, error) {
+//
+// With classical (key_share "classical"), X25519MLKEM768 is removed instead: the ClientHello
+// fits in one TCP segment, which some networks need, but v26.9.8+ Xray servers reject it.
+func realityClientHelloSpec(id utls.ClientHelloID, config *utls.Config, classical bool) (*utls.ClientHelloSpec, error) {
 	spec, err := utls.UTLSIdToSpec(id)
 	if err != nil {
 		// randomized fingerprints have no fixed spec: generate one and take it from the result
@@ -29,7 +32,26 @@ func realityClientHelloSpec(id utls.ClientHelloID, config *utls.Config) (*utls.C
 		}
 	}
 	patchRealityClientHelloSpec(&spec)
+	if classical {
+		removeHybridKeyShare(&spec)
+	}
 	return &spec, nil
+}
+
+// removeHybridKeyShare drops X25519MLKEM768 from the supported groups and the key shares.
+func removeHybridKeyShare(spec *utls.ClientHelloSpec) {
+	for _, extension := range spec.Extensions {
+		switch extension := extension.(type) {
+		case *utls.SupportedCurvesExtension:
+			extension.Curves = slices.DeleteFunc(slices.Clone(extension.Curves), func(curve utls.CurveID) bool {
+				return curve == utls.X25519MLKEM768
+			})
+		case *utls.KeyShareExtension:
+			extension.KeyShares = slices.DeleteFunc(slices.Clone(extension.KeyShares), func(share utls.KeyShare) bool {
+				return share.Group == utls.X25519MLKEM768
+			})
+		}
+	}
 }
 
 func patchRealityClientHelloSpec(spec *utls.ClientHelloSpec) {

@@ -3,8 +3,13 @@ package box_test
 import (
 	"bytes"
 	"context"
+	"crypto/ecdh"
+	"crypto/rand"
+	"encoding/base64"
 	"io"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -252,6 +257,69 @@ func TestH_XrayXHTTP(t *testing.T) {
 				}`, socksPort)
 				hEchoThroughSOCKS(t, socksPort, echoAddress)
 			})
+		}
+	}
+}
+
+// hREALITYKeys returns an X25519 key pair in Xray's encoding.
+func hREALITYKeys(t *testing.T) (private string, public string) {
+	t.Helper()
+	key, err := ecdh.X25519().GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	return base64.RawURLEncoding.EncodeToString(key.Bytes()), base64.RawURLEncoding.EncodeToString(key.PublicKey().Bytes())
+}
+
+// REALITY with the default (hybrid X25519MLKEM768) key share and with key_share "classical",
+// for several fingerprints. Xray servers from v26.9.8 require the hybrid share, so "classical"
+// only works with older ones.
+func TestH_XrayREALITYKeyShare(t *testing.T) {
+	binaries := hXrayBinaries(t)
+	echoAddress := hStartEcho(t)
+	target := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	defer target.Close()
+	for _, binary := range binaries {
+		version := hXrayVersion(t, binary)
+		newServer := !strings.HasPrefix(version, "26.3.")
+		privateKey, publicKey := hREALITYKeys(t)
+		xrayPort := hFreeTCPPort(t)
+		hStartXray(t, binary, `{
+			"log": {"loglevel": "warning"},
+			"inbounds": [{"listen": "127.0.0.1", "port": `+strconv.Itoa(xrayPort)+`, "protocol": "vless",
+				"settings": {"clients": [{"id": "`+hInteropUUID+`"}], "decryption": "none"},
+				"streamSettings": {"network": "tcp", "security": "reality", "realitySettings": {
+					"target": "`+target.Listener.Addr().String()+`", "serverNames": ["example.com"],
+					"privateKey": "`+privateKey+`", "shortIds": ["0123abcd"]}}}],
+			"outbounds": [{"protocol": "freedom", "settings": {"finalRules": [{"action": "allow", "ip": ["127.0.0.0/8"]}]}}]
+		}`, xrayPort)
+		for _, keyShare := range []string{"", "classical"} {
+			for _, fingerprint := range []string{"chrome", "firefox", "safari", "edge"} {
+				t.Run(version+"/"+fingerprint+"/key_share="+keyShare, func(t *testing.T) {
+					mixedPort := hFreeTCPPort(t)
+					hStartInteropBox(t, `{
+						"log": {"disabled": true},
+						"inbounds": [{"type": "mixed", "listen": "127.0.0.1", "listen_port": `+strconv.Itoa(mixedPort)+`}],
+						"outbounds": [{"type": "vless", "server": "127.0.0.1", "server_port": `+strconv.Itoa(xrayPort)+`,
+							"uuid": "`+hInteropUUID+`", "tls": {"enabled": true, "server_name": "example.com",
+								"utls": {"enabled": true, "fingerprint": "`+fingerprint+`"},
+								"reality": {"enabled": true, "public_key": "`+publicKey+`", "short_id": "0123abcd", "key_share": "`+keyShare+`"}}}]
+					}`, nil)
+					if keyShare == "classical" && newServer {
+						client := socks.NewClient(N.SystemDialer, M.ParseSocksaddrHostPort("127.0.0.1", uint16(mixedPort)), socks.Version5, "", "")
+						ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+						defer cancel()
+						conn, err := client.DialContext(ctx, N.NetworkTCP, M.ParseSocksaddr(echoAddress))
+						if err == nil {
+							defer conn.Close()
+							conn.SetDeadline(time.Now().Add(3 * time.Second))
+							conn.Write([]byte("ping"))
+							_, err = io.ReadFull(conn, make([]byte, 4))
+						}
+						require.Error(t, err, "a v26.9.8+ server takes no classical ClientHello")
+						return
+					}
+					hEchoThroughSOCKS(t, mixedPort, echoAddress)
+				})
+			}
 		}
 	}
 }
