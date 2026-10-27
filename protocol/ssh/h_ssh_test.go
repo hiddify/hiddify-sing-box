@@ -4,8 +4,11 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/rsa"
 	"encoding/pem"
 	"github.com/sagernet/sing-box/adapter/htest"
+	"github.com/sagernet/sing-box/common/uot"
+	"github.com/sagernet/sing/common/bufio/deadline"
 	"io"
 	"net"
 	"net/netip"
@@ -132,6 +135,15 @@ type sshFixture struct {
 	addr     string
 	port     uint16
 	inOption option.SSHInboundOptions
+}
+
+func startInboundOptions(t *testing.T) option.SSHInboundOptions {
+	listen := badoption.Addr(netip.MustParseAddr("127.0.0.1"))
+	return option.SSHInboundOptions{
+		ListenOptions: option.ListenOptions{Listen: &listen, ListenPort: freeTCPPort(t)},
+		Users:         []option.SSHUser{{User: "alice", Password: "wonderland"}},
+		HostKey:       []string{newKeyPair(t).privatePEM},
+	}
 }
 
 func startInbound(t *testing.T, mutate func(*option.SSHInboundOptions)) *sshFixture {
@@ -518,4 +530,63 @@ func TestH_SSHOutboundNetworks(t *testing.T) {
 		o.UDPOverTCP = &option.UDPOverTCPOptions{Enabled: true, Version: 2}
 	})
 	require.Contains(t, withUoT.Network(), N.NetworkUDP)
+}
+
+// host_key_algorithms limits what the server signs with
+func TestH_SSHInboundHostKeyAlgorithms(t *testing.T) {
+	t.Parallel()
+	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	block, err := ssh.MarshalPrivateKey(rsaKey, "")
+	require.NoError(t, err)
+	rsaPEM := string(pem.EncodeToMemory(block))
+	rsaSigner, err := ssh.ParsePrivateKey([]byte(rsaPEM))
+	require.NoError(t, err)
+
+	f := startInbound(t, func(o *option.SSHInboundOptions) {
+		o.HostKey = []string{rsaPEM}
+		o.HostKeyAlgorithms = []string{ssh.KeyAlgoRSASHA256}
+	})
+	dial := func(algorithm string) error {
+		client, err := ssh.Dial("tcp", f.addr, &ssh.ClientConfig{
+			User: "alice", Auth: []ssh.AuthMethod{ssh.Password("wonderland")},
+			HostKeyCallback: ssh.FixedHostKey(rsaSigner.PublicKey()), HostKeyAlgorithms: []string{algorithm},
+			Timeout: 5 * time.Second,
+		})
+		if err == nil {
+			client.Close()
+		}
+		return err
+	}
+	require.NoError(t, dial(ssh.KeyAlgoRSASHA256))
+	require.Error(t, dial(ssh.KeyAlgoRSASHA512), "not in host_key_algorithms")
+
+	options := startInboundOptions(t)
+	options.HostKeyAlgorithms = []string{ssh.KeyAlgoRSASHA256} // the fixture key is ed25519
+	_, err = NewInbound(context.Background(), newTestRouter(), log.NewNOPFactory().Logger(), "ssh-in", options)
+	require.ErrorContains(t, err, "no host key")
+}
+
+// forwarded connections honor deadlines
+func TestH_SSHInboundChannelDeadline(t *testing.T) {
+	conn := deadline.NewConn(&channelConn{Channel: hBlockingChannel{}})
+	require.NoError(t, conn.SetReadDeadline(time.Now().Add(50*time.Millisecond)))
+	start := time.Now()
+	_, err := conn.Read(make([]byte, 1))
+	require.Error(t, err)
+	require.Less(t, time.Since(start), 2*time.Second)
+}
+
+type hBlockingChannel struct{ ssh.Channel }
+
+func (hBlockingChannel) Read([]byte) (int, error) { select {} }
+
+// a network without udp turns UDP over TCP off
+func TestH_SSHInboundNetwork(t *testing.T) {
+	tcpOnly := startInbound(t, func(o *option.SSHInboundOptions) { o.Network = option.NetworkList("tcp") })
+	_, isUoT := tcpOnly.inbound.router.(*uot.Router)
+	require.False(t, isUoT)
+	both := startInbound(t, nil)
+	_, isUoT = both.inbound.router.(*uot.Router)
+	require.True(t, isUoT)
 }

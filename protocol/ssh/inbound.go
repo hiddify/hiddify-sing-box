@@ -16,6 +16,9 @@ import (
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 
+	"github.com/sagernet/sing/common"
+	"github.com/sagernet/sing/common/bufio/deadline"
+	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
 
@@ -96,19 +99,35 @@ func NewInbound(
 	}
 
 	// HostKeys
+	var hostKeys int
 	for _, key := range options.HostKey {
 		privBytes := []byte(key)
 		priv, err := ssh.ParsePrivateKey(privBytes)
 		if err != nil {
 			return nil, err
 		}
-		serverConfig.AddHostKey(priv)
+		signer, err := restrictHostKey(priv, options.HostKeyAlgorithms)
+		if err != nil {
+			return nil, err
+		}
+		if signer == nil {
+			continue
+		}
+		hostKeys++
+		serverConfig.AddHostKey(signer)
+	}
+	if len(options.HostKeyAlgorithms) > 0 && hostKeys == 0 {
+		return nil, E.New("ssh: no host key has an algorithm in host_key_algorithms")
+	}
+	connectionRouter := adapter.ConnectionRouterEx(uot.NewRouter(router, logger)) // UDP over TCP
+	if len(options.Network) > 0 && !common.Contains(options.Network.Build(), N.NetworkUDP) {
+		connectionRouter = router // network without udp: no UDP over TCP
 	}
 
 	in := &Inbound{
 		Adapter: inbound.NewAdapter(C.TypeSSH, tag),
 		ctx:     ctx,
-		router:  uot.NewRouter(router, logger), // UDP over TCP
+		router:  connectionRouter,
 		logger:  logger,
 
 		users:  users,
@@ -211,7 +230,7 @@ func (h *Inbound) routeChannel(ctx context.Context, channel ssh.Channel, d forwa
 
 	h.logger.InfoContext(ctx, "[", user, "] SSH inbound connection")
 	// Wrap channel to net.Conn
-	con := &channelConn{Channel: channel} // localAddr:  &net.TCPAddr{IP: net.ParseIP(d.OriginAddr), Port: int(d.OriginPort)},
+	con := deadline.NewConn(&channelConn{Channel: channel}) // the channel has no deadlines of its own // localAddr:  &net.TCPAddr{IP: net.ParseIP(d.OriginAddr), Port: int(d.OriginPort)},
 	// remoteAddr: &net.TCPAddr{IP: net.ParseIP(d.DestAddr), Port: int(d.DestPort)},
 
 	h.router.RouteConnectionEx(ctx, con, metadata, func(it error) {
@@ -231,3 +250,33 @@ func (c *channelConn) RemoteAddr() net.Addr               { return c.remoteAddr 
 func (c *channelConn) SetDeadline(t time.Time) error      { return nil }
 func (c *channelConn) SetReadDeadline(t time.Time) error  { return nil }
 func (c *channelConn) SetWriteDeadline(t time.Time) error { return nil }
+
+// restrictHostKey limits a host key to the algorithms in algorithms: an RSA key signs only with
+// the listed rsa-sha2-* or ssh-rsa, another key is kept only if its type is listed. nil means
+// the key has none of them; no algorithms keeps the key as it is.
+func restrictHostKey(signer ssh.Signer, algorithms []string) (ssh.Signer, error) {
+	if len(algorithms) == 0 {
+		return signer, nil
+	}
+	if signer.PublicKey().Type() == ssh.KeyAlgoRSA {
+		var allowed []string
+		for _, algorithm := range algorithms {
+			switch algorithm {
+			case ssh.KeyAlgoRSASHA512, ssh.KeyAlgoRSASHA256, ssh.KeyAlgoRSA:
+				allowed = append(allowed, algorithm)
+			}
+		}
+		if len(allowed) == 0 {
+			return nil, nil
+		}
+		algorithmSigner, isAlgorithmSigner := signer.(ssh.AlgorithmSigner)
+		if !isAlgorithmSigner {
+			return nil, E.New("ssh: RSA host key cannot restrict its algorithms")
+		}
+		return ssh.NewSignerWithAlgorithms(algorithmSigner, allowed)
+	}
+	if common.Contains(algorithms, signer.PublicKey().Type()) {
+		return signer, nil
+	}
+	return nil, nil
+}
