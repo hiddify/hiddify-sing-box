@@ -96,6 +96,14 @@ func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.Cont
 			logger.ErrorContext(ctx, err) //H
 			return                        //H
 		} //H
+		if options.Scanner != nil && options.Scanner.Enabled && options.Server == "" { //H: look for an endpoint that answers
+			scanned, err := scanWARPEndpoint(ctx, logger, uniqueId, options, config) //H
+			if err != nil {                                                          //H
+				logger.WarnContext(ctx, err, ", using the profile's endpoint") //H
+			} else { //H
+				peerAddr, perrPort = scanned.Addr().String(), scanned.Port() //H
+			} //H
+		} //H
 		var innerEndpoint adapter.Endpoint
 		if options.AWG != nil && options.AWG.IsAvailble() {
 			innerEndpoint, err = createWARPAwgEndpoint(ctx, router, logger, tag, options, config, peerAddr, perrPort, config.Peers[0].PublicKey) //H

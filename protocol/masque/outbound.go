@@ -104,11 +104,6 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 			logger.ErrorContext(ctx, E.New("failed to prepare TLS config: ", err))
 			return
 		}
-		endpoint, err := appConfig.SelectEndpointFromConfig(options.UseHTTP2, options.UseIPv6, 443)
-		if err != nil {
-			logger.ErrorContext(ctx, E.New("failed to select endpoint: ", err))
-			return
-		}
 		var udpTimeout time.Duration
 		if options.UDPTimeout != 0 {
 			udpTimeout = time.Duration(options.UDPTimeout)
@@ -131,6 +126,19 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 			logger.ErrorContext(ctx, err)
 			return
 		}
+		endpoint, err := appConfig.SelectEndpointFromConfig(options.UseHTTP2, options.UseIPv6, 443)
+		if err != nil {
+			logger.ErrorContext(ctx, E.New("failed to select endpoint: ", err))
+			return
+		}
+		if options.Scanner != nil && options.Scanner.Enabled { //H: look for an endpoint that answers
+			scanned, err := scanMASQUEEndpoint(ctx, logger, tag, options, outboundDialer, tlsConfig) //H
+			if err != nil {                                                                          //H
+				logger.WarnContext(ctx, err, ", using the profile's endpoint") //H
+			} else { //H
+				endpoint = scanned //H
+			} //H
+		} //H
 		tunnel, err := masque.NewTunnel(
 			ctx,
 			logger,

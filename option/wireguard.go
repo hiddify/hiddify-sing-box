@@ -54,7 +54,8 @@ type WARPEndpointOptions struct { //H
 	Noise hiddify.NoiseOptions `json:"noise,omitempty"`
 	AWG   *AwgOptions          `json:"awg,omitempty"`
 	*C.WARPConfig
-	MTU uint32 `json:"mtu,omitempty"`
+	MTU     uint32              `json:"mtu,omitempty"`
+	Scanner *WARPScannerOptions `json:"scanner,omitempty"`
 }
 
 type WARPProfile struct { //H

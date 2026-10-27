@@ -27,4 +27,5 @@ type MASQUEOutboundOptions struct { //H
 	UDPKeepalivePeriod       badoption.Duration       `json:"udp_keepalive_period,omitempty"`
 	UDPInitialPacketSize     uint16                   `json:"udp_initial_packet_size,omitempty"`
 	ReconnectDelay           badoption.Duration       `json:"reconnect_delay,omitempty"`
+	Scanner                  *WARPScannerOptions      `json:"scanner,omitempty"`
 }
