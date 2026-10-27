@@ -191,6 +191,26 @@ func genIpcConfig(opts option.AwgEndpointOptions, resolvePeer func(domain string
 	if awg.I5 != "" {
 		s += "\ni5=" + awg.I5
 	}
+	// AmneziaWG 3.x
+	for _, setting := range []struct{ key, value string }{
+		{"header_protection_key", awg.HeaderProtectionKey},
+		{"content_padding_addition", string(awg.ContentPaddingAddition)},
+		{"rekey_after_time", string(awg.RekeyAfterTime)},
+		{"rekey_timeout", string(awg.RekeyTimeout)},
+		{"reject_after_time", string(awg.RejectAfterTime)},
+		{"keepalive_timeout", string(awg.KeepaliveTimeout)},
+		{"max_handshake_attempts", string(awg.MaxHandshakeAttempts)},
+	} {
+		if setting.value != "" {
+			s += "\n" + setting.key + "=" + setting.value
+		}
+	}
+	if awg.RandomTrailers {
+		s += "\nrandom_trailers=true"
+	}
+	if awg.DisableCookies {
+		s += "\ndisable_cookies=true"
+	}
 
 	for _, peer := range opts.Peers {
 		publicKeyBytes, err := base64.StdEncoding.DecodeString(peer.PublicKey)

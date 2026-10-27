@@ -2,6 +2,7 @@ package awg
 
 import (
 	"context"
+	"encoding/json"
 	"encoding/hex"
 	"errors"
 	"github.com/sagernet/sing-box/adapter/htest"
@@ -282,4 +283,25 @@ func TestH_EndpointSetsPeerUser(t *testing.T) {
 
 	ep.NewConnectionEx(context.Background(), nil, M.ParseSocksaddr("10.8.0.11:40000"), M.ParseSocksaddr("1.1.1.1:443"), nil)
 	require.Empty(t, router.metadata.User, "a peer without user")
+}
+
+// the AmneziaWG 3.x settings and header ranges reach the device and it accepts them
+func TestH_GenIpcConfigAWG3(t *testing.T) {
+	var awg option.AwgOptions
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"s1": 20, "s2": 20, "s3": 20, "s4": 20, "h1": "100-200", "h2": "300-400", "h3": "500-600", "h4": "700-800",
+		"header_protection_key": "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
+		"content_padding_addition": "0-32", "rekey_after_time": 120, "rekey_timeout": "5-7",
+		"reject_after_time": 180, "keepalive_timeout": 10, "max_handshake_attempts": "18-20",
+		"random_trailers": true, "disable_cookies": true
+	}`), &awg))
+	require.True(t, awg.IsAvailble())
+	ipc, err := genIpcConfig(option.AwgEndpointOptions{PrivateKey: hKey(t).String(), Awg: awg}, nil)
+	require.NoError(t, err)
+	for _, line := range []string{"h1=100-200", "rekey_after_time=120", "rekey_timeout=5-7", "max_handshake_attempts=18-20", "random_trailers=true", "disable_cookies=true"} {
+		require.Contains(t, ipc, "\n"+line)
+	}
+	require.NoError(t, hApplyIpc(t, ipc))
+
+	require.Error(t, json.Unmarshal([]byte(`{"rekey_timeout": true}`), &awg))
 }
