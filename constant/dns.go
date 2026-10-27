@@ -38,6 +38,8 @@ const (
 const (
 	DNSGroupModeParallel   = "parallel"   //H
 	DNSGroupModeSequential = "sequential" //H
+	DNSGroupModeStable     = "stable"     //H
+	DNSGroupModeFastest    = "fastest"    //H
 )
 
 const (

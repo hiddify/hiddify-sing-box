@@ -35,6 +35,7 @@ type GroupTransport struct {
 	serverTags   []string
 	sequential   bool           //H
 	ignoreRanges []netip.Prefix //H
+	modes        *groupModes    //H: stable and fastest (h_group_modes.go)
 }
 
 func NewGroup(ctx context.Context, logger log.ContextLogger, tag string, options option.GroupDNSServerOptions) (adapter.DNSTransport, error) {
@@ -59,10 +60,13 @@ func newGroup(ctx context.Context, logger log.ContextLogger, transportType strin
 		return nil, E.New("missing servers")
 	}
 	var sequential bool
+	var modes *groupModes //H
 	switch options.Mode {
 	case "", C.DNSGroupModeParallel:
 	case C.DNSGroupModeSequential:
 		sequential = true
+	case C.DNSGroupModeStable, C.DNSGroupModeFastest: //H
+		modes = newGroupModes(options) //H
 	default:
 		return nil, E.New("unknown group mode: ", options.Mode)
 	}
@@ -77,6 +81,7 @@ func newGroup(ctx context.Context, logger log.ContextLogger, transportType strin
 		serverTags:       options.Servers,
 		sequential:       sequential,
 		ignoreRanges:     ignoreRanges,
+		modes:            modes, //H
 	}, nil
 }
 
@@ -111,6 +116,9 @@ func (t *GroupTransport) Close() error {
 }
 
 func (t *GroupTransport) Reset() {
+	if t.modes != nil { //H: a new network starts with a clean record
+		t.modes.reset() //H
+	} //H
 }
 
 func (t *GroupTransport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error) {
@@ -135,35 +143,76 @@ type groupResult struct {
 }
 
 // A response is accepted once it still has answers after ignore_ranges
-// filtering. An empty response is kept only as a fallback, unless filtering
-// emptied it, so a fast poisoned or blocked reply cannot win.
+// filtering; an A or AAAA query needs an address, so a CNAME left alone after
+// filtering is not enough. SERVFAIL and REFUSED are failures of the server. An
+// empty or NXDOMAIN response is kept only as a fallback, unless filtering
+// emptied it, so a fast poisoned or blocked reply cannot win. //H
 type groupCollector struct {
 	transport *GroupTransport
 	fallback  *mDNS.Msg
 	err       error
 }
 
+type groupOutcome int //H
+
+const (
+	groupAccepted groupOutcome = iota //H
+	groupFallback                     //H
+	groupFailed                       //H
+)
+
 func (c *groupCollector) add(ctx context.Context, r groupResult, keepFirstErr bool) (*mDNS.Msg, bool) {
+	response, outcome := c.classify(ctx, r, keepFirstErr) //H
+	return response, outcome == groupAccepted             //H
+}
+
+func (c *groupCollector) classify(ctx context.Context, r groupResult, keepFirstErr bool) (*mDNS.Msg, groupOutcome) { //H
 	if r.err == nil && r.response == nil {
 		r.err = E.New("empty response from ", r.tag)
 	}
+	if r.err == nil && (r.response.Rcode == mDNS.RcodeServerFailure || r.response.Rcode == mDNS.RcodeRefused) { //H
+		r.err = E.New(mDNS.RcodeToString[r.response.Rcode], " from ", r.tag) //H
+	} //H
 	if r.err != nil {
 		if c.err == nil || !keepFirstErr {
 			c.err = r.err
 		}
-		return nil, false
+		return nil, groupFailed
 	}
 	response, filtered := c.transport.filterIgnored(r.response)
-	if len(response.Answer) > 0 {
+	if hasAnswer(response) {
 		c.transport.logger.DebugContext(ctx, "response from ", r.tag)
-		return response, true
+		return response, groupAccepted
 	}
 	if filtered {
 		c.transport.logger.DebugContext(ctx, "ignored response from ", r.tag)
+		return nil, groupFailed
 	} else if c.fallback == nil {
 		c.fallback = response
 	}
-	return nil, false
+	return nil, groupFallback
+}
+
+// hasAnswer reports whether a response answers its question: an A or AAAA
+// query needs a record of an address type, any other query any record. //H
+func hasAnswer(response *mDNS.Msg) bool {
+	if len(response.Answer) == 0 {
+		return false
+	}
+	if len(response.Question) == 0 {
+		return true
+	}
+	switch response.Question[0].Qtype {
+	case mDNS.TypeA, mDNS.TypeAAAA:
+		for _, record := range response.Answer {
+			switch record.(type) {
+			case *mDNS.A, *mDNS.AAAA:
+				return true
+			}
+		}
+		return false
+	}
+	return true
 }
 
 func (c *groupCollector) finish() (*mDNS.Msg, error) {
@@ -182,6 +231,10 @@ func (t *GroupTransport) ExchangeAsync(ctx context.Context, message *mDNS.Msg, c
 		callback(nil, E.New("missing DNS transport manager"))
 		return
 	}
+	if t.modes != nil { //H
+		go t.exchangeModes(ctx, transportManager, message, callback) //H
+		return                                                       //H
+	} //H
 	if t.sequential {
 		go t.exchangeSequential(ctx, transportManager, message, callback)
 		return

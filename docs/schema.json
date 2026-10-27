@@ -2082,7 +2082,9 @@
               "type": "string",
               "enum": [
                 "parallel",
-                "sequential"
+                "sequential",
+                "stable",
+                "fastest"
               ]
             },
             "ignore_ranges": {
@@ -2090,6 +2092,12 @@
               "items": {
                 "$ref": "#/$defs/IPPrefix"
               }
+            },
+            "error_ttl": {
+              "$ref": "#/$defs/Duration"
+            },
+            "win_ttl": {
+              "$ref": "#/$defs/Duration"
             }
           },
           "required": [
