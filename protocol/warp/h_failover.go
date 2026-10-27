@@ -13,7 +13,9 @@ import (
 	"github.com/sagernet/sing-box/common/dialer"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/hiddify/warpscan"
+	"github.com/sagernet/sing-box/log"
 	E "github.com/sagernet/sing/common/exceptions"
+	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/service"
 	"github.com/sagernet/sing/service/pause"
 )
@@ -35,6 +37,11 @@ type warpFailover struct {
 	config *C.WARPConfig
 	book   *warpscan.Book
 	probe  warpscan.Probe
+	dialer N.Dialer // resolves domains, for network detection
+	logger log.ContextLogger
+
+	networkAccess sync.Mutex
+	network       warpscan.NetworkInfo
 
 	access      sync.Mutex // one check at a time
 	current     netip.AddrPort
@@ -124,11 +131,38 @@ func (w *WARPEndpoint) newFailover(config *C.WARPConfig) (*warpFailover, error) 
 	if err != nil {
 		return nil, err
 	}
-	return &warpFailover{
+	traceDialer, err := dialer.NewWithOptions(dialer.Options{ // the trace URLs are named by domain
+		Context:          w.ctx,
+		Options:          w.options.DialerOptions,
+		RemoteIsDomain:   true,
+		ResolverOnDetour: true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	failover := &warpFailover{
 		config: config,
 		book:   warpscan.Load(service.FromContext[adapter.CacheFile](w.ctx), w.uniqueID),
 		probe:  probe,
-	}, nil
+		dialer: traceDialer,
+		logger: w.logger,
+	}
+	failover.detectNetwork(w.ctx)
+	return failover, nil
+}
+
+// detectNetwork names the network the box is on now (see warpscan.DetectNetwork).
+func (f *warpFailover) detectNetwork(ctx context.Context) {
+	network := warpscan.DetectNetwork(ctx, f.logger, f.dialer)
+	f.networkAccess.Lock()
+	f.network = network
+	f.networkAccess.Unlock()
+}
+
+func (f *warpFailover) currentNetwork() warpscan.NetworkInfo {
+	f.networkAccess.Lock()
+	defer f.networkAccess.Unlock()
+	return f.network
 }
 
 // scan looks for endpoints on the current network, without exclude, and saves the scores.
@@ -141,14 +175,14 @@ func (w *WARPEndpoint) scan(exclude []netip.AddrPort) ([]warpscan.Result, error)
 			defaults.Ports = append(defaults.Ports, uint16(port))
 		}
 	}
-	network, ipv4, ipv6 := warpscan.Network(w.ctx)
+	network := failover.currentNetwork()
 	results, err := warpscan.Scan(w.ctx, w.logger, warpscan.Request{
 		Options:  w.options.Scanner,
 		Defaults: defaults,
-		IPv4:     ipv4,
-		IPv6:     ipv6,
+		IPv4:     network.IPv4,
+		IPv6:     network.IPv6,
 		Book:     failover.book,
-		Network:  network,
+		Network:  network.Name,
 		Exclude:  exclude,
 		Probe:    failover.probe,
 	})
@@ -180,6 +214,7 @@ func (w *WARPEndpoint) InterfaceUpdated(ctx context.Context) {
 		case <-w.done:
 			return
 		}
+		w.failover.detectNetwork(w.ctx)
 		w.check(true)
 	}()
 }
@@ -217,7 +252,7 @@ func (w *WARPEndpoint) check(networkChanged bool) {
 	if inner == nil || !failover.current.IsValid() {
 		return
 	}
-	network, _, _ := warpscan.Network(w.ctx)
+	network := failover.currentNetwork().Name
 	lastHandshake, tx := peerStatus(inner)
 	if !failover.recorded && lastHandshake.After(failover.connectedAt) {
 		failover.recorded = true

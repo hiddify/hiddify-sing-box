@@ -5,6 +5,7 @@ import (
 	"net"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/common/dialer"
 	"github.com/sagernet/sing-box/common/tls"
 	"github.com/sagernet/sing-box/hiddify/warpscan"
 	"github.com/sagernet/sing-box/log"
@@ -20,7 +21,12 @@ func scanMASQUEEndpoint(ctx context.Context, logger log.ContextLogger, key strin
 	if options.UseHTTP2 {
 		key += "/h2"
 	}
-	network, ipv4, ipv6 := warpscan.Network(ctx)
+	traceDialer, err := outboundDialerWithDomains(ctx, options) // the trace URLs are named by domain
+	if err != nil {
+		return nil, err
+	}
+	network := warpscan.DetectNetwork(ctx, logger, traceDialer)
+	ipv4, ipv6 := network.IPv4, network.IPv6
 	if options.UseIPv6 {
 		ipv4, ipv6 = false, true
 	}
@@ -36,7 +42,7 @@ func scanMASQUEEndpoint(ctx context.Context, logger log.ContextLogger, key strin
 		IPv4:     ipv4,
 		IPv6:     ipv6,
 		Book:     book,
-		Network:  network,
+		Network:  network.Name,
 		Probe:    warpscan.MASQUEProbe(dialer, tlsConfig, options.UseHTTP2),
 	})
 	if saveErr := warpscan.Save(cacheFile, key, book); saveErr != nil {
@@ -51,4 +57,13 @@ func scanMASQUEEndpoint(ctx context.Context, logger log.ContextLogger, key strin
 		return net.TCPAddrFromAddrPort(best.AddrPort), nil
 	}
 	return net.UDPAddrFromAddrPort(best.AddrPort), nil
+}
+
+func outboundDialerWithDomains(ctx context.Context, options option.MASQUEOutboundOptions) (N.Dialer, error) {
+	return dialer.NewWithOptions(dialer.Options{
+		Context:          ctx,
+		Options:          options.DialerOptions,
+		RemoteIsDomain:   true,
+		ResolverOnDetour: true,
+	})
 }

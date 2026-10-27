@@ -93,6 +93,7 @@ func TestH_WARPScannerWireGuardProbe(t *testing.T) {
 // traffic through it, and remembers it: the next run reaches it even when the scan ranges no
 // longer include it.
 func TestH_WARPEndpointScanner(t *testing.T) {
+	hLocalTraces(t)
 	echoAddress := hStartEcho(t)
 	clientPrivate, clientPublic := hWireGuardKey(t)
 	port, serverPublic := hWireGuardServer(t, clientPublic, echoAddress)
@@ -166,6 +167,7 @@ func hWARPDialEcho(t *testing.T, endpoint adapter.Endpoint, timeout time.Duratio
 // When the endpoint in use stops answering, a network change makes WARP find another one and
 // switch to it.
 func TestH_WARPEndpointFailover(t *testing.T) {
+	hLocalTraces(t)
 	echoAddress := hStartEcho(t)
 	clientPrivate, clientPublic := hWireGuardKey(t)
 	serverPrivate, serverPublic := hWireGuardKey(t)
@@ -205,4 +207,12 @@ func hReserveUDPPort(t *testing.T) (int, func()) {
 	conn, err := net.ListenPacket("udp", "127.0.0.1:0")
 	require.NoError(t, err)
 	return conn.LocalAddr().(*net.UDPAddr).Port, func() { conn.Close() }
+}
+
+// hLocalTraces keeps the scanner's network detection off the internet for the test.
+func hLocalTraces(t *testing.T) {
+	t.Helper()
+	urls := warpscan.TraceURLs
+	warpscan.TraceURLs = nil
+	t.Cleanup(func() { warpscan.TraceURLs = urls })
 }

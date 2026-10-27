@@ -107,6 +107,7 @@ func Scan(ctx context.Context, logger logger.ContextLogger, request Request) ([]
 	if book == nil {
 		book = NewBook()
 	}
+	logger.InfoContext(ctx, "WARP scanner: network ", request.Network)
 	preferred, last := book.Candidates(request.Network)
 	candidates := candidateList(preferred, last, request.Exclude, cidrs, ports, count, request.IPv4, request.IPv6)
 	if len(candidates) == 0 {
