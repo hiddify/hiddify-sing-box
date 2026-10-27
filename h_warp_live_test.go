@@ -90,3 +90,9 @@ func TestH_WARPLiveMASQUEH3(t *testing.T) {
 func TestH_WARPLiveMASQUEH2(t *testing.T) {
 	hWARPTrace(t, `"outbounds": [{"type": "masque", "tag": "warp", "vhttp": "h2"}]`)
 }
+
+// WARP with QUIC noise before each handshake; the scanner probes send it too.
+func TestH_WARPLiveQUICNoise(t *testing.T) {
+	hWARPTrace(t, `"endpoints": [{"type": "warp", "tag": "warp", "scanner": {"enabled": true},
+		"noise": {"fake_packet": {"enabled": true, "count": {"from": 2, "to": 3}, "delay": {"from": 5, "to": 10}, "mode": "quic", "sni": "www.google.com"}}}]`)
+}

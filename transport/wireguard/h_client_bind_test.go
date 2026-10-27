@@ -278,3 +278,23 @@ func TestH_EndpointNoiseFakePacketLayout(t *testing.T) {
 		require.Equal(t, []byte{0x00, 0x00, 0x44, 0xD0}, fake[14:18])
 	}
 }
+
+// QUIC noise: the fake packets are QUIC v1 Initials of at least 1200 bytes, sent unchanged (no
+// reserved bytes in the version), before the handshake.
+func TestH_EndpointNoiseQUIC(t *testing.T) {
+	fakes, initiation := hCaptureHandshakeWithNoise(t, hiddify.NoiseOptions{FakePacket: hiddify.FakePacketOptions{
+		Enabled: true,
+		Count:   hiddify.Range{From: 2, To: 2},
+		Delay:   hiddify.Range{From: 1, To: 1},
+		Mode:    hiddify.NoiseModeQUIC,
+		SNI:     "www.example.com",
+	}})
+	require.Len(t, fakes, 2)
+	for _, fake := range fakes {
+		require.GreaterOrEqual(t, len(fake), 1200)
+		require.Equal(t, byte(0xc0), fake[0]&0xf0, "long header, Initial")
+		require.Equal(t, []byte{0, 0, 0, 1}, fake[1:5], "QUIC version 1")
+	}
+	require.Equal(t, fakes[0][5:14], fakes[1][5:14], "one connection")
+	require.Equal(t, []byte{7, 8, 9}, initiation[1:4])
+}
