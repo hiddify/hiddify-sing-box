@@ -728,7 +728,8 @@ func (b *Bridge) initRelay() {
 	relay.readBufSize = b.readBuf
 	obf, err := tunnel.NewTunnelObfuscator(tunnel.DeriveSecretFromJoinLink(b.connInfo.ConferenceURI))
 	if err != nil {
-		b.logger.Fatal(fmt.Sprintf("[relay] obfuscator init failed: %v", err))
+		b.logger.Error(fmt.Sprintf("[relay] obfuscator init failed: %v", err)) // Fatal would exit the whole process
+		return
 	}
 	relay.SetObfuscator(obf)
 	b.logger.Debug(fmt.Sprintf("[relay] obfuscator localEpoch=0x%08x", obf.LocalEpoch()))
@@ -768,7 +769,8 @@ func (b *Bridge) initRelay() {
 		b.sendICE(cand, "SUBSCRIBER", b.subSeq)
 	}
 	if err := relay.Init(b.connInfo.ICEServers); err != nil {
-		b.logger.Fatal(fmt.Sprintf("[relay] init failed: %v", err))
+		b.logger.Error(fmt.Sprintf("[relay] init failed: %v", err)) // Fatal would exit the whole process
+		return
 	}
 	b.relay = relay
 }

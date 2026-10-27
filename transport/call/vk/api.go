@@ -76,7 +76,7 @@ func JoinExistingCall(dialer N.Dialer, cookieStr, vkLink string, cfg VKConfig, l
 	if token == "" {
 		return nil, fmt.Errorf("could not extract join token from %q", vkLink)
 	}
-	logger.Info(fmt.Sprintf("[auth] Joining existing call token=%s", token))
+	logger.Info("[auth] Joining existing call") // the token is part of the tunnel key
 	resp, err := authAndJoin(dialer, cookieStr, token, cfg)
 	if err != nil {
 		return nil, err

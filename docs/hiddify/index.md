@@ -20,6 +20,7 @@ an English and a Persian version.
 - [Psiphon](psiphon.en.md) ([فارسی](psiphon.fa.md)): connect through the Psiphon network with no server of your own, and pick the exit country.
 - [DNSTT](dnstt.en.md) ([فارسی](dnstt.fa.md)): carry traffic inside DNS queries through public resolvers, which it finds by itself.
 - [GooseRelay](gooserelay.en.md) ([فارسی](gooserelay.fa.md)): send traffic through Google Apps Script to your own server, so the network sees only HTTPS to Google.
+- [Call tunnel](call.en.md) ([فارسی](call.fa.md)): carry proxy traffic inside a video call on VK, Telemost, Dion, WB Stream or Bitrix24, so it looks like a call to an allowed domestic service; not tested end to end (build tag `with_call`).
 - [Tunnel](tunnel.en.md) ([فارسی](tunnel.fa.md)): a reverse tunnel that reaches machines behind NAT through a public server.
 
 ### Transports and TLS
