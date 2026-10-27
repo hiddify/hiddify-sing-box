@@ -2,6 +2,7 @@ package balancer
 
 import (
 	"fmt"
+	"github.com/sagernet/sing-box/option"
 	"math"
 	"net"
 	"net/netip"
@@ -218,4 +219,15 @@ func aliveSetChanged(previous, current map[string]string) bool {
 		}
 	}
 	return false
+}
+
+// defaultDelayAcceptableRatio is used when delay_acceptable_ratio is unset: at 0 no member is within
+// the acceptable delay, so round robin used only the fastest and the hashing strategies none.
+const defaultDelayAcceptableRatio = 2
+
+func acceptableRatio(options option.BalancerOutboundOptions) float64 {
+	if options.DelayAcceptableRatio <= 0 {
+		return defaultDelayAcceptableRatio
+	}
+	return options.DelayAcceptableRatio
 }

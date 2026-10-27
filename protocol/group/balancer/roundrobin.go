@@ -34,7 +34,7 @@ func NewRoundRobin(outbounds []adapter.Outbound, options option.BalancerOutbound
 
 		sortedOutbounds:      cOutbounds,
 		maxAcceptableIndex:   acceptable,
-		delayAcceptableRatio: options.DelayAcceptableRatio,
+		delayAcceptableRatio: acceptableRatio(options),
 		idx:                  idx,
 	}
 }

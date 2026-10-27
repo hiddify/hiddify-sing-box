@@ -27,7 +27,7 @@ func NewConsistentHashing(outbounds []adapter.Outbound, options option.BalancerO
 		outbounds:            cOutbounds,
 		hash:                 maphash.NewHasher[string](),
 		maxRetry:             options.MaxRetry,
-		delayAcceptableRatio: options.DelayAcceptableRatio,
+		delayAcceptableRatio: acceptableRatio(options),
 	}
 }
 

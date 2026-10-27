@@ -311,3 +311,12 @@ func TestH_BalancerHashingChangedOnlyOnAliveSet(t *testing.T) {
 		require.True(t, s.UpdateOutboundsInfo(map[string]*adapter.URLTestHistory{"a": his(100), "b": his(monitoring.TimeoutDelay), "c": his(90)}), name+": members changed")
 	}
 }
+
+// an unset delay_acceptable_ratio is 2, not 0: at 0 the hashing strategies saw every member dead
+func TestH_BalancerDefaultRatio(t *testing.T) {
+	o := []*fakeOutbound{newFake("a"), newFake("b")}
+	s := NewConsistentHashing(outs(o...), option.BalancerOutboundOptions{MaxRetry: 2})
+	s.UpdateOutboundsInfo(map[string]*adapter.URLTestHistory{"a": his(100), "b": his(150)})
+	require.True(t, s.Alive(o[0], N.NetworkTCP))
+	require.True(t, s.Alive(o[1], N.NetworkTCP))
+}

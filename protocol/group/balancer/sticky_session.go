@@ -34,7 +34,7 @@ func NewStickySession(outbounds []adapter.Outbound, options option.BalancerOutbo
 		lruCache:             lruCache,
 		hash:                 maphash.NewHasher[string](),
 		maxRetry:             options.MaxRetry,
-		delayAcceptableRatio: options.DelayAcceptableRatio,
+		delayAcceptableRatio: acceptableRatio(options),
 	}
 }
 
