@@ -70,6 +70,11 @@ func Connect(ctx context.Context, cfg Config) (*Bridge, error) {
 			return &Bridge{relay: relay}, nil
 		}
 	case "wbstream":
+		switch cfg.Mode { // Hiddify: an unknown mode never connected
+		case "", wbstream.TunnelModeDC, wbstream.TunnelModeVideo:
+		default:
+			return nil, E.New("call: unknown wbstream mode ", cfg.Mode, ", use dc or video")
+		}
 		switch cfg.Role {
 		case RoleCreator:
 			relay, joinLink, err := wbstream.ConnectCreator(ctx, cookieStr, cfg.JoinLink, cfg.Mode, readBuf, cfg.Dialer, log)
