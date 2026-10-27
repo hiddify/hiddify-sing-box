@@ -100,10 +100,10 @@ func (s *ServerEndpoint) DialContext(ctx context.Context, network string, destin
 			s.mtx.Lock()
 			var ok bool
 			ch, ok = s.conns[tunnelDestination]
+			s.mtx.Unlock() //H: was left locked when the user was not found
 			if !ok {
 				return nil, E.New("user ", metadata.TunnelDestination, " not found")
 			}
-			s.mtx.Unlock()
 		}
 		if metadata.TunnelSource != "" {
 			tunnelSource, err := uuid.FromString(metadata.TunnelSource)
@@ -183,14 +183,14 @@ func (s *ServerEndpoint) connHandler(ctx context.Context, conn net.Conn, metadat
 		if sourceUUID == request.DestinationUUID {
 			return E.New("routing loop on ", sourceUUID)
 		}
-		s.mtx.Lock()
 		if request.DestinationUUID != s.uuid {
-			_, ok = s.keys[request.DestinationUUID]
+			s.mtx.Lock()                            //H: was left locked when the user was not found
+			_, ok = s.keys[request.DestinationUUID] //H
+			s.mtx.Unlock()                          //H
 			if !ok {
-				return E.New("user ", sourceUUID, " not found")
+				return E.New("user ", request.DestinationUUID, " not found") //H: named the source user
 			}
 		}
-		s.mtx.Unlock()
 		metadata.Inbound = s.Tag()
 		metadata.InboundType = C.TypeTunnelServer
 		metadata.Destination = request.Destination

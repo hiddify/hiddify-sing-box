@@ -139,7 +139,6 @@ func TestH_ServerDialContextErrors(t *testing.T) {
 }
 
 func TestH_ServerDialContextUnknownUserReleasesLock(t *testing.T) {
-	t.Skip("BUG: ServerEndpoint.DialContext returns on unknown tunnel destination without unlocking s.mtx (protocol/tunnel/server.go:104), deadlocking later calls")
 	t.Parallel()
 	server := hNewServer(newHFakeRouter(), map[uuid.UUID]uuid.UUID{hUUIDB: hUUIDA})
 	dest := M.ParseSocksaddrHostPort("example.com", 80)
@@ -240,7 +239,6 @@ func TestH_ServerConnHandlerTCP(t *testing.T) {
 }
 
 func TestH_ServerConnHandlerUnknownDestinationUserReleasesLock(t *testing.T) {
-	t.Skip("BUG: ServerEndpoint.connHandler returns 'user not found' for CommandTCP without unlocking s.mtx (protocol/tunnel/server.go:190), deadlocking later requests")
 	t.Parallel()
 	server := hNewServer(newHFakeRouter(), map[uuid.UUID]uuid.UUID{hUUIDB: hUUIDA})
 	unknown := uuid.Must(uuid.FromString("dddddddd-dddd-dddd-dddd-dddddddddddd"))
