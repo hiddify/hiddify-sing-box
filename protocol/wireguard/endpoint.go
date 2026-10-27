@@ -55,6 +55,9 @@ type Endpoint struct {
 }
 
 func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.WireGuardEndpointOptions) (adapter.Endpoint, error) {
+	if options.AWG.IsAvailble() { //H: it was ignored, so the endpoint ran plain WireGuard
+		return nil, E.New(`the awg block is not read by "type": "wireguard", use "type": "awg"`) //H
+	} //H
 	ep := &Endpoint{
 		Adapter:        endpoint.NewAdapterWithDialerOptions(C.TypeWireGuard, tag, []string{N.NetworkTCP, N.NetworkUDP, N.NetworkICMP}, options.DialerOptions),
 		ctx:            ctx,
