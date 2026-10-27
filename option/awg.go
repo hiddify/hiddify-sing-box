@@ -50,6 +50,12 @@ type AwgOptions struct {
 	MaxHandshakeAttempts   AwgRange `json:"max_handshake_attempts,omitempty"`
 	RandomTrailers         bool     `json:"random_trailers,omitempty"`
 	DisableCookies         bool     `json:"disable_cookies,omitempty"`
+
+	// Masquerade, as in sing-box-lx: i1 becomes a decoy of protocol ip ("quic") for domain id,
+	// built afresh before every handshake. ib names the client profile. Not with i1.
+	IP string `json:"ip,omitempty"`
+	ID string `json:"id,omitempty"`
+	IB string `json:"ib,omitempty"`
 }
 
 // AwgRange is an AmneziaWG range, written as a number or as "min-max".
@@ -75,7 +81,7 @@ func (o *AwgOptions) IsAvailble() bool {
 	}
 	return o.Jc != 0 || o.Jmin != 0 || o.Jmax != 0 || o.S1 != 0 || o.S2 != 0 || o.S3 != 0 || o.S4 != 0 || o.H1 != "" || o.H2 != "" || o.H3 != "" || o.H4 != "" || o.I1 != "" || o.I2 != "" || o.I3 != "" || o.I4 != "" || o.I5 != "" ||
 		o.HeaderProtectionKey != "" || o.ContentPaddingAddition != "" || o.RekeyAfterTime != "" || o.RekeyTimeout != "" || o.RejectAfterTime != "" ||
-		o.KeepaliveTimeout != "" || o.MaxHandshakeAttempts != "" || o.RandomTrailers || o.DisableCookies
+		o.KeepaliveTimeout != "" || o.MaxHandshakeAttempts != "" || o.RandomTrailers || o.DisableCookies || o.IP != "" || o.ID != "" || o.IB != ""
 }
 
 type AwgPeerOptions struct {

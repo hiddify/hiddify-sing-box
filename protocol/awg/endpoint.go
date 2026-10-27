@@ -143,6 +143,13 @@ func genIpcConfig(opts option.AwgEndpointOptions, resolvePeer func(domain string
 		s += "\nlisten_port=" + format.ToString(opts.ListenPort)
 	}
 	awg := opts.Awg
+	masquerade, err := masqueradePacket(awg)
+	if err != nil {
+		return "", err
+	}
+	if masquerade != "" {
+		awg.I1 = masquerade
+	}
 	if awg.Jc != 0 {
 		s += "\njc=" + format.ToString(awg.Jc)
 	}

@@ -2,8 +2,8 @@ package awg
 
 import (
 	"context"
-	"encoding/json"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"github.com/sagernet/sing-box/adapter/htest"
 	"net"
@@ -304,4 +304,25 @@ func TestH_GenIpcConfigAWG3(t *testing.T) {
 	require.NoError(t, hApplyIpc(t, ipc))
 
 	require.Error(t, json.Unmarshal([]byte(`{"rekey_timeout": true}`), &awg))
+}
+
+// ip=quic turns i1 into a fresh QUIC Initial for the domain, and the device accepts it
+func TestH_GenIpcConfigMasquerade(t *testing.T) {
+	options := option.AwgEndpointOptions{PrivateKey: hKey(t).String(), Awg: option.AwgOptions{IP: "quic", ID: "www.Google.com", IB: "chrome"}}
+	ipc, err := genIpcConfig(options, nil)
+	require.NoError(t, err)
+	require.Contains(t, ipc, "\ni1=<qi www.google.com>")
+	require.NoError(t, hApplyIpc(t, ipc))
+
+	for _, invalid := range []option.AwgOptions{
+		{ID: "example.com"},                             // id without ip
+		{IP: "quic"},                                    // no domain
+		{IP: "quic", ID: "a.com> <b 0x00"},              // a domain that would end the tag
+		{IP: "quic", ID: "example.com", I1: "<r 10>"},   // with i1
+		{IP: "dns", ID: "example.com"},                  // not implemented
+		{IP: "quic", ID: "example.com", IB: "netscape"}, // unknown profile
+	} {
+		_, err := genIpcConfig(option.AwgEndpointOptions{PrivateKey: hKey(t).String(), Awg: invalid}, nil)
+		require.Error(t, err, "%+v", invalid)
+	}
 }
