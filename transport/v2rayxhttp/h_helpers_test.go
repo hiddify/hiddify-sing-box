@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -447,11 +448,10 @@ func TestH_SplitConnClose(t *testing.T) {
 	writerErr := errors.New("writer")
 	conn = &splitConn{writer: hErrCloser{err: writerErr}, reader: hErrCloser{}}
 	require.ErrorIs(t, conn.Close(), writerErr)
-	require.NoError(t, conn.SetDeadline(time.Time{}))
+	require.ErrorIs(t, conn.SetDeadline(time.Time{}), os.ErrInvalid)
 }
 
 func TestH_SplitConnCloseReaderError(t *testing.T) {
-	t.Skip("BUG: splitConn.Close returns err (nil) instead of err2 when only the reader Close fails (conn.go:38-40)")
 	readerErr := errors.New("reader")
 	conn := &splitConn{writer: hErrCloser{}, reader: hErrCloser{err: readerErr}}
 	require.ErrorIs(t, conn.Close(), readerErr)

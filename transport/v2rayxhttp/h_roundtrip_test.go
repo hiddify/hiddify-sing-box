@@ -169,7 +169,6 @@ func TestH_XHTTPRoundTripObfsReferer(t *testing.T) {
 }
 
 func TestH_XHTTPRoundTripObfsHeader(t *testing.T) {
-	t.Skip("BUG: server ignores x_padding_obfs_mode placement/key when validating request padding and only checks Referer/query x_padding (server.go:121-133), so obfs mode with a non-Referer placement is always rejected with 400")
 	content := `{"mode":"packet-up","path":"/xh","x_padding_bytes":"100-1000","x_padding_obfs_mode":true,"x_padding_placement":"header"}`
 	addr := hStartServer(t, hOptions(t, content), nil)
 	hRoundTrip(t, hOptions(t, content), nil, addr, hPayloads(t, 50)...)

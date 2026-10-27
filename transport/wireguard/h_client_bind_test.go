@@ -165,12 +165,16 @@ func hNoiseEndpoint(t *testing.T, ctx context.Context, peerPort uint16, noise hi
 	return ep
 }
 
+// hTriggerHandshake sends traffic until ctx ends: a single packet can be lost while the device
+// comes up on a loaded machine, and initiations are rate-limited, so retries add none.
 func hTriggerHandshake(ctx context.Context, ep *Endpoint) {
-	dialCtx, cancel := context.WithTimeout(ctx, 300*time.Millisecond)
-	defer cancel()
-	tcpConn, err := ep.DialContext(dialCtx, N.NetworkTCP, M.ParseSocksaddr("10.66.0.1:80"))
-	if err == nil {
-		tcpConn.Close()
+	for ctx.Err() == nil {
+		dialCtx, cancel := context.WithTimeout(ctx, 300*time.Millisecond)
+		tcpConn, err := ep.DialContext(dialCtx, N.NetworkTCP, M.ParseSocksaddr("10.66.0.1:80"))
+		cancel()
+		if err == nil {
+			tcpConn.Close()
+		}
 	}
 }
 
@@ -205,8 +209,10 @@ func TestH_EndpointResolverErrorSendsNothing(t *testing.T) {
 	ep := hNoiseEndpoint(t, ctx, capture.addrPort().Port(), hiddify.NoiseOptions{}, func(domain string) ([]netip.Addr, error) {
 		return nil, errors.New("nxdomain")
 	})
-	hTriggerHandshake(ctx, ep)
-	require.NoError(t, capture.conn.SetReadDeadline(time.Now().Add(300*time.Millisecond)))
+	triggerCtx, stopTrigger := context.WithTimeout(ctx, time.Second)
+	defer stopTrigger()
+	go hTriggerHandshake(triggerCtx, ep)
+	require.NoError(t, capture.conn.SetReadDeadline(time.Now().Add(time.Second)))
 	_, _, err := capture.conn.ReadFrom(make([]byte, 2048))
 	require.Error(t, err)
 }
@@ -247,7 +253,7 @@ func TestH_EndpointNoiseFakePacketsPrecedeHandshake(t *testing.T) {
 		fakes, initiation := hCaptureHandshakeWithNoise(t, hNoiseOptions(noModify))
 		require.NotEmpty(t, fakes, "noise must be sent before the handshake initiation")
 		for _, fake := range fakes {
-			require.Equal(t, []byte{0x00, 0x00, 0x44, 0xD0}, fake[6:10], "fake packet trailer before random payload")
+			require.Equal(t, []byte{0x00, 0x00, 0x44, 0xD0}, fake[14:18], "fake packet trailer before random payload")
 		}
 		require.Equal(t, []byte{7, 8, 9}, initiation[1:4])
 	}
@@ -259,13 +265,11 @@ func TestH_EndpointNoiseDisabledSendsOnlyHandshake(t *testing.T) {
 }
 
 func TestH_EndpointNoiseFakePacketCount(t *testing.T) {
-	t.Skip("BUG: replace/wireguard-go leaves a stale token in the buffered device.stopCh (closeBindLocked/Peer.Stop during startup), so sendNoise aborts after the first fake packet")
 	fakes, _ := hCaptureHandshakeWithNoise(t, hNoiseOptions(true))
 	require.Len(t, fakes, 2)
 }
 
 func TestH_EndpointNoiseFakePacketLayout(t *testing.T) {
-	t.Skip("BUG: replace/wireguard-go customSend builds fake packets without MessageEncapsulatingTransportSize headroom, so the bind strips their first 8 bytes (header byte and QUIC-like prefix lost)")
 	fakes, _ := hCaptureHandshakeWithNoise(t, hNoiseOptions(true))
 	require.NotEmpty(t, fakes)
 	for _, fake := range fakes {

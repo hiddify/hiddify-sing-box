@@ -25,4 +25,3 @@ _htest/
 CLAUDE.md
 AGENTS.md
 /.claude/
-**/h_*_test.go

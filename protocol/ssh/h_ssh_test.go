@@ -479,3 +479,16 @@ func TestH_SSHOutboundUnreachableServer(t *testing.T) {
 	require.False(t, ssh.IsReady())
 	require.NoError(t, htest.Close(ssh)) // stops the background retries
 }
+
+// the box starts the outbound through its scoped lifecycle, which must also start the
+// background connection, and closing the scope must stop it
+func TestH_SSHOutboundLifecycleConnectsInBackground(t *testing.T) {
+	t.Parallel()
+	f := startInbound(t, nil)
+	out := newTestOutbound(t, f, nil)
+	require.NoError(t, htest.StartAll(out))
+	require.Eventually(t, out.IsReady, 5*time.Second, 20*time.Millisecond, "not connected after start")
+	require.NoError(t, htest.Close(out))
+	require.Eventually(t, func() bool { return !out.IsReady() }, 5*time.Second, 20*time.Millisecond)
+	require.Never(t, out.IsReady, time.Second, 50*time.Millisecond, "reconnected after close")
+}

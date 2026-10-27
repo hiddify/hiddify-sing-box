@@ -165,7 +165,6 @@ func TestH_GetWarpProfileFallsBackToAllOutbounds(t *testing.T) {
 }
 
 func TestH_GetWarpProfileWithoutOutboundManagerReturnsError(t *testing.T) {
-	t.Skip("BUG: GetWarpProfile returns (nil, nil) on failure when no OutboundManager is in ctx, so startHandler then dereferences a nil profile")
 	profile, err := GetWarpProfile(hTestContext(t), &option.WARPProfile{PrivateKey: "not-a-key"})
 	require.Error(t, err)
 	require.Nil(t, profile)
@@ -250,12 +249,40 @@ func TestH_WARPMalformedCachedConfig(t *testing.T) {
 }
 
 func TestH_WARPConfigWithoutPortsDoesNotPanic(t *testing.T) {
-	t.Skip("BUG: startHandler calls rand.Intn(len(peer.Endpoint.Ports)) and Peers[0] unchecked; a WARP config with no ports/peers panics the goroutine")
 	options := option.WARPEndpointOptions{WARPConfig: hWARPConfig(t, `{"private_key":"x","peers":[{"endpoint":{"host":"h:1"}}]}`)}
 	options.Detour = "missing-detour"
 	options.ServerPort = 2408
 	ep := hNewWARP(t, hTestContext(t), options)
 	require.NotPanics(t, ep.startHandler)
+}
+
+func TestH_WARPConfigWithoutPeersDoesNotPanic(t *testing.T) {
+	options := option.WARPEndpointOptions{WARPConfig: hWARPConfig(t, `{"private_key":"x","peers":[]}`)}
+	options.Detour = "missing-detour"
+	ep := hNewWARP(t, hTestContext(t), options)
+	require.NotPanics(t, ep.startHandler)
+	require.False(t, ep.IsReady())
+}
+
+func TestH_WARPPeerEndpoint(t *testing.T) {
+	config := hWARPConfig(t, `{"private_key":"x","peers":[{"endpoint":{"host":"engage.cloudflareclient.com:2408","ports":[500,4500]}}]}`)
+	address, port, err := warpPeerEndpoint(config, option.ServerOptions{})
+	require.NoError(t, err)
+	require.Equal(t, "engage.cloudflareclient.com", address)
+	require.Contains(t, []uint16{500, 4500}, port)
+	address, port, err = warpPeerEndpoint(config, option.ServerOptions{Server: "162.159.192.1", ServerPort: 854})
+	require.NoError(t, err)
+	require.Equal(t, "162.159.192.1", address)
+	require.Equal(t, uint16(854), port)
+	// no ports listed: the port in the host is used
+	address, port, err = warpPeerEndpoint(hWARPConfig(t, `{"private_key":"x","peers":[{"endpoint":{"host":"h:1701"}}]}`), option.ServerOptions{})
+	require.NoError(t, err)
+	require.Equal(t, "h", address)
+	require.Equal(t, uint16(1701), port)
+	_, _, err = warpPeerEndpoint(hWARPConfig(t, `{"private_key":"x","peers":[{"endpoint":{"host":"h"}}]}`), option.ServerOptions{})
+	require.Error(t, err)
+	_, _, err = warpPeerEndpoint(hWARPConfig(t, `{"private_key":"x","peers":[]}`), option.ServerOptions{})
+	require.Error(t, err)
 }
 
 func TestH_RegisterWARPEndpoint(t *testing.T) {

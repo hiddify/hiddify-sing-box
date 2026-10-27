@@ -182,7 +182,7 @@ func TestH_BalancerLowestDelay(t *testing.T) {
 func TestH_BalancerRoundRobin(t *testing.T) {
 	a, b, c := newFake("a"), newFake("b"), newFake("c")
 	s := NewRoundRobin(outs(a, b, c), option.BalancerOutboundOptions{DelayAcceptableRatio: 2})
-	require.Equal(t, "", s.Now())
+	require.Equal(t, "b", s.Now())
 
 	var got []string
 	for range 6 {
@@ -204,7 +204,6 @@ func TestH_BalancerRoundRobin(t *testing.T) {
 }
 
 func TestH_BalancerRoundRobinCachedDelayOverflow(t *testing.T) {
-	t.Skip("BUG: getAcceptableIndex/consistent-hashing/sticky compute uint16(float) of max acceptable delay, which overflows when delay*ratio > 65535")
 	a, b := newFake("a"), newFake("b")
 	s := NewRoundRobin(outs(a, b), option.BalancerOutboundOptions{DelayAcceptableRatio: 3})
 	// both cached: effective delays 25000 / 26000, acceptable = 75000
@@ -255,7 +254,6 @@ func TestH_BalancerConsistentHashing(t *testing.T) {
 }
 
 func TestH_BalancerConsistentHashingUntestedNotAlive(t *testing.T) {
-	t.Skip("BUG: getDelayMap uses raw Delay so an untested outbound (Delay 0) is treated as alive by consistent-hashing/sticky-sessions")
 	a, b := newFake("a"), newFake("b")
 	s := NewConsistentHashing(outs(a, b), option.BalancerOutboundOptions{DelayAcceptableRatio: 2, MaxRetry: 3})
 	s.UpdateOutboundsInfo(map[string]*adapter.URLTestHistory{"a": {Delay: 0}, "b": his(100)})
@@ -285,7 +283,6 @@ func TestH_BalancerStickySession(t *testing.T) {
 }
 
 func TestH_BalancerStickySessionAvoidsDead(t *testing.T) {
-	t.Skip("BUG: StickySession.Select retries re-hash with key+UnixNano (often identical within the loop) and returns the last pick without an Alive check, so ~50% of new sessions land on a dead outbound")
 	a, b := newFake("a"), newFake("b")
 	s := NewStickySession(outs(a, b), option.BalancerOutboundOptions{DelayAcceptableRatio: 2, MaxRetry: 5})
 	s.UpdateOutboundsInfo(map[string]*adapter.URLTestHistory{"a": his(100), "b": his(monitoring.TimeoutDelay)})
