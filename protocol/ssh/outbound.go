@@ -404,6 +404,10 @@ func (s *Outbound) DialContext(ctx context.Context, network string, destination 
 	ctx, metadata := adapter.ExtendContext(ctx)
 	metadata.Outbound = s.Tag()
 	metadata.Destination = destination
+	if N.NetworkName(network) == N.NetworkUDP && s.uotClient != nil { //H: before counting a stream, as the UoT client dials through this outbound and counts its own
+		s.logger.InfoContext(ctx, "outbound UoT connect packet connection to ", destination) //H
+		return s.uotClient.DialContext(ctx, network, destination)                            //H
+	} //H
 	client, err := s.connect(ctx)
 	if err != nil {
 		return nil, err
@@ -419,12 +423,7 @@ func (s *Outbound) DialContext(ctx context.Context, network string, destination 
 	case N.NetworkTCP:
 		s.logger.InfoContext(ctx, "outbound connection to ", destination)
 	case N.NetworkUDP:
-		if s.uotClient != nil {
-			s.logger.InfoContext(ctx, "outbound UoT connect packet connection to ", destination)
-			return s.uotClient.DialContext(ctx, network, destination)
-		} else {
-			s.logger.InfoContext(ctx, "outbound packet connection to ", destination)
-		}
+		s.logger.InfoContext(ctx, "outbound packet connection to ", destination)
 	}
 	conn, err := client.Dial(network, destination.String())
 	if err != nil {

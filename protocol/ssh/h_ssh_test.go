@@ -283,7 +283,6 @@ func TestH_SSHInboundRejectsNonForwardChannels(t *testing.T) {
 }
 
 func TestH_SSHInboundServerVersion(t *testing.T) {
-	t.Skip("BUG: SSHInboundOptions.ServerVersion is never applied to ssh.ServerConfig (protocol/ssh/inbound.go:55)")
 	t.Parallel()
 	f := startInbound(t, func(o *option.SSHInboundOptions) { o.ServerVersion = "SSH-2.0-HiddifyTest" })
 	client, err := f.dial("alice", ssh.Password("wonderland"))
@@ -412,7 +411,6 @@ func TestH_SSHOutboundUDPWithoutUoT(t *testing.T) {
 }
 
 func TestH_SSHOutboundUoTStreamAccounting(t *testing.T) {
-	t.Skip("BUG: DialContext(udp) with UoT increments s.streams before delegating to uotClient, which dials again; the first increment is never released (protocol/ssh/outbound.go:299,310)")
 	t.Parallel()
 	f := startInbound(t, nil)
 	out := newTestOutbound(t, f, func(o *option.SSHOutboundOptions) {
