@@ -62,9 +62,10 @@ func TestH_ClientTransportDispatchErrors(t *testing.T) {
 	_, err = NewClientTransport(context.Background(), N.SystemDialer, hServerAddr, option.V2RayTransportOptions{Type: C.V2RayTransportTypeQUIC}, nil)
 	require.ErrorIs(t, err, C.ErrTLSRequired)
 
+	// an empty XHTTP mode is auto, as in Xray
 	transport, err = NewClientTransport(context.Background(), N.SystemDialer, hServerAddr, option.V2RayTransportOptions{Type: C.V2RayTransportTypeXHTTP}, nil)
-	require.Error(t, err)
-	require.Nil(t, transport)
+	require.NoError(t, err)
+	require.NotNil(t, transport)
 }
 
 func TestH_ServerTransportDispatch(t *testing.T) {
