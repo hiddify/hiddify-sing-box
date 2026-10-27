@@ -154,13 +154,19 @@ func DefaultQuicConfig(keepalivePeriod time.Duration, initialPacketSize uint16) 
 //   - int: The remote port.
 //   - error: An error if parsing fails.
 func parsePortMapping(port string) (bindAddress string, localPort int, remoteHost string, remotePort int, err error) {
-	parts := strings.Split(port, ":")
-
-	// Handle IPv6 addresses (which are enclosed in brackets)
-	if len(parts) >= 4 && strings.HasPrefix(parts[0], "[") && strings.Contains(parts[0], "]") {
-		bindAddress = parts[0]
-		parts = parts[1:] // Shift parts forward
-	} else if len(parts) == 3 {
+	// An IPv6 bind address is enclosed in brackets and holds colons, so it is cut off before splitting
+	var parts []string
+	if strings.HasPrefix(port, "[") {
+		end := strings.Index(port, "]:")
+		if end < 0 {
+			return "", 0, "", 0, errors.New("invalid port mapping format: unclosed IPv6 bind address")
+		}
+		bindAddress = port[:end+1]
+		parts = strings.Split(port[end+2:], ":")
+		if len(parts) != 3 {
+			return "", 0, "", 0, errors.New("invalid port mapping format (expected format: [bind_address:]local_port:remote_host:remote_port)")
+		}
+	} else if parts = strings.Split(port, ":"); len(parts) == 3 {
 		bindAddress = "localhost" // Default to localhost
 	} else if len(parts) == 4 {
 		bindAddress = parts[0]
@@ -244,7 +250,7 @@ func ParsePortMapping(port string) (PortMapping, error) {
 //   - string: The resolved IP address.
 //   - error:  An error if resolution fails.
 func resolveBindAddress(addr string) (string, error) {
-	tcpAddr, err := net.ResolveTCPAddr("tcp", addr+":0") // Resolve the address
+	tcpAddr, err := net.ResolveTCPAddr("tcp", net.JoinHostPort(addr, "0")) // brackets an IPv6 address
 	if err != nil {
 		return "", err
 	}
