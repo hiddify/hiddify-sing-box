@@ -39,6 +39,7 @@ type UTLSClientConfig struct {
 	recordFragment        bool
 	spoof                 string
 	spoofMethod           tlsspoof.Method
+	tricks                *tlsTricks //H: tls_tricks
 }
 
 func (c *UTLSClientConfig) ServerName() string {
@@ -90,7 +91,22 @@ func (c *UTLSClientConfig) Client(conn net.Conn) (Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &utlsALPNWrapper{utlsConnWrapper{utls.UClient(conn, c.config.Clone(), c.id)}, c.config.NextProtos}, nil
+	config := c.config.Clone()                      //H
+	if c.tricks != nil && config.ServerName != "" { //H
+		config.ServerName = c.tricks.serverName(config.ServerName) //H
+	} //H
+	id := c.id                               //H
+	if c.tricks != nil && c.tricks.padding { //H: the spec is applied to a custom hello
+		id = utls.HelloCustom //H
+	} //H
+	uConn := utls.UClient(conn, config, id)  //H
+	if c.tricks != nil && c.tricks.padding { //H
+		err = applyTLSTricksPadding(uConn, c.id, c.tricks) //H
+		if err != nil {                                    //H
+			return nil, err //H
+		} //H
+	} //H
+	return &utlsALPNWrapper{utlsConnWrapper{uConn}, c.config.NextProtos}, nil //H
 }
 
 func (c *UTLSClientConfig) SetSessionIDGenerator(generator func(clientHello []byte, sessionID []byte) error) {
@@ -111,6 +127,7 @@ func (c *UTLSClientConfig) Clone() Config {
 		recordFragment:        c.recordFragment,
 		spoof:                 c.spoof,
 		spoofMethod:           c.spoofMethod,
+		tricks:                c.tricks, //H
 	}
 	cloned.SetServerName(cloned.serverName)
 	return cloned
@@ -307,6 +324,15 @@ func newUTLSClient(ctx context.Context, logger logger.ContextLogger, serverAddre
 	if err != nil {
 		return nil, err
 	}
+	tricks, err := parseTLSTricks(logger, options.TLSTricks, true) //H
+	if err != nil {                                                //H
+		return nil, err //H
+	} //H
+	if tricks != nil && tricks.padding { //H: the padding edits the fingerprint's spec
+		if _, err = utls.UTLSIdToSpec(id); err != nil { //H
+			return nil, E.Cause(err, "tls_tricks padding needs a fixed uTLS fingerprint") //H
+		} //H
+	} //H
 	var config Config = &UTLSClientConfig{
 		ctx:                   ctx,
 		config:                &tlsConfig,
@@ -320,6 +346,7 @@ func newUTLSClient(ctx context.Context, logger logger.ContextLogger, serverAddre
 		recordFragment:        options.RecordFragment,
 		spoof:                 spoof,
 		spoofMethod:           spoofMethod,
+		tricks:                tricks, //H
 	}
 	config.SetServerName(serverName)
 	if options.ECH != nil && options.ECH.Enabled {
