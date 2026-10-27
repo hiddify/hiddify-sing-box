@@ -109,7 +109,6 @@ func TestH_ParseClientEncryption(t *testing.T) {
 }
 
 func TestH_ParseEncryptionWithPadding(t *testing.T) {
-	t.Skip("BUG: padding segments like \"100-111-1111\" are valid RawURL base64, so they are decoded as keys and rejected with \"invalid key length\" (inbound.go:301, outbound.go:484)")
 	t.Parallel()
 	sx, cx, _, _ := generateKeyStrings(t)
 	padding := "100-111-1111.75-0-111.50-0-3333"
@@ -278,7 +277,7 @@ func TestH_VisionConnWrapper(t *testing.T) {
 }
 
 func TestH_VisionConnWrapperDoesNotBypassEncryption(t *testing.T) {
-	t.Skip("BUG: visionConnWrapper reports ReaderReplaceable/WriterReplaceable=true when the wrapped conn (e.g. encryption.CommonConn) does not implement them, so N.UnwrapReader/UnwrapWriter skip the encryption layer and go straight to the TLS upstream (outbound.go:377-389)")
+	t.Skip("vision fix pending")
 	t.Parallel()
 	a, b := net.Pipe()
 	defer a.Close()

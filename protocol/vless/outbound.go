@@ -507,6 +507,10 @@ func parseClientEncryption(raw string) (clientEncryptionConfig, error) {
 		if segment == "" {
 			return cfg, E.New("invalid empty segment in encryption string")
 		}
+		if paddingPhase && isPaddingSegment(segment) { // digits and dashes such as 100-111-1111 also decode as base64
+			paddingParts = append(paddingParts, segment)
+			continue
+		}
 		if data, err := base64.RawURLEncoding.DecodeString(segment); err == nil {
 			if len(data) == 32 || len(data) == 1184 {
 				cfg.keys = append(cfg.keys, data)

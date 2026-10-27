@@ -24,3 +24,17 @@ func encryptionHandshake(ctx context.Context, instance *encryption.ClientInstanc
 	}
 	return encryptedConn, nil
 }
+
+// isPaddingSegment reports whether a segment of an encryption string is a
+// padding rule (numbers joined by dashes, such as 100-111-1111) rather than a key.
+func isPaddingSegment(segment string) bool {
+	if segment == "" {
+		return false
+	}
+	for _, c := range segment {
+		if (c < '0' || c > '9') && c != '-' {
+			return false
+		}
+	}
+	return true
+}
