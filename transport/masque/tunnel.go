@@ -221,7 +221,7 @@ func (e *Tunnel) getIpConn() (*connectip.Conn, error) {
 		e.udpConn = udpConn
 		e.tr = tr
 		e.ipConn = ipConn
-		e.logger.InfoContext(e.ctx, "Connected to MASQUE server", e.options.Endpoint)
+		e.logger.InfoContext(e.ctx, "Connected to MASQUE server ", e.options.Endpoint)
 		return ipConn, nil
 	}
 }

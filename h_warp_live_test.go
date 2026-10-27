@@ -24,15 +24,19 @@ import (
 // HIDDIFY_WARP_E2E=1.
 func hWARPTrace(t *testing.T, outbound string) {
 	t.Helper()
+	hWARPTraceWithCache(t, outbound, filepath.Join(t.TempDir(), "cache.db"))
+}
+
+func hWARPTraceWithCache(t *testing.T, outbound string, cachePath string) {
+	t.Helper()
 	if os.Getenv("HIDDIFY_WARP_E2E") == "" {
 		t.Skip("HIDDIFY_WARP_E2E is not set")
 	}
 	mixedPort := hFreeTCPPort(t)
-	cachePath := filepath.Join(t.TempDir(), "cache.db")
 	ctx := include.Context(context.Background())
 	options, err := json.UnmarshalExtendedContext[option.Options](ctx, []byte(`{
 		"log": {"level": "info"},
-		"experimental": {"cache_file": {"enabled": true, "path": "`+cachePath+`"}},
+		"experimental": {"cache_file": {"enabled": true, "path": "`+cachePath+`", "store_warp_config": true, "store_masque_config": true}},
 		"inbounds": [{"type": "mixed", "listen": "127.0.0.1", "listen_port": `+strconv.Itoa(mixedPort)+`}],
 		`+outbound+`,
 		"route": {"final": "warp"}
@@ -69,4 +73,12 @@ func TestH_WARPLiveMASQUEScanner(t *testing.T) {
 
 func TestH_WARPLiveMASQUEHTTP2Scanner(t *testing.T) {
 	hWARPTrace(t, `"outbounds": [{"type": "masque", "tag": "warp", "use_http2": true, "scanner": {"enabled": true}}]`)
+}
+
+// A second start reuses the saved MASQUE profile and the endpoint scores.
+func TestH_WARPLiveMASQUESavedProfile(t *testing.T) {
+	cachePath := filepath.Join(t.TempDir(), "cache.db")
+	outbound := `"outbounds": [{"type": "masque", "tag": "warp", "scanner": {"enabled": true}}]`
+	hWARPTraceWithCache(t, outbound, cachePath)
+	hWARPTraceWithCache(t, outbound, cachePath)
 }
