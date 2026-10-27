@@ -155,7 +155,6 @@ func TestH_BufferedWriter(t *testing.T) {
 }
 
 func TestH_BufferedWriterLargeWrite(t *testing.T) {
-	t.Skip("BUG: Buffer.Write returns ErrBufferFull on a partial copy (buffer.go:270), so BufferedWriter.Write (writer.go:118-121) aborts instead of flushing and continuing for payloads larger than the free space")
 	t.Parallel()
 	var out bytes.Buffer
 	w := NewBufferedWriter(&SequentialWriter{Writer: &out})

@@ -118,7 +118,7 @@ func (w *BufferedWriter) Write(b []byte) (int, error) {
 
 		nBytes, err := w.buffer.Write(b)
 		totalBytes += nBytes
-		if err != nil {
+		if err != nil && err != ErrBufferFull { // a full buffer is flushed below
 			return totalBytes, err
 		}
 		if !w.buffered || w.buffer.IsFull() {
