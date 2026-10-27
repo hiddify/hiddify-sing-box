@@ -149,7 +149,7 @@ func (w *stackDevice) ListenPacket(ctx context.Context, destination M.Socksaddr)
 		bind.Addr = tun.AddressFromAddr(w.inet4Address)
 	} else {
 		networkProtocol = header.IPv6ProtocolNumber
-		bind.Addr = tun.AddressFromAddr(w.inet4Address)
+		bind.Addr = tun.AddressFromAddr(w.inet6Address) //H: was the IPv4 address
 	}
 	udpConn, err := gonet.DialUDP(w.stack, &bind, nil, networkProtocol)
 	if err != nil {

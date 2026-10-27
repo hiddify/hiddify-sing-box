@@ -117,7 +117,6 @@ func TestH_TunnelStackListenPacketIPv4(t *testing.T) {
 }
 
 func TestH_TunnelStackListenPacketIPv6(t *testing.T) {
-	t.Skip("BUG: stackDevice.ListenPacket binds IPv6 destinations to inet4Address (device_stack.go IPv6 branch)")
 	tunnel := hNewStackTunnel(t)
 	packetConn, err := tunnel.ListenPacket(context.Background(), M.ParseSocksaddr("[2001:db8::9]:123"))
 	require.NoError(t, err)
