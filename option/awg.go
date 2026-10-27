@@ -4,6 +4,7 @@ import (
 	"net/netip"
 	"strconv"
 
+	"github.com/sagernet/sing-box/schema"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/json"
 
@@ -93,4 +94,8 @@ type AwgPeerOptions struct {
 	PresharedKey                string                           `json:"preshared_key,omitempty"`
 	AllowedIPs                  badoption.Listable[netip.Prefix] `json:"allowed_ips,omitempty"`
 	PersistentKeepaliveInterval uint16                           `json:"persistent_keepalive_interval,omitempty"`
+}
+
+func (r AwgRange) DescribeSchema(builder schema.Builder) (*schema.Node, error) {
+	return schema.AnyOf(schema.UnsignedNode(32), schema.StringNode()), nil
 }
