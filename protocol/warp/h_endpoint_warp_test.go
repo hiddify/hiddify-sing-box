@@ -124,8 +124,10 @@ func hWARPConfig(t *testing.T, content string) *C.WARPConfig {
 }
 
 func TestH_GetWarpProfileDialerExistingProfileUsesDetour(t *testing.T) {
+	key, err := wgtypes.GeneratePrivateKey()
+	require.NoError(t, err)
 	detour := &hRecordingDialer{}
-	_, err := GetWarpProfileDialer(hTestContext(t), detour, &option.WARPProfile{AuthToken: "tok", ID: "id"})
+	_, err = GetWarpProfileDialer(hTestContext(t), detour, &option.WARPProfile{AuthToken: "tok", ID: "id", PrivateKey: key.String()})
 	require.ErrorContains(t, err, "detour refused")
 	require.NotZero(t, detour.count())
 	require.Equal(t, M.ParseSocksaddr("api.cloudflareclient.com:443"), detour.targets[0])

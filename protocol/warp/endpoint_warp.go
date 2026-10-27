@@ -148,7 +148,7 @@ func GetWarpProfile(ctx context.Context, profile *option.WARPProfile) (*cloudfla
 func GetWarpProfileDialer(ctx context.Context, dialer N.Dialer, profile *option.WARPProfile) (*cloudflare.CloudflareProfile, error) {
 	api := cloudflare.NewCloudflareApiDetour(dialer)
 	if profile.AuthToken != "" && profile.ID != "" {
-		return api.GetProfile(ctx, profile.AuthToken, profile.ID)
+		return api.GetProfileWithKey(ctx, profile.AuthToken, profile.ID, profile.PrivateKey) //H: GetProfile has no private key, so the endpoint could not start
 
 	} else {
 		return api.CreateProfileLicense(ctx, profile.PrivateKey, profile.License)
