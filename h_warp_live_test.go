@@ -82,3 +82,11 @@ func TestH_WARPLiveMASQUESavedProfile(t *testing.T) {
 	hWARPTraceWithCache(t, outbound, cachePath)
 	hWARPTraceWithCache(t, outbound, cachePath)
 }
+
+func TestH_WARPLiveMASQUEH3(t *testing.T) {
+	hWARPTrace(t, `"outbounds": [{"type": "masque", "tag": "warp", "vhttp": "h3", "scanner": {"enabled": true}}]`)
+}
+
+func TestH_WARPLiveMASQUEH2(t *testing.T) {
+	hWARPTrace(t, `"outbounds": [{"type": "masque", "tag": "warp", "vhttp": "h2"}]`)
+}

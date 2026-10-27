@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	connectip "github.com/Diniboy1123/connect-ip-go"
@@ -34,6 +35,14 @@ type Tunnel struct {
 	ipConn  *connectip.Conn
 
 	mtx sync.Mutex
+
+	// h_connect.go
+	endpointAccess sync.Mutex
+	failures       map[bool]int // consecutive failed connects, per HTTP/2
+	autoAccess     sync.Mutex
+	http2Until     time.Time
+	http2Step      int
+	activeHTTP2    atomic.Bool // the current connection is HTTP/2
 }
 
 func NewTunnel(ctx context.Context, logger logger.ContextLogger, options TunnelOptions) (*Tunnel, error) {
@@ -57,6 +66,7 @@ func NewTunnel(ctx context.Context, logger logger.ContextLogger, options TunnelO
 		options:      options,
 		tunDevice:    tunDevice,
 		tunnelDevice: NewNetstackAdapter(tunDevice),
+		failures:     make(map[bool]int),
 	}, nil
 }
 
@@ -151,7 +161,7 @@ func (e *Tunnel) maintainTunnel() {
 			}
 			n, err := ipConn.ReadPacket(buf, true)
 			if err != nil {
-				if e.options.UseHTTP2 || errors.As(err, new(*connectip.CloseError)) {
+				if e.activeHTTP2.Load() || errors.As(err, new(*connectip.CloseError)) {
 					if ok := e.closeIpConn(ipConn); ok {
 						e.logger.ErrorContext(e.ctx, fmt.Errorf("connection closed while reading from IP connection: %v", err))
 					}
@@ -177,52 +187,28 @@ func (e *Tunnel) getIpConn() (*connectip.Conn, error) {
 	if e.ipConn != nil {
 		return e.ipConn, nil
 	}
-	e.logger.InfoContext(e.ctx, "Establishing MASQUE connection to ", e.options.Endpoint)
 	timer := time.NewTimer(0)
 	defer timer.Stop()
 	for {
-		e.logger.InfoContext(e.ctx, fmt.Errorf("Establishing MASQUE connection to %s", e.options.Endpoint))
-		udpConn, tr, ipConn, rsp, err := ConnectTunnel(
-			e.ctx,
-			e.options.Dialer,
-			e.options.TLSConfig,
-			DefaultQuicConfig(e.options.UDPKeepalivePeriod, e.options.UDPInitialPacketSize),
-			"https://cloudflareaccess.com",
-			e.options.Endpoint,
-			e.options.UseHTTP2,
-		)
-		if err != nil {
-			e.logger.ErrorContext(e.ctx, fmt.Errorf("Failed to connect tunnel: %v", err))
-			timer.Reset(e.options.ReconnectDelay)
-			select {
-			case <-e.ctx.Done():
-				return nil, err
-			case <-timer.C:
-			}
-			continue
+		conn, err := e.connect()
+		if err == nil {
+			e.udpConn = conn.udpConn
+			e.tr = conn.tr
+			e.ipConn = conn.ipConn
+			e.activeHTTP2.Store(conn.http2)
+			e.logger.InfoContext(e.ctx, "connected to MASQUE server over ", map[bool]string{true: "HTTP/2", false: "HTTP/3"}[conn.http2])
+			return conn.ipConn, nil
 		}
-		if rsp.StatusCode != 200 {
-			e.logger.ErrorContext(e.ctx, fmt.Errorf("Tunnel connection failed: %s", rsp.Status))
-			ipConn.Close()
-			if udpConn != nil {
-				udpConn.Close()
-			}
-			if tr != nil {
-				tr.Close()
-			}
-			timer.Reset(e.options.ReconnectDelay)
-			select {
-			case <-e.ctx.Done():
-				return nil, err
-			case <-timer.C:
-			}
-			continue
+		if e.ctx.Err() != nil {
+			return nil, e.ctx.Err()
 		}
-		e.udpConn = udpConn
-		e.tr = tr
-		e.ipConn = ipConn
-		e.logger.InfoContext(e.ctx, "Connected to MASQUE server ", e.options.Endpoint)
-		return ipConn, nil
+		e.logger.ErrorContext(e.ctx, E.Cause(err, "connect MASQUE tunnel"))
+		timer.Reset(e.options.ReconnectDelay)
+		select {
+		case <-e.ctx.Done():
+			return nil, e.ctx.Err()
+		case <-timer.C:
+		}
 	}
 }
 

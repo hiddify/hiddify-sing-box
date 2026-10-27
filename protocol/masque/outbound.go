@@ -38,6 +38,7 @@ type Outbound struct {
 	options      option.MASQUEOutboundOptions
 	tunnel       *masque.Tunnel
 	startHandler func()
+	scanner      *masqueScanner //H
 
 	await chan struct{}
 }
@@ -99,7 +100,16 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 			logger.ErrorContext(ctx, E.New("failed to generate cert: ", err))
 			return
 		}
-		tlsConfig, err := tls.NewMASQUEClient(ctx, logger, "consumer-masque.cloudflareclient.com", cert, privKey, peerPubKey, options.MASQUEOutboundTLSOptions)
+		serverName := options.ServerName //H
+		if serverName == "" {            //H
+			serverName = defaultServerName //H
+		} //H
+		mode, err := tunnelMode(options) //H
+		if err != nil {                  //H
+			logger.ErrorContext(ctx, err) //H
+			return                        //H
+		} //H
+		tlsConfig, err := tls.NewMASQUEClient(ctx, logger, serverName, cert, privKey, peerPubKey, options.MASQUEOutboundTLSOptions) //H
 		if err != nil {
 			logger.ErrorContext(ctx, E.New("failed to prepare TLS config: ", err))
 			return
@@ -126,19 +136,38 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 			logger.ErrorContext(ctx, err)
 			return
 		}
-		endpoint, err := appConfig.SelectEndpointFromConfig(options.UseHTTP2, options.UseIPv6, 443)
+		// H: the HTTP/3 and HTTP/2 endpoints; auto uses both
+		endpoint, err := appConfig.SelectEndpointFromConfig(mode == masque.ModeHTTP2, options.UseIPv6, 443)
 		if err != nil {
 			logger.ErrorContext(ctx, E.New("failed to select endpoint: ", err))
 			return
 		}
-		if options.Scanner != nil && options.Scanner.Enabled { //H: look for an endpoint that answers
-			scanned, err := scanMASQUEEndpoint(ctx, logger, tag, options, outboundDialer, tlsConfig) //H
-			if err != nil {                                                                          //H
-				logger.WarnContext(ctx, err, ", using the profile's endpoint") //H
-			} else { //H
-				endpoint = scanned //H
-			} //H
-		} //H
+		var h2Endpoint net.Addr
+		if mode == masque.ModeAuto {
+			h2Endpoint, err = appConfig.SelectEndpointFromConfig(true, options.UseIPv6, 443)
+			if err != nil {
+				logger.ErrorContext(ctx, E.New("failed to select HTTP/2 endpoint: ", err))
+				return
+			}
+		}
+		var scanner *masqueScanner
+		if options.Scanner != nil && options.Scanner.Enabled { // look for endpoints that answer
+			scanner, err = newMASQUEScanner(ctx, logger, tag, options, outboundDialer, tlsConfig)
+			if err != nil {
+				logger.WarnContext(ctx, "WARP scanner: ", err)
+			} else {
+				if scanned, err := scanner.Scan(mode == masque.ModeHTTP2, nil); err != nil {
+					logger.WarnContext(ctx, err, ", using the profile's endpoint")
+				} else {
+					endpoint = scanned
+				}
+				if mode == masque.ModeAuto {
+					if scanned, err := scanner.Scan(true, nil); err == nil {
+						h2Endpoint = scanned
+					}
+				}
+			}
+		}
 		tunnel, err := masque.NewTunnel(
 			ctx,
 			logger,
@@ -150,7 +179,9 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 				},
 				Endpoint:             endpoint,
 				TLSConfig:            tlsConfig,
-				UseHTTP2:             options.UseHTTP2,
+				UseHTTP2:             mode == masque.ModeHTTP2, //H
+				Mode:                 mode,                     //H
+				H2Endpoint:           h2Endpoint,               //H
 				UDPTimeout:           udpTimeout,
 				UDPKeepalivePeriod:   udpKeepalivePeriod,
 				UDPInitialPacketSize: options.UDPInitialPacketSize,
@@ -159,6 +190,10 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 		if err != nil {
 			logger.ErrorContext(ctx, err)
 			return
+		}
+		if scanner != nil { //H: scores and failover
+			tunnel.SetFailover(scanner.OnConnected, scanner.NextEndpoint)
+			outbound.scanner = scanner
 		}
 		outbound.tunnel = tunnel
 		if err = outbound.tunnel.Start(false); err != nil {
@@ -308,4 +343,22 @@ func (w *Outbound) createConfig() (*Config, error) {
 		IPv4:           updatedProfile.Config.Interface.Addresses.V4,
 		IPv6:           updatedProfile.Config.Interface.Addresses.V6,
 	}, nil
+}
+
+// InterfaceUpdated reconnects the tunnel on the new network, after naming it for the scores. //H
+func (w *Outbound) InterfaceUpdated(ctx context.Context) {
+	select {
+	case <-w.await:
+	default:
+		return
+	}
+	if w.tunnel == nil {
+		return
+	}
+	go func() {
+		if w.scanner != nil {
+			w.scanner.DetectNetwork()
+		}
+		w.tunnel.ResetConnection()
+	}()
 }

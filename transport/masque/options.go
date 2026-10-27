@@ -21,4 +21,12 @@ type TunnelOptions struct {
 	UDPKeepalivePeriod   time.Duration
 	UDPInitialPacketSize uint16
 	ReconnectDelay       time.Duration
+	// Mode is the HTTP version (ModeHTTP3, ModeHTTP2 or ModeAuto); empty follows UseHTTP2.
+	Mode string
+	// H2Endpoint is the HTTP/2 endpoint of ModeAuto (Endpoint is the HTTP/3 one).
+	H2Endpoint net.Addr
+	// OnConnected reports an endpoint that connected, and how long it took.
+	OnConnected func(endpoint net.Addr, http2 bool, elapsed time.Duration)
+	// NextEndpoint is asked for another endpoint after failed connects; nil keeps the endpoint.
+	NextEndpoint func(failed net.Addr, http2 bool) net.Addr
 }

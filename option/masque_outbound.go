@@ -28,4 +28,9 @@ type MASQUEOutboundOptions struct { //H
 	UDPInitialPacketSize     uint16                   `json:"udp_initial_packet_size,omitempty"`
 	ReconnectDelay           badoption.Duration       `json:"reconnect_delay,omitempty"`
 	Scanner                  *WARPScannerOptions      `json:"scanner,omitempty"`
+	// VHTTP is the HTTP version: "h3", "h2" or "auto" (HTTP/3, falling back to HTTP/2); empty
+	// is "auto", or "h2" with use_http2.
+	VHTTP string `json:"vhttp,omitempty"`
+	// ServerName is the TLS server name; consumer-masque.cloudflareclient.com when empty.
+	ServerName string `json:"server_name,omitempty"`
 }
