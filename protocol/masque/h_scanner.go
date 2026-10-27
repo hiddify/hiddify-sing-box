@@ -171,3 +171,32 @@ func addrPortOf(addr net.Addr) (netip.AddrPort, bool) {
 	}
 	return netip.AddrPort{}, false
 }
+
+// selectEndpoints picks the HTTP/3 and, for auto, the HTTP/2 endpoint: the
+// scanner's choice when it finds one, otherwise the profile's. The profile has
+// no HTTP/2 IPv6 endpoint, so with use_ipv6 and no scanner result auto keeps to
+// HTTP/3 instead of failing.
+func selectEndpoints(ctx context.Context, logger log.ContextLogger, config *Config, mode string, useIPv6 bool, scan func(http2 bool) (net.Addr, error)) (endpoint net.Addr, h2Endpoint net.Addr, _ string, _ error) {
+	choose := func(http2 bool) (net.Addr, error) {
+		if scan != nil {
+			scanned, err := scan(http2)
+			if err == nil {
+				return scanned, nil
+			}
+			logger.WarnContext(ctx, err, ", using the profile's endpoint")
+		}
+		return config.SelectEndpointFromConfig(http2, useIPv6, 443)
+	}
+	endpoint, err := choose(mode == masque.ModeHTTP2)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	if mode == masque.ModeAuto {
+		h2Endpoint, err = choose(true)
+		if err != nil {
+			logger.WarnContext(ctx, "no HTTP/2 endpoint (", err, "), using HTTP/3 only")
+			return endpoint, nil, masque.ModeHTTP3, nil
+		}
+	}
+	return endpoint, h2Endpoint, mode, nil
+}

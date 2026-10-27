@@ -136,38 +136,22 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 			logger.ErrorContext(ctx, err)
 			return
 		}
-		// H: the HTTP/3 and HTTP/2 endpoints; auto uses both
-		endpoint, err := appConfig.SelectEndpointFromConfig(mode == masque.ModeHTTP2, options.UseIPv6, 443)
-		if err != nil {
-			logger.ErrorContext(ctx, E.New("failed to select endpoint: ", err))
-			return
-		}
-		var h2Endpoint net.Addr
-		if mode == masque.ModeAuto {
-			h2Endpoint, err = appConfig.SelectEndpointFromConfig(true, options.UseIPv6, 443)
-			if err != nil {
-				logger.ErrorContext(ctx, E.New("failed to select HTTP/2 endpoint: ", err))
-				return
-			}
-		}
-		var scanner *masqueScanner
-		if options.Scanner != nil && options.Scanner.Enabled { // look for endpoints that answer
-			scanner, err = newMASQUEScanner(ctx, logger, tag, options, outboundDialer, tlsConfig)
-			if err != nil {
-				logger.WarnContext(ctx, "WARP scanner: ", err)
-			} else {
-				if scanned, err := scanner.Scan(mode == masque.ModeHTTP2, nil); err != nil {
-					logger.WarnContext(ctx, err, ", using the profile's endpoint")
-				} else {
-					endpoint = scanned
-				}
-				if mode == masque.ModeAuto {
-					if scanned, err := scanner.Scan(true, nil); err == nil {
-						h2Endpoint = scanned
-					}
-				}
-			}
-		}
+		var scanner *masqueScanner                             //H
+		var scan func(http2 bool) (net.Addr, error)            //H
+		if options.Scanner != nil && options.Scanner.Enabled { //H: look for endpoints that answer
+			scanner, err = newMASQUEScanner(ctx, logger, tag, options, outboundDialer, tlsConfig) //H
+			if err != nil {                                                                       //H
+				logger.WarnContext(ctx, "WARP scanner: ", err) //H
+				scanner = nil                                  //H
+			} else { //H
+				scan = func(http2 bool) (net.Addr, error) { return scanner.Scan(http2, nil) } //H
+			} //H
+		} //H
+		endpoint, h2Endpoint, mode, err := selectEndpoints(ctx, logger, appConfig, mode, options.UseIPv6, scan) //H
+		if err != nil {                                                                                         //H
+			logger.ErrorContext(ctx, E.New("failed to select endpoint: ", err)) //H
+			return                                                              //H
+		} //H
 		tunnel, err := masque.NewTunnel(
 			ctx,
 			logger,
