@@ -321,3 +321,10 @@ func TestH_DnsttResolveUnsupportedResolverType(t *testing.T) {
 		require.Error(t, err)
 	})
 }
+
+// record-type reaches the tunnel; it was only used to name the saved resolver list
+func TestH_DnsttRecordType(t *testing.T) {
+	tServer, err := newTunnelServer(option.DnsttOptions{Domain: "t.example.com", PublicKey: testPubKey, RecordType: "cname"})
+	require.NoError(t, err)
+	require.Equal(t, "cname", tServer.RecordType)
+}

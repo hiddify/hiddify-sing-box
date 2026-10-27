@@ -2,6 +2,7 @@ package dnstt
 
 import (
 	"context"
+	"github.com/sagernet/sing-box/option"
 	"math/rand"
 	"net"
 
@@ -108,29 +109,9 @@ func (c *Outbound) OpenStreamSingleResolver(ctx context.Context) (net.Conn, erro
 	return nil, lasterr
 }
 func (c *Outbound) createDnsttTunnel(ctx context.Context, resolver []dnstt.Resolver) (*dnstt.Tunnel, error) {
-	tServer, err := dnstt.NewTunnelServer(c.options.Domain, c.options.PublicKey)
+	tServer, err := newTunnelServer(c.options)
 	if err != nil {
-		return nil, fmt.Errorf("invalid tunnel server: %w", err)
-	}
-
-	if c.options.MTU != nil {
-		tServer.MTU = *c.options.MTU
-	}
-
-	tServer.DnsttCompat = c.options.DnsttCompat
-
-	if c.options.ClientIDSize != nil {
-		tServer.ClientIDSize = *c.options.ClientIDSize
-	}
-
-	if c.options.MaxNumLabels != nil {
-		tServer.MaxNumLabels = *c.options.MaxNumLabels
-	}
-	if c.options.RPS != nil {
-		tServer.RPS = *c.options.RPS
-	}
-	if c.options.MaxQnameLen != nil {
-		tServer.MaxQnameLen = *c.options.MaxQnameLen
+		return nil, err
 	}
 
 	tunnel, err := dnstt.NewTunnel(resolver, tServer)
@@ -189,4 +170,30 @@ func (c *Outbound) createDnsttTunnel(ctx context.Context, resolver []dnstt.Resol
 	}
 	// c.logger.DebugContext(c.ctx, "established smux session")
 	return tunnel, nil
+}
+
+// newTunnelServer builds the tunnel server settings from the options.
+func newTunnelServer(options option.DnsttOptions) (dnstt.TunnelServer, error) {
+	tServer, err := dnstt.NewTunnelServer(options.Domain, options.PublicKey)
+	if err != nil {
+		return tServer, fmt.Errorf("invalid tunnel server: %w", err)
+	}
+	if options.MTU != nil {
+		tServer.MTU = *options.MTU
+	}
+	tServer.DnsttCompat = options.DnsttCompat
+	if options.ClientIDSize != nil {
+		tServer.ClientIDSize = *options.ClientIDSize
+	}
+	if options.MaxNumLabels != nil {
+		tServer.MaxNumLabels = *options.MaxNumLabels
+	}
+	if options.RPS != nil {
+		tServer.RPS = *options.RPS
+	}
+	if options.MaxQnameLen != nil {
+		tServer.MaxQnameLen = *options.MaxQnameLen
+	}
+	tServer.RecordType = options.RecordType // was only used to name the saved resolver list
+	return tServer, nil
 }
