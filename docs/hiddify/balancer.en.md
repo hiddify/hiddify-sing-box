@@ -69,7 +69,7 @@ connection is not retried on another member.
 |---|---|---|---|
 | `outbounds` | list of strings | required | Tags of the members. |
 | `strategy` | string | `"round-robin"` | `round-robin`, `lowest-delay`, `consistent-hashing` or `sticky-sessions`. |
-| `delay_acceptable_ratio` | number | `0` | How much slower than the fastest member a member may be and still be used. `2` means up to twice the fastest delay. Set it: with `0`, `round-robin` uses only the fastest member, and the hashing strategies count every member as dead and use the hashed member. The Hiddify app uses `2`. |
+| `delay_acceptable_ratio` | number | `2` | How much slower than the fastest member a member may be and still be used. `2` means up to twice the fastest delay. Unset or `0` is `2`. |
 | `max_retry` | int | `0` | For `consistent-hashing` and `sticky-sessions`: how many other hash picks to try before going down the list. |
 | `ttl` | duration | `0` (no expiry) | For `sticky-sessions`: how long a pair keeps its member. |
 | `interrupt_exist_connections` | bool | `false` | When the group's choice changes, also close connections that came in from inbounds. Without it, only connections opened inside sing-box are closed. With `consistent-hashing` and `sticky-sessions`, every new test result counts as a change. |
