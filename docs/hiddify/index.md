@@ -24,6 +24,7 @@ an English and a Persian version.
 ### Transports and TLS
 
 - [XHTTP](xhttp.en.md) ([فارسی](xhttp.fa.md)): Xray's XHTTP transport with its modes, padding, placements, XMUX and split download.
+- [mKCP](kcp.en.md) ([فارسی](kcp.fa.md)): Xray 26's mKCP over UDP for lossy or TCP-throttled networks, hidden by finalmask UDP masks (build tag `with_kcp`).
 - [Raw transport](raw.en.md) ([فارسی](raw.fa.md)): the `raw` transport, so configs converted from Xray load.
 - [Custom gRPC paths](grpc-custom-path.en.md) ([فارسی](grpc-custom-path.fa.md)): Xray-style multi-segment gRPC paths in `service_name`.
 - [finalmask](finalmask.en.md) ([فارسی](finalmask.fa.md)): Xray's finalmask masks (fragment, noise, header-custom and more) on every connection an outbound dials.
