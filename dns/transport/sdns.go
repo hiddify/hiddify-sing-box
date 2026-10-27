@@ -2,6 +2,8 @@ package transport
 
 import (
 	"context"
+	"github.com/ameshkov/dnsstamps"
+	E "github.com/sagernet/sing/common/exceptions"
 	"net"
 	"sync"
 	"time"
@@ -34,6 +36,13 @@ type SDNSTransport struct {
 }
 
 func NewSDNSTransport(ctx context.Context, logger log.ContextLogger, tag string, options option.SDNSDNSServerOptions) (adapter.DNSTransport, error) {
+	stamp, err := dnsstamps.NewServerStampFromString(options.Stamp) // checked here, not at the first query
+	if err != nil {
+		return nil, E.Cause(err, "sdns: parse stamp")
+	}
+	if stamp.Proto != dnsstamps.StampProtoTypeDNSCrypt {
+		return nil, E.New("sdns: only DNSCrypt stamps are supported, this one is ", stamp.Proto.String(), "; use the https, tls or udp server type for it")
+	}
 	transportDialer, err := dns.NewRemoteDialer(ctx, options.RemoteDNSServerOptions)
 	if err != nil {
 		return nil, err

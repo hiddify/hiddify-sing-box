@@ -115,14 +115,13 @@ func TestH_SDNSInvalidStamps(t *testing.T) {
 		Proto:         dnsstamps.StampProtoTypePlain,
 		ServerAddrStr: "127.0.0.1:53",
 	}
+	// refused when the server is created, not at its first query
 	for _, stamp := range []string{dohStamp.String(), dotStamp.String(), plainStamp.String()} {
-		transport := hNewSDNS(t, stamp)
-		_, err := transport.Exchange(context.Background(), hQuery())
-		require.ErrorIs(t, err, dnscrypt.ErrInvalidDNSStamp, stamp)
+		_, err := NewSDNSTransport(context.Background(), log.NewNOPFactory().NewLogger("sdns"), "sdns-test", option.SDNSDNSServerOptions{Stamp: stamp})
+		require.ErrorContains(t, err, "only DNSCrypt stamps", stamp)
 	}
 	for _, stamp := range []string{"", "not-a-stamp", "sdns://", "sdns://!!!", "https://dns.google/dns-query"} {
-		transport := hNewSDNS(t, stamp)
-		_, err := transport.Exchange(context.Background(), hQuery())
+		_, err := NewSDNSTransport(context.Background(), log.NewNOPFactory().NewLogger("sdns"), "sdns-test", option.SDNSDNSServerOptions{Stamp: stamp})
 		require.Error(t, err, stamp)
 	}
 }
@@ -154,7 +153,7 @@ func TestH_SDNSOptionsJSON(t *testing.T) {
 
 func TestH_SDNSAdapterMetadata(t *testing.T) {
 	t.Parallel()
-	transport := hNewSDNS(t, "sdns://")
+	transport := hNewSDNS(t, hStartDNSCryptServer(t))
 	require.Equal(t, "sdns-test", transport.Tag())
 	require.Equal(t, C.DNSTypeSDNS, transport.Type())
 }
