@@ -12,6 +12,7 @@ type URLTestOutboundOptions struct {
 	Outbounds                 []string           `json:"outbounds" reference:"outbound"`
 	URL                       string             `json:"url,omitempty"`
 	URLs                      []string           `json:"urls,omitempty"` //H
+	Mode                      string             `json:"mode,omitempty"` //H: "" or failover
 	Interval                  badoption.Duration `json:"interval,omitempty"`
 	Tolerance                 uint16             `json:"tolerance,omitempty"`
 	IdleTimeout               badoption.Duration `json:"idle_timeout,omitempty"`
