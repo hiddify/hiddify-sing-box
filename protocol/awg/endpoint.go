@@ -219,7 +219,7 @@ func genIpcConfig(opts option.AwgEndpointOptions, resolvePeer func(domain string
 				}
 				endpointAddr = resolvedAddr.String()
 			}
-			s += "\nendpoint=" + endpointAddr + ":" + format.ToString(peer.Port)
+			s += "\nendpoint=" + net.JoinHostPort(endpointAddr, format.ToString(peer.Port)) // brackets an IPv6 address
 		}
 		if peer.PersistentKeepaliveInterval != 0 {
 			s += "\npersistent_keepalive_interval=" + format.ToString(peer.PersistentKeepaliveInterval)
