@@ -225,7 +225,6 @@ func TestH_UpdateAccountLicenseEscaping(t *testing.T) {
 }
 
 func TestH_UpdateAccountInvalidDeviceID(t *testing.T) {
-	t.Skip("BUG: UpdateAccount dereferences a nil request (sets header before checking NewRequest error); a device id with a control character panics")
 	_, api := hNewFakeCloudflare(t, func(w http.ResponseWriter, r *http.Request, body string) {})
 	require.NotPanics(t, func() {
 		_, err := api.UpdateAccount(context.Background(), &CloudflareProfile{ID: "bad\x7fid", Token: "t"}, "lic")
