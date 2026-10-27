@@ -54,6 +54,10 @@ an English and a Persian version.
 - [DNSCrypt (SDNS stamps)](sdns.en.md) ([فارسی](sdns.fa.md)): the `sdns` server, which sends encrypted queries to a DNSCrypt resolver given by its stamp.
 - [sslip.io names](sslip-hosts.en.md) ([فارسی](sslip-hosts.fa.md)): the `hosts` server answers `sslip.io` names with the address written in the name.
 
+## For app developers
+
+- [App considerations](app_considerations.md): what hiddify-app and hiddify-core need to change or know because of the v5 work.
+
 ## Bug fixes
 
 - [v5 bug fixes](bugfix/v5.en.md) ([فارسی](bugfix/v5.fa.md)): bugs fixed on top of sing-box v1.15, newest first, each with its commit.

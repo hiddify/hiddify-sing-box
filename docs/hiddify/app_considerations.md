@@ -1,0 +1,126 @@
+# App considerations
+
+What hiddify-app and hiddify-core need to change or know because of the v5 work in
+hiddify-sing-box. Each item says what changed in the core, and what the app or hiddify-core should
+do about it. Items marked **Required** break or misbehave until they are handled.
+
+## Build
+
+- **Submodules.** The core now uses six forks under `replace/`, each a git submodule on its own
+  branch: `wireguard-go` (v5), `sing-tun` (dev), `gvisor` (go), `amneziawg-go` (v5), `sing-mux`
+  (v5), plus the existing ones. `go.mod` and `test/go.mod` point at them with `replace`.
+  **Required:** hiddify-core and every CI or gomobile build must check out submodules recursively
+  (`git submodule update --init --recursive`), or the build fails on missing modules.
+- **Build tags.** `with_masque` is now in the core Makefile and in hiddify-core's Makefile
+  (hiddify-core commit `6bea470`). Four new features are behind tags that are **off** by default:
+  `with_kcp` (mKCP), `with_sudoku` (Sudoku), `with_bond` (Bond) and `with_call` (call tunnel). A
+  config using one of them fails with "… is not included in this build" unless the tag is set.
+  Decide per platform whether to ship them; `with_call` pulls in a large WebRTC stack. rmux needs
+  no tag.
+- **Tailscale.** The core Makefile no longer lists `with_tailscale` (an uncommitted local change at
+  the time of writing). If that stays, `tailscale` configs fail to load; keep the app from
+  generating them, or put the tag back.
+
+## Configuration the app generates
+
+- **Required — WARP by id and auth_token.** A `warp` profile given by `id` and `auth_token` now
+  needs `private_key` (the device's own key); without it the endpoint fails at start. Before, it
+  started without a key and never worked.
+- **Required — AmneziaWG on a wireguard endpoint.** A `wireguard` endpoint with an `awg` block now
+  fails to load ("use type awg"); before, the block was ignored and the connection was plain
+  WireGuard. Generate `"type": "awg"` for AmneziaWG, or a `warp` endpoint with an `awg` block.
+- **Required — sdns stamps.** The `sdns` server accepts only DNSCrypt stamps, and now refuses a
+  DoH, DoT or plain stamp when the config loads. Convert those stamps to `https`, `tls` or `udp`
+  servers.
+- **SSH and UDP.** The SSH outbound offers UDP only with `udp_over_tcp`; without it, UDP goes to
+  another outbound. Set `udp_over_tcp` if UDP should go through SSH. On the SSH inbound,
+  `host_key_algorithms` and `network` now take effect.
+- **XHTTP mode.** An empty or `auto` mode now behaves as Xray's client: `stream-one` over REALITY,
+  `stream-up` over REALITY with a separate `download`, `packet-up` otherwise. Before, the client
+  always used `packet-up`, and an empty mode was an error. Configs that relied on `packet-up` over
+  REALITY should set it explicitly.
+- **tls_fragment in the tls block.** The core now moves a `tls_fragment` written inside an
+  outbound's `tls` block to the dialer (unless the dialer has its own). hiddify-core's config
+  patching that does the same can stay or be removed.
+- **REALITY and fragmentation.** `tls.fragment` and `tls.record_fragment` now work with REALITY.
+  hiddify-core skips fragmentation for REALITY nodes; that skip can be removed. The new
+  `tls.reality.key_share` (`""`, `hybrid`, `classical`) is available; `classical` is refused by
+  Xray 26.9.8 and newer servers.
+- **TLS tricks.** `tls.tls_tricks` (mixed-case SNI, padding extension) now works for uTLS clients;
+  padding with a `random` fingerprint is a config error.
+- **Balancer.** `delay_acceptable_ratio` now defaults to 2 when unset or 0 (the app sends 2
+  already). With `interrupt_exist_connections`, the hashing strategies interrupt only when the
+  set of usable members changes, not on every test round.
+- **New options worth exposing:**
+  - DNS group: `mode` `stable` and `fastest`, `error_ttl`, `win_ttl`.
+  - URL test: `urls` (more test URLs) and `mode: "failover"`.
+  - WARP: `scanner` (endpoint scanner with per-network scores), `noise.mode: "quic"`, the `awg`
+    block with AmneziaWG 3.x settings and the QUIC masquerade (`ip`, `id`, `ib`).
+  - MASQUE: `vhttp` (`h3`, `h2`, `auto`), `server_name`, `scanner`, `mtu`, `unique_identifier`.
+  - AmneziaWG: 3.x settings (`header_protection_key`, `content_padding_addition`, the timers,
+    `random_trailers`, `disable_cookies`), `s3`/`s4` and `h1`–`h4` ranges now work.
+  - Multiplex: `protocol: "rmux"`.
+  - New types (build-tagged): `mkcp` transport, `sudoku`, `bond`, `call`; new `fallback` group.
+- **MASQUE profile key.** The saved MASQUE profile is still keyed by the tag unless
+  `unique_identifier` is set. If the app renames outbounds, set `unique_identifier` so the device
+  is not registered again.
+- **Schema.** `docs/schema.json` is generated again (`make schema`) and now covers the Hiddify
+  options. Editors or validators that use it should take the new file.
+
+## Network changes and caches
+
+- **Network change callbacks.** WARP and MASQUE now react to network changes: they check the
+  current endpoint and only rescan when it fails, and they name the network by asking
+  `cloudflare.com/cdn-cgi/trace` (or `speedtest.net`), not by SSID, so no location permission is
+  needed. The DNS group clears its record of failed servers. All of this relies on the platform
+  reporting interface changes as it does today; keep that working.
+- **Cache file.** Scanner scores, the WARP config and the MASQUE profile are kept in the cache
+  file. Keep `experimental.cache_file` enabled, with `store_warp_config` and `store_masque_config`
+  where wanted; without the cache file, every start registers a new WARP/MASQUE device and scans
+  from scratch.
+
+## Reports
+
+- **Crash, OOM and power reports are not encrypted.** The `encrypt` request is accepted and
+  ignored, and archives are always named `.zip` (no more `.age`). Instead the archive leaves out
+  the configuration and the list of open connections, and scrubs logs and other text of IP
+  addresses, proxy links and DNS stamps, URL paths and queries, UUIDs, emails and key=value
+  secrets. The app's "include configuration" option no longer adds the configuration. The app
+  should stop showing an "encrypted" state for reports.
+
+## Behaviour the app should know about
+
+- **URL test.** A dial that fails because the path is dead moves the group to another member
+  immediately, without closing live connections, so the selected member can change between tests.
+  `failover` keeps a member until it fails.
+- **DNS predefined answers.** In legacy DNS mode, A/AAAA records in 10.0.0.0/8 and
+  2001:4188:2:600::/64 are removed from `predefined` answers (`dns/blocked_checker.go`). This is
+  deliberate and tested, but a predefined answer in those ranges returns nothing; keep it in mind
+  when generating predefined rules.
+- **Rule sets.** A remote rule set without a cached copy starts empty and is downloaded once the
+  service is up; a failed download is retried after 1 s, 10 s, 30 s, 1 min, 5 min, 10 min, then
+  every 30 min. Rules that depend on it apply only once it arrives.
+- **Reverse tunnel.** `tunnel_server` / `tunnel_client` now carry traffic: route rules must set
+  `override_tunnel_destination` on the server.
+
+## Call tunnel (if shipped)
+
+- The call link is the tunnel's only key: anyone with it can read the tunnel or use the server as a
+  proxy. Treat join links as secrets in the UI, in shared configs and in logs. The server logs the
+  link of a call it creates, which is how the user learns it.
+- Account cookies and the Dion password are stored in the config in plain text; store configs
+  that contain them with the same care as other credentials.
+- Only the server side (inbound) needs an account; the client joins as a guest. Bitrix24 has no
+  server side in this build.
+- Not tested end to end in Hiddify.
+
+## Deferred, needs the app
+
+- **Android auto-redirect rework** (from reF1nd 74f12fb8) is not ported: it changes the gomobile
+  `PlatformInterface`, so it needs matching changes in hiddify-app's Android code.
+
+## Repositories
+
+All forks have GitHub repos under `github.com/hiddify/` (`sing-tun`, `gvisor`, `wireguard-go`,
+`amneziawg-go`, `sing-mux`, and the older ones). Nothing has been pushed yet: push each fork's
+branch before pushing hiddify-sing-box, or the submodule commits cannot be fetched.
