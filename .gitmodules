@@ -17,8 +17,8 @@
 [submodule "replace/sing-tun"]
 	path = replace/sing-tun
 	url = https://github.com/hiddify/sing-tun.git
-	branch = hiddify
+	branch = dev
 [submodule "replace/gvisor"]
 	path = replace/gvisor
 	url = https://github.com/hiddify/gvisor.git
-	branch = hiddify
+	branch = go
