@@ -13,6 +13,7 @@ an English and a Persian version.
 - [WireGuard: Hiddify additions](wireguard-hiddify.en.md) ([فارسی](wireguard-hiddify.fa.md)): noise packets before handshakes, per-peer user names, socket recovery and UDP fragmentation on by default.
 - [WireGuard outbound (legacy format)](wireguard-legacy.en.md) ([فارسی](wireguard-legacy.fa.md)): the old WireGuard outbound that upstream removed, kept so old configs still load.
 - [VLESS encryption](vless-encryption.en.md) ([فارسی](vless-encryption.fa.md)): Xray's post-quantum VLESS encryption, with Vision over it even without TLS.
+- [Sudoku](sudoku.en.md) ([فارسی](sudoku.fa.md)): an encrypted TCP proxy that sends its bytes as sudoku clues, so traffic looks like text or has low randomness, with optional HTTP tunnels (build tag `with_sudoku`).
 - [Mieru](mieru.en.md) ([فارسی](mieru.fa.md)): a fully encrypted, padded proxy over TCP or UDP port ranges with no fixed pattern.
 - [TrustTunnel](trusttunnel.en.md) ([فارسی](trusttunnel.fa.md)): proxy traffic as HTTP CONNECT streams over HTTP/2 or HTTP/3.
 - [SSH](ssh.en.md) ([فارسی](ssh.fa.md)): an SSH server inbound for port forwarding, plus UDP over TCP and a background connection for the SSH outbound.

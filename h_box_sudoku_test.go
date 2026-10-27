@@ -3,8 +3,16 @@
 package box_test
 
 import (
+	"context"
 	"strconv"
 	"testing"
+
+	box "github.com/sagernet/sing-box"
+	"github.com/sagernet/sing-box/include"
+	"github.com/sagernet/sing-box/option"
+	"github.com/sagernet/sing/common/json"
+
+	"github.com/stretchr/testify/require"
 )
 
 // Sudoku between two boxes, plain and with the HTTP mask
@@ -33,4 +41,13 @@ func TestH_Sudoku(t *testing.T) {
 			hEchoThroughSOCKS(t, mixedPort, echoAddress)
 		})
 	}
+}
+
+// a bad server config fails at load, not on every connection
+func TestH_SudokuInboundValidates(t *testing.T) {
+	ctx := include.Context(context.Background())
+	options, err := json.UnmarshalExtendedContext[option.Options](ctx, []byte(`{"inbounds": [{"type": "sudoku", "listen_port": 1, "key": "k", "aead_method": "rot13"}]}`))
+	require.NoError(t, err)
+	_, err = box.New(box.Options{Context: ctx, Options: options})
+	require.Error(t, err)
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-box/transport/sudoku"
 	"github.com/sagernet/sing/common/bufio"
+	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
@@ -67,6 +68,12 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 		protoConf.AEADMethod = options.AEADMethod
 	}
 
+	if err := protoConf.Validate(); err != nil { // checked here, not only when a client connects
+		return nil, E.Cause(err, "sudoku")
+	}
+	if strings.TrimSpace(options.Fallback) != "" {
+		logger.Warn("sudoku: fallback is not implemented, rejected connections are closed")
+	}
 	inbound := &Inbound{
 		Adapter:   inbound.NewAdapter(C.TypeSudoku, tag),
 		router:    router,
