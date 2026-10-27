@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/sagernet/sing-box/log"
+	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-box/transport/call"
 
 	"github.com/stretchr/testify/require"
@@ -40,4 +41,12 @@ func TestH_ConnectWithRetry(t *testing.T) {
 		return nil, errors.New("down")
 	}, func(*call.Bridge) {}, nil)
 	require.Equal(t, 1, attempts, "a closed box stops retrying")
+}
+
+// a wbstream mode that does not exist fails at load, not on every retry
+func TestH_CallModeCheckedAtLoad(t *testing.T) {
+	_, err := NewOutbound(context.Background(), nil, log.NewNOPFactory().Logger(), "call", option.CallOutboundOptions{
+		JoinLink: "x", CallCommonOptions: option.CallCommonOptions{Platform: "wbstream", Mode: "audio"},
+	})
+	require.ErrorContains(t, err, "unknown wbstream mode")
 }

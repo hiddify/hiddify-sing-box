@@ -44,6 +44,9 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 	if options.Platform == "" {
 		return nil, E.New("missing platform")
 	}
+	if err := call.CheckMode(options.Platform, options.Mode); err != nil { // at load: the connect is retried forever
+		return nil, err
+	}
 	outboundDialer, err := dialer.New(ctx, options.DialerOptions, true)
 	if err != nil {
 		return nil, err

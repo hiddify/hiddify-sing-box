@@ -70,10 +70,8 @@ func Connect(ctx context.Context, cfg Config) (*Bridge, error) {
 			return &Bridge{relay: relay}, nil
 		}
 	case "wbstream":
-		switch cfg.Mode { // Hiddify: an unknown mode never connected
-		case "", wbstream.TunnelModeDC, wbstream.TunnelModeVideo:
-		default:
-			return nil, E.New("call: unknown wbstream mode ", cfg.Mode, ", use dc or video")
+		if err := CheckMode(cfg.Platform, cfg.Mode); err != nil { // Hiddify: an unknown mode never connected
+			return nil, err
 		}
 		switch cfg.Role {
 		case RoleCreator:
@@ -162,4 +160,16 @@ func (b *Bridge) SetAcceptHandler(fn func(conn net.Conn, destination string)) {
 
 func (b *Bridge) SetUDPAcceptHandler(fn func(conn net.Conn, destination string)) {
 	b.relay.SetUDPAcceptHandler(fn)
+}
+
+// CheckMode refuses a mode the platform does not have; only wbstream has modes.
+func CheckMode(platform string, mode string) error {
+	if platform != "wbstream" {
+		return nil
+	}
+	switch mode {
+	case "", wbstream.TunnelModeDC, wbstream.TunnelModeVideo:
+		return nil
+	}
+	return E.New("call: unknown wbstream mode ", mode, ", use dc or video")
 }
