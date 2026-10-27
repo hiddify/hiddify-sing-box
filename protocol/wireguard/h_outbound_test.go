@@ -149,3 +149,16 @@ func TestH_LegacyOutboundMultiPeerAllowedIPs(t *testing.T) {
 	require.Equal(t, adapter.PreMatchContinue, o.PreMatchFlow(N.NetworkICMP, netip.MustParseAddr("8.8.8.8")))
 	require.False(t, o.PreferredAddress(nil, netip.MustParseAddr("8.8.8.8")))
 }
+
+// network limits what the legacy outbound accepts, as in upstream's legacy outbound
+func TestH_LegacyOutboundNetwork(t *testing.T) {
+	created, err := NewOutbound(context.Background(), nil, log.NewNOPFactory().Logger(), "wg", option.LegacyWireGuardOutboundOptions{
+		PrivateKey:    "aFJ6U0lSZVc3emJXT1FqY0FGNlFUZDVtb3N0b0V4WXQ=",
+		PeerPublicKey: "aFJ6U0lSZVc3emJXT1FqY0FGNlFUZDVtb3N0b0V4WXQ=",
+		LocalAddress:  []netip.Prefix{netip.MustParsePrefix("10.0.0.2/32")},
+		ServerOptions: option.ServerOptions{Server: "127.0.0.1", ServerPort: 51820},
+		Network:       option.NetworkList("tcp"),
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{N.NetworkTCP, N.NetworkICMP}, created.Network())
+}
