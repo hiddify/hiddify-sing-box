@@ -26,3 +26,7 @@
 	path = replace/amneziawg-go
 	url = https://github.com/hiddify/amneziawg-go.git
 	branch = v5
+[submodule "replace/sing-mux"]
+	path = replace/sing-mux
+	url = https://github.com/hiddify/sing-mux.git
+	branch = v5

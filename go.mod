@@ -276,6 +276,7 @@ require (
 	github.com/refraction-networking/obfs4 v0.1.2 // indirect
 	github.com/sergeyfrolov/bsbuffer v0.0.0-20180903213811-94e85abb8507 // indirect
 	github.com/shadowsocks/go-shadowsocks2 v0.1.5 // indirect
+	github.com/shtorm-7/rmux v1.0.1 // indirect
 	github.com/syndtr/gocapability v0.0.0-20200815063812-42c35b437635 // indirect
 	github.com/tailscale/goupnp v1.0.1-0.20210804011211-c64d0f06ea05 // indirect
 	github.com/things-go/go-socks5 v0.1.1 // indirect
@@ -313,3 +314,5 @@ replace github.com/amnezia-vpn/amneziawg-go/v3 => ./replace/amneziawg-go
 replace github.com/sagernet/sing-tun => ./replace/sing-tun
 
 replace github.com/sagernet/gvisor => ./replace/gvisor
+
+replace github.com/sagernet/sing-mux => ./replace/sing-mux
