@@ -277,6 +277,9 @@ func (h *Outbound) Resolve(resolver dnstt.Resolver, name string, qtype uint16) (
 		return h.ResolveUDP(resolver, name, qtype)
 	}
 	conn, r, err := h.getTCPBasedResolverConnection(resolver, 5*time.Second)
+	if err != nil { // the conn is nil on error
+		return nil, err
+	}
 	msg := buildDNSQuery(name, qtype)
 
 	data, err := msg.Pack()

@@ -314,7 +314,6 @@ func TestH_DnsttResolveUDPLocal(t *testing.T) {
 }
 
 func TestH_DnsttResolveUnsupportedResolverType(t *testing.T) {
-	t.Skip("BUG: Resolve ignores the error from getTCPBasedResolverConnection and calls WriteTo on a nil conn, panicking (protocol/hiddify/dnstt/tester.go:274)")
 	t.Parallel()
 	out := newTestOutbound(t, validOptions())
 	require.NotPanics(t, func() {
