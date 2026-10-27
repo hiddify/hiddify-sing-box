@@ -18,7 +18,7 @@ import (
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 
-	"github.com/xtls/xray-core/transport/internet/kcp"
+	"github.com/sagernet/sing-box/transport/v2raykcp/kcp"
 )
 
 var _ adapter.V2RayServerTransport = (*Server)(nil)

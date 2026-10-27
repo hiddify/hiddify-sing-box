@@ -6,7 +6,7 @@ import (
 	"github.com/sagernet/sing-box/option"
 	E "github.com/sagernet/sing/common/exceptions"
 
-	"github.com/xtls/xray-core/transport/internet/kcp"
+	"github.com/sagernet/sing-box/transport/v2raykcp/kcp"
 )
 
 // newConfig builds Xray's mKCP config with Xray's defaults and checks.
