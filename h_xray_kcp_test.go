@@ -3,6 +3,7 @@
 package box_test
 
 import (
+	"encoding/json"
 	"strconv"
 	"strings"
 	"testing"
@@ -71,4 +72,32 @@ func TestH_XrayKCP(t *testing.T) {
 			hEchoThroughSOCKS(t, socksPort, echoAddress)
 		})
 	}
+}
+
+// sing-box to sing-box over mKCP, with TLS inside it
+func TestH_KCPWithTLS(t *testing.T) {
+	certPEM, keyPEM := hSelfSignedPEM(t)
+	echoAddress := hStartEcho(t)
+	vlessPort := hFreeUDPPort(t)
+	mixedPort := hFreeTCPPort(t)
+	hStartInteropBox(t, `{
+		"log": {"disabled": true},
+		"inbounds": [
+			{"type": "vless", "tag": "vless-in", "listen": "127.0.0.1", "listen_port": `+strconv.Itoa(vlessPort)+`, "users": [{"uuid": "`+hInteropUUID+`"}],
+				"transport": {"type": "mkcp"}, "tls": {"enabled": true, "server_name": "example.com", "certificate": `+hJSONString(certPEM)+`, "key": `+hJSONString(keyPEM)+`}},
+			{"type": "mixed", "listen": "127.0.0.1", "listen_port": `+strconv.Itoa(mixedPort)+`}
+		],
+		"outbounds": [
+			{"type": "vless", "tag": "kcp", "server": "127.0.0.1", "server_port": `+strconv.Itoa(vlessPort)+`, "uuid": "`+hInteropUUID+`",
+				"transport": {"type": "kcp"}, "tls": {"enabled": true, "server_name": "example.com", "insecure": true}},
+			{"type": "direct", "tag": "direct"}
+		],
+		"route": {"rules": [{"inbound": "vless-in", "outbound": "direct"}], "final": "kcp"}
+	}`, nil)
+	hEchoThroughSOCKS(t, mixedPort, echoAddress)
+}
+
+func hJSONString(value string) string {
+	content, _ := json.Marshal(value)
+	return string(content)
 }
