@@ -52,7 +52,8 @@ func hXrayVersion(t *testing.T, binary string) string {
 	return strings.Fields(string(output))[1]
 }
 
-// hStartXray runs binary with config until the test ends and waits for port to accept.
+// hStartXray runs binary with config until the test ends and waits for TCP port to accept; with
+// port 0 (a UDP inbound) it waits a moment instead.
 func hStartXray(t *testing.T, binary string, config string, port int) {
 	t.Helper()
 	configPath := filepath.Join(t.TempDir(), "config.json")
@@ -69,6 +70,11 @@ func hStartXray(t *testing.T, binary string, config string, port int) {
 			t.Log("xray output:\n" + output.String())
 		}
 	})
+	if port == 0 {
+		time.Sleep(time.Second)
+		require.Nil(t, command.ProcessState, "xray exited")
+		return
+	}
 	require.Eventually(t, func() bool {
 		conn, err := net.DialTimeout("tcp", "127.0.0.1:"+strconv.Itoa(port), 100*time.Millisecond)
 		if err != nil {

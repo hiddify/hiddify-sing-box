@@ -45,6 +45,8 @@ func NewServerTransport(ctx context.Context, logger logger.ContextLogger, option
 		return xhttp.NewServer(ctx, logger, options.XHTTPOptions, tlsConfig, handler)
 	case C.V2RayTransportTypeRaw:
 		return v2rayraw.NewServer(ctx, logger, options.RawOptions, tlsConfig, handler)
+	case C.V2RayTransportTypeKCP: //H
+		return NewKCPServer(ctx, logger, options.KCPOptions, tlsConfig, handler) //H
 	default:
 		return nil, E.New("unknown transport type: " + options.Type)
 	}
@@ -73,6 +75,8 @@ func NewClientTransport(ctx context.Context, dialer N.Dialer, serverAddr M.Socks
 		return xhttp.NewClient(ctx, dialer, serverAddr, options.XHTTPOptions, tlsConfig)
 	case C.V2RayTransportTypeRaw:
 		return v2rayraw.NewClient(ctx, dialer, serverAddr, options.RawOptions, tlsConfig)
+	case C.V2RayTransportTypeKCP: //H
+		return NewKCPClient(ctx, dialer, serverAddr, options.KCPOptions, tlsConfig) //H
 	default:
 		return nil, E.New("unknown client transport type: " + options.Type)
 	}
