@@ -277,7 +277,6 @@ func TestH_VisionConnWrapper(t *testing.T) {
 }
 
 func TestH_VisionConnWrapperDoesNotBypassEncryption(t *testing.T) {
-	t.Skip("vision fix pending")
 	t.Parallel()
 	a, b := net.Pipe()
 	defer a.Close()
