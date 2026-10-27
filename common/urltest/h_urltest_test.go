@@ -73,7 +73,6 @@ func TestH_URLTestLoopback(t *testing.T) {
 }
 
 func TestH_URLTestCanceledAfterDialReportsError(t *testing.T) {
-	t.Skip("BUG: urlTest returns (0, nil) when ctx is canceled after the dial, reporting a successful 0ms test")
 	server, _ := countingServer(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

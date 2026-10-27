@@ -168,7 +168,7 @@ func urlTest(ctx context.Context, link string, detour N.Dialer) (t uint16, err e
 	}
 	select {
 	case <-ctx.Done():
-		return
+		return 0, ctx.Err() //H: a bare return reported a 0 ms success
 	default:
 	}
 	client := http.Client{
@@ -189,7 +189,7 @@ func urlTest(ctx context.Context, link string, detour N.Dialer) (t uint16, err e
 	defer client.CloseIdleConnections()
 	select {
 	case <-ctx.Done():
-		return
+		return 0, ctx.Err() //H: a bare return reported a 0 ms success
 	default:
 	}
 	resp, err := client.Do(req.WithContext(ctx))
