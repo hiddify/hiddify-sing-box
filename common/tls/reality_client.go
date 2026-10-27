@@ -28,6 +28,7 @@ import (
 	"unsafe"
 
 	"github.com/sagernet/sing-box/adapter"
+	tf "github.com/sagernet/sing-box/common/tlsfragment" //H
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing/common/debug"
@@ -166,6 +167,9 @@ func (e *RealityClientConfig) ClientHandshake(ctx context.Context, conn net.Conn
 	if err != nil {
 		return nil, err
 	}
+	if e.uClient.fragment || e.uClient.recordFragment { //H: fragment and record_fragment were skipped for REALITY
+		conn = tf.NewConn(conn, e.uClient.ctx, e.uClient.fragment, e.uClient.recordFragment, e.uClient.fragmentFallbackDelay) //H
+	} //H
 	uConn := utls.UClient(conn, uConfig, utls.HelloCustom)
 	verifier.UConn = uConn
 	err = uConn.ApplyPreset(spec)

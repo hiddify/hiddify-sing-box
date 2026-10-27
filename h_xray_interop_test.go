@@ -291,6 +291,20 @@ func TestH_XrayREALITYKeyShare(t *testing.T) {
 					"privateKey": "`+privateKey+`", "shortIds": ["0123abcd"]}}}],
 			"outbounds": [{"protocol": "freedom", "settings": {"finalRules": [{"action": "allow", "ip": ["127.0.0.0/8"]}]}}]
 		}`, xrayPort)
+		for _, fragment := range []string{"fragment", "record_fragment"} {
+			t.Run(version+"/chrome/"+fragment, func(t *testing.T) {
+				mixedPort := hFreeTCPPort(t)
+				hStartInteropBox(t, `{
+					"log": {"disabled": true},
+					"inbounds": [{"type": "mixed", "listen": "127.0.0.1", "listen_port": `+strconv.Itoa(mixedPort)+`}],
+					"outbounds": [{"type": "vless", "server": "127.0.0.1", "server_port": `+strconv.Itoa(xrayPort)+`,
+						"uuid": "`+hInteropUUID+`", "tls": {"enabled": true, "server_name": "example.com", "`+fragment+`": true,
+							"utls": {"enabled": true, "fingerprint": "chrome"},
+							"reality": {"enabled": true, "public_key": "`+publicKey+`", "short_id": "0123abcd"}}}]
+				}`, nil)
+				hEchoThroughSOCKS(t, mixedPort, echoAddress)
+			})
+		}
 		for _, keyShare := range []string{"", "classical"} {
 			for _, fingerprint := range []string{"chrome", "firefox", "safari", "edge"} {
 				t.Run(version+"/"+fingerprint+"/key_share="+keyShare, func(t *testing.T) {
