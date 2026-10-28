@@ -18,6 +18,8 @@ github.com/Jigsaw-Code/outline-sdk v0.0.20 h1:4ep7MK9lFmcyPIRIbn4xrP1VKdJNsqR6+i
 github.com/Jigsaw-Code/outline-sdk v0.0.20/go.mod h1:CFDKyGZA4zatKE4vMLe8TyQpZCyINOeRFbMAmYHxodw=
 github.com/Jigsaw-Code/outline-ss-server v1.8.0 h1:6h7CZsyl1vQLz3nvxmL9FbhDug4QxJ1YTxm534eye1E=
 github.com/Jigsaw-Code/outline-ss-server v1.8.0/go.mod h1:slnHH3OZsQmZx/DRKhxvvaGE/8+n3Lkd6363h1ev71E=
+github.com/Leadaxe/utls-lx v1.8.8-0.20261011005638-ad69b191e2f8 h1:zPtCcZOcrs2519wouMl7+8X+t9iRFuloHMhCO/vyqoA=
+github.com/Leadaxe/utls-lx v1.8.8-0.20261011005638-ad69b191e2f8/go.mod h1:kncGGVhFaoGn5M3pFe3SXhZCzsbCJayNOH4UEqTKTko=
 github.com/OneOfOne/xxhash v1.2.2 h1:KMrpdQIwFcEqXDklaen+P1axHaj9BSKzvpUUfnHldSE=
 github.com/OneOfOne/xxhash v1.2.2/go.mod h1:HSdplMjZKSmBqAxg5vPj2TmRDmfkzw+cTzAElWljhcU=
 github.com/Psiphon-Inc/rotate-safe-writer v0.0.0-20210303140923-464a7a37606e h1:NPfqIbzmijrl0VclX2t8eO5EPBhqe47LLGKpRrcVjXk=
