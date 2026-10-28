@@ -79,7 +79,7 @@ func (api *CloudflareApi) GetProfile(ctx context.Context, authToken string, id s
 	}
 	defer response.Body.Close()
 	if response.StatusCode != 200 {
-		return nil, fmt.Errorf("status code is not 200")
+		return nil, &StatusError{Operation: "get WARP device", Code: response.StatusCode} //H: tells a refused device from a network failure
 	}
 	content, err := io.ReadAll(response.Body)
 	if err != nil {
