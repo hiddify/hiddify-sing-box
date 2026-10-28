@@ -14,11 +14,13 @@ import (
 
 	box "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/common/monitoring"
 	"github.com/sagernet/sing-box/hiddify/warpscan"
 	"github.com/sagernet/sing-box/include"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-box/protocol/group"
 	"github.com/sagernet/sing/common/json"
+	N "github.com/sagernet/sing/common/network"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -56,6 +58,7 @@ type hWARPBox struct {
 	mixedPort int
 	variant   hWARPVariant
 	groupTag  string
+	autoTag   string
 }
 
 // hStartWARPBox starts WARP (or the masque outbound) through the detour named detour.
@@ -67,7 +70,10 @@ func hStartWARPBox(t *testing.T, cachePath string, variant hWARPVariant, detour 
 	groupTag := "d-group-" + strconv.Itoa(mixedPort)
 	detourTag := "d-" + detour
 	groupDefault := "d-dead"
+	autoTag := "d-auto-" + strconv.Itoa(mixedPort)
 	switch detour {
+	case "auto": // a URL test that moves by itself, from Shadowsocks to VLESS once Shadowsocks fails
+		detourTag = autoTag
 	case "group":
 		detourTag = groupTag
 	case "switch": // a group that starts on a working member, and moves to another
@@ -103,16 +109,19 @@ func hStartWARPBox(t *testing.T, cachePath string, variant hWARPVariant, detour 
 			{"type": "socks", "tag": "d-tcp", "server": "127.0.0.1", "server_port": `+port(socksPort)+`, "version": "4a"},
 			{"type": "socks", "tag": "d-dead", "server": "127.0.0.1", "server_port": `+port(deadPort)+`},
 			{"type": "selector", "tag": "`+groupTag+`", "outbounds": ["d-dead", "d-shadowsocks", "d-socks", "d-http", "d-tcp"], "default": "`+groupDefault+`"},
+			{"type": "urltest", "tag": "`+autoTag+`", "outbounds": ["d-shadowsocks", "d-vless"], "mode": "failover", "interval": "5s"},
+			{"type": "selector", "tag": "shadowsocks-exit-`+port(mixedPort)+`", "outbounds": ["direct", "d-dead"], "default": "direct"},
+			{"type": "selector", "tag": "vless-exit-`+port(mixedPort)+`", "outbounds": ["direct", "d-dead"], "default": "direct"},
 			{"type": "direct", "tag": "direct"}
 		],
-		"route": {"rules": [{"inbound": ["socks-srv", "ss-srv", "vless-srv", "trojan-srv"], "outbound": "direct"}], "final": "warp"}
+		"route": {"rules": [{"inbound": ["ss-srv"], "outbound": "shadowsocks-exit-`+port(mixedPort)+`"}, {"inbound": ["vless-srv"], "outbound": "vless-exit-`+port(mixedPort)+`"}, {"inbound": ["socks-srv", "trojan-srv"], "outbound": "direct"}], "final": "warp"}
 	}`))
 	require.NoError(t, err)
 	instance, err := box.New(box.Options{Context: ctx, Options: options})
 	require.NoError(t, err)
 	t.Cleanup(func() { instance.Close() })
 	require.NoError(t, instance.Start())
-	return &hWARPBox{instance: instance, mixedPort: mixedPort, variant: variant, groupTag: groupTag}
+	return &hWARPBox{instance: instance, mixedPort: mixedPort, variant: variant, groupTag: groupTag, autoTag: autoTag}
 }
 
 func (b *hWARPBox) warp() adapter.Outbound {
@@ -214,6 +223,25 @@ func TestH_WARPLiveDetour(t *testing.T) {
 				// the tunnel moves to the new member: SOCKS can go away, WARP still works
 				require.Eventually(t, instance.traceOK, 60*time.Second, 2*time.Second, "no WARP traffic after the switch")
 				require.Eventually(t, instance.ready, 30*time.Second, 200*time.Millisecond, "not ready after the switch")
+			})
+			t.Run("auto-switch", func(t *testing.T) {
+				// a URL test moves by itself when its member fails: WARP opens a tunnel through the new
+				// member and moves to it once it connects
+				if !runDetour("auto-switch") {
+					t.Skip()
+				}
+				instance := hStartWARPBox(t, cachePath, variant, "auto")
+				instance.requireConnected(t)
+				auto, _ := instance.instance.Outbound().Outbound(instance.autoTag)
+				from, to := monitoring.ResolveDetour(auto, N.NetworkUDP), "d-vless"
+				if from == "d-vless" {
+					to = "d-shadowsocks"
+				}
+				exit, _ := instance.instance.Outbound().Outbound(strings.TrimPrefix(from, "d-") + "-exit-" + strconv.Itoa(instance.mixedPort))
+				require.True(t, exit.(*group.Selector).SelectOutbound("d-dead")) // the member stops working
+				require.Eventually(t, func() bool { return monitoring.ResolveDetour(auto, N.NetworkUDP) == to }, 90*time.Second, time.Second, "the URL test did not move")
+				ok := assert.Eventually(t, func() bool { return instance.ready() && instance.traceOK() }, 90*time.Second, 2*time.Second)
+				require.True(t, ok, "WARP did not move with the URL test: %q", instance.displayType())
 			})
 			t.Run("switch-to-tcp", func(t *testing.T) {
 				// a proxy without UDP carries no WireGuard nor AmneziaWG: auto mode must move to MASQUE
