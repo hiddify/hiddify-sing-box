@@ -221,6 +221,7 @@ type URLTestGroup struct {
 	links                        []string           //H: h_urltest_modes.go
 	failover                     bool               //H
 	penalties                    sync.Map           //H: tag -> *atomic.Int64
+	degraded                     sync.Map           //H: network -> struct{}, a failover member slowed down
 	lastForcedRetest             atomic.Value       //H: time.Time
 	forcedRetestRunning          atomic.Bool        //H
 	outbound                     adapter.OutboundManager

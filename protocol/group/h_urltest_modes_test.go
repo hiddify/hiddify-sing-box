@@ -184,11 +184,18 @@ func TestH_URLTestFailover(t *testing.T) {
 	group.group.CheckOutbounds(context.Background(), false)
 	require.Equal(t, "b", hSelected(group), "the first choice is the fastest")
 
-	b.delay = 90 * time.Millisecond // b is now the slowest, but still works
+	b.delay = 45 * time.Millisecond // b is now slower than c, but within twice its delay
 	dials := a.dials.Load() + c.dials.Load()
 	group.group.CheckOutbounds(context.Background(), false)
 	require.Equal(t, "b", hSelected(group), "kept while it works")
 	require.Equal(t, dials, a.dials.Load()+c.dials.Load(), "only the selected member is tested")
+
+	b.delay = 250 * time.Millisecond // more than twice as slow as c: degraded
+	bDials := b.dials.Load()
+	group.group.CheckOutbounds(context.Background(), false)
+	require.Equal(t, "c", hSelected(group), "left a member that slowed down, for one more than 1.5 times faster")
+	require.GreaterOrEqual(t, b.dials.Load()-bDials, int32(2), "the slow result was confirmed by a second test")
+	b.delay = 5 * time.Millisecond
 
 	b.dead.Store(true)
 	group.group.CheckOutbounds(context.Background(), false)

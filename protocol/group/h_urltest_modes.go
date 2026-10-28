@@ -29,10 +29,15 @@ import (
 //     member has them, a test of all members runs at once, at most every penaltyForcedRetestGap.
 //   - mode failover: keep the selected member until it fails. Each interval tests only the
 //     selected members; when one fails, all members are tested and the fastest is selected.
+//     A member that slowed down to more than degradeRatio times the fastest other member, and
+//     still is on a second test, is left too (SPEC 126): all members are tested and the group
+//     moves when one is more than degradeMoveRatio times faster.
 
 const (
 	penaltyThreshold       = 3
 	penaltyForcedRetestGap = 2 * time.Minute
+	degradeRatio           = 2.0
+	degradeMoveRatio       = 1.5
 )
 
 // isPathDeadDialError tells a dead path (penalty and one more try) from a refused destination,
@@ -138,6 +143,12 @@ func (g *URLTestGroup) selectForUpdate(network string) (adapter.Outbound, bool) 
 			current = g.selectedOutboundUDP
 		}
 		if current != nil && g.historyOf(current, network) != nil {
+			if _, degraded := g.degraded.LoadAndDelete(network); degraded {
+				if fastest := g.fastestByDelay(network); fastest != nil && fastest != current &&
+					float64(g.historyOf(fastest, network).Delay)*degradeMoveRatio < float64(g.historyOf(current, network).Delay) {
+					return fastest, true
+				}
+			}
 			return current, true
 		}
 		if fastest := g.fastestByDelay(network); fastest != nil {
@@ -284,7 +295,7 @@ func (g *URLTestGroup) failoverCheck(ctx context.Context) map[string]uint16 {
 				failed = true
 			}
 		}
-		if !failed {
+		if !failed && !g.failoverDegraded(ctx) {
 			return result
 		}
 	}
@@ -298,6 +309,50 @@ func (g *URLTestGroup) failoverCheck(ctx context.Context) map[string]uint16 {
 		result[tag] = delay
 	}
 	return result
+}
+
+// failoverDegraded reports whether a selected member is more than degradeRatio times slower than
+// the fastest other member of its network, on a second test too, and marks that network so the
+// next selection may move.
+func (g *URLTestGroup) failoverDegraded(ctx context.Context) bool {
+	var degraded bool
+	for _, network := range []string{N.NetworkTCP, N.NetworkUDP} {
+		current := g.selectedOutboundTCP
+		if network == N.NetworkUDP {
+			current = g.selectedOutboundUDP
+		}
+		if current == nil || !g.slowerThanBest(current, network) {
+			continue
+		}
+		g.testMembers(ctx, []adapter.Outbound{current}, true) // one slow test is not enough
+		if ctx.Err() != nil {
+			return false
+		}
+		if g.slowerThanBest(current, network) {
+			g.degraded.Store(network, struct{}{})
+			degraded = true
+		}
+	}
+	return degraded
+}
+
+// slowerThanBest reports whether current is more than degradeRatio times slower than the fastest
+// other member of network.
+func (g *URLTestGroup) slowerThanBest(current adapter.Outbound, network string) bool {
+	history := g.historyOf(current, network)
+	if history == nil {
+		return false
+	}
+	var best uint16
+	for _, detour := range g.outbounds {
+		if detour == current || !common.Contains(detour.Network(), network) {
+			continue
+		}
+		if other := g.historyOf(detour, network); other != nil && (best == 0 || other.Delay < best) {
+			best = other.Delay
+		}
+	}
+	return best > 0 && float64(history.Delay) > degradeRatio*float64(best)
 }
 
 // urlTestLinks tests detour with every link at once; the first that answers gives the delay.
