@@ -247,7 +247,8 @@ Ranges take a number (`5`), a string (`"5-10"`) or an object (`{"from": 5, "to":
 | `enabled` | bool | `false` | Send fake packets. |
 | `count` | range | | Number of packets before each handshake. Nothing is sent when it is 0. |
 | `delay` | range | | Wait between packets, in milliseconds. |
-| `mode` | string | `""` | `quic` sends real QUIC Initial packets. Empty sends random packets. |
+| `mode` | string | `""` | `quic` sends real QUIC Initial packets. `raw` sends `size` random bytes with no header, as Xray's random noise and AmneziaWG's junk. Empty sends random packets after a short header. |
+| `packets` | list of strings | | Sent first, in order, as they are: templates in the AmneziaWG `i1`–`i5` syntax (`<b 0xHEX>` bytes, `<r N>` random bytes, `<rc N>` random letters and digits, `<rd N>` random digits, `<t>` the Unix time, `<qi SNI>` a QUIC Initial). A template that cannot be built fails the config. |
 | `sni` | string | `www.google.com` | Server name in the QUIC ClientHello. Only for `quic` mode. |
 | `size` | range | | Random bytes in each packet. Needed in the default mode. Not used in `quic` mode. |
 | `header` | bytes (base64) | | Bytes to pick the first byte of each packet from. Not used in `quic` mode. |
@@ -264,6 +265,28 @@ Ranges take a number (`5`), a string (`"5-10"`) or an object (`{"from": 5, "to":
 | `timeout` | duration | `2s` | How long one probe waits for an answer. |
 | `count` | number | `64` | Most endpoints tried in one scan. Known endpoints are always tried. |
 | `concurrency` | number | `8` | Probes run at once. |
+| `search_noise` | bool | `false` | Also look for noise that gets through. See below. |
+| `noise_presets` | list of strings | all presets | The presets `search_noise` tries, in order. |
+
+**Noise search.** With `search_noise`, when no endpoint answers with the configured noise, the
+scan is tried again with each noise preset, on at most 16 endpoints each, and the first preset
+that gets an answer is used: as the WireGuard noise, or with `awg` as the junk and special
+packets (`jc`, `jmin`, `jmax`, `i1`–`i5`; the other `awg` settings are kept). The preset is
+remembered for the network in the cache file and tried first there next time. The presets come
+from WARP configs that work:
+
+| Preset | What it sends before the handshake |
+|---|---|
+| `xray-random` | 5 random packets of 5 to 10 bytes, 2 to 5 ms apart, as Xray's WARP noise |
+| `quic` | 2 to 4 QUIC Initials for `www.google.com` |
+| `dns-google` | DNS queries for `google.com` (A, AAAA, HTTPS), then 6 junk packets of 56 to 160 bytes |
+| `dns-cloudflare` | DNS queries for `cloudflare.com` (A, AAAA), then 9 junk packets of 81 to 224 bytes |
+| `dns-www-cloudflare` | DNS queries for `www.cloudflare.com` (A, AAAA), then 6 junk packets of 43 to 109 bytes |
+| `quic-mimic` | a QUIC Initial and a short-header packet, then 4 junk packets of 60 to 199 bytes |
+| `sip` | a SIP `INVITE` and its `100 Trying`, then 10 junk packets of 42 to 224 bytes |
+
+The probe sends what the device sends: the configured noise, or with `awg` its junk and special
+packets.
 
 The default ranges are `162.159.192.0/24`, `162.159.193.0/24`, `162.159.195.0/24`,
 `188.114.96.0/24` to `188.114.99.0/24`, `2606:4700:d0::/64` and `2606:4700:d1::/64`.

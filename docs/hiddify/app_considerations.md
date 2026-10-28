@@ -65,7 +65,10 @@ do about it. Items marked **Required** break or misbehave until they are handled
 - **New options worth exposing:**
   - DNS group: `mode` `stable` and `fastest`, `error_ttl`, `win_ttl`.
   - URL test: `urls` (more test URLs) and `mode: "failover"`.
-  - WARP: `scanner` (endpoint scanner with per-network scores), `noise.mode: "quic"`, the `awg`
+  - WARP: `scanner` (endpoint scanner with per-network scores) with `search_noise` (it also
+    looks for a noise preset that gets through, see the WARP page) and `noise_presets`;
+    `noise.fake_packet.mode` `"quic"` and `"raw"`, `noise.fake_packet.packets` (AmneziaWG-style
+    templates, for the "WG Mimic" DNS, QUIC and SIP configs); the `awg`
     block with AmneziaWG 3.x settings and the QUIC masquerade (`ip`, `id`, `ib`).
   - MASQUE: `vhttp` (`h3`, `h2`, `auto`), `server_name`, `scanner`, `mtu`, `unique_identifier`.
   - AmneziaWG: 3.x settings (`header_protection_key`, `content_padding_addition`, the timers,
