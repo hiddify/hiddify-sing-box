@@ -2,11 +2,11 @@
 
 [فارسی](warp.fa.md) · [All Hiddify features](../../index.md)
 
-WARP connects you to Cloudflare's free WARP VPN over WireGuard, or over AmneziaWG when you set
-`awg`. It registers a free WARP account by itself, so you don't need a key or a server. It can
-also send fake packets before each handshake, look for a Cloudflare address that answers, and
-switch to another one when the address in use stops working. It is an endpoint:
-`"type": "warp"` in the `endpoints` list.
+WARP connects you to Cloudflare's free WARP VPN over WireGuard, over AmneziaWG when you set
+`awg`, or over MASQUE (HTTP/3 or HTTP/2) when you set `masque`. It registers a free WARP account
+by itself, so you don't need a key or a server. It can also send fake packets before each
+handshake, look for a Cloudflare address that answers, and switch to another one when the
+address in use stops working. It is an endpoint: `"type": "warp"` in the `endpoints` list.
 
 ## Why use it
 
@@ -16,8 +16,9 @@ switch to another one when the address in use stops working. It is an endpoint:
   per network. When you move from home Wi-Fi to mobile data, it starts from what worked there
   before.
 
-If your network blocks UDP, or blocks WireGuard even with noise, use
-[WARP over MASQUE](warp-masque.en.md) instead: it runs over HTTP/3 or HTTP/2 on TCP.
+If your network blocks UDP, or blocks WireGuard even with noise, set `masque`: the tunnel then
+runs over HTTP/3, or HTTP/2 on TCP. See [WARP over MASQUE](warp-masque.en.md) for how MASQUE
+gets past filtering.
 
 ## How it gets past filtering
 
@@ -50,7 +51,20 @@ Cloudflare peer. It takes the first one it finds:
    set. If it fails, WARP tries again through each outbound in turn.
 
 A new profile is saved in the cache file when `store_warp_config` is on, so later starts don't
-register a new account.
+register a new account. When registration fails, it is tried again after 1 s, then after twice
+as long each time, up to every 30 s, until it works or the endpoint closes.
+
+**Tunnel.** WARP then starts one of three tunnels inside it:
+
+- WireGuard, by default.
+- AmneziaWG, when any `awg` setting is set.
+- MASQUE, when any `masque` setting is set, or `masque.enabled`. The device gets a MASQUE key
+  instead of using its WireGuard one, so it is registered and saved apart from the WireGuard
+  device of the same endpoint (under `unique_identifier` + `/masque`). The scanner then looks for
+  MASQUE endpoints over HTTP/3 and HTTP/2. `server` and `server_port` set the MASQUE server.
+
+`awg` and `masque` together are a config error. When the first start fails (AmneziaWG fails at
+once when its detour does not work yet), it is tried again in the same way as registration.
 
 **Peer.** The tunnel uses the profile's IPv4 peer address (its IPv6 one when there is no IPv4
 one) and one of its ports, chosen at random. `server` and `server_port` replace them. Without the
@@ -60,7 +74,19 @@ replaced by the profile's next port.
 **Connected state.** The peer gets a keepalive every 25 seconds, as in the WARP apps, so the
 handshake stays fresh while the path works. WARP counts as connected (no "Connecting...") only
 while the last handshake is less than 3 minutes old; through a detour that stops working, it
-shows as connecting again.
+shows as connecting again. Over MASQUE, it counts as connected while it has a connection to the
+server.
+
+**Display type.** The type shown for the endpoint names the tunnel and the scanner:
+`WARP · WG`, `WARP · AWG` or `WARP · MASQUE`, then, once the scanner has run,
+` · 🔍 Scanning...`, ` · 🔍 <address:port>` (the endpoint it chose) or ` · 🔍 Not found`, and
+` ⚠️ Connecting...` while it is not connected. For example
+`WARP · MASQUE · 🔍 162.159.198.1:443`.
+
+**Group detour.** When `detour` is a group (a selector, URL test or balancer), WARP follows the
+member it resolves to, through nested groups. When the group moves to another member, WARP
+reconnects through the new one: the WireGuard or AmneziaWG socket, or the MASQUE connection,
+would otherwise stay on the member the group left.
 
 **Noise.** Before each handshake initiation, the device sends `count` fake packets, with a
 random `delay` between them. In the default mode each packet is a short header and `size`
@@ -158,6 +184,7 @@ keeps the current endpoint. The first handshake of each endpoint also counts as 
 | `server_port` | number | a profile port | Peer port to use instead of the profile's. |
 | `noise` | object | off | Fake packets before each handshake. See below. |
 | `awg` | object | | AmneziaWG settings (`jc`, `jmin`, `jmax`, `s1`–`s4`, `h1`–`h4`, `i1`–`i5`). When any is set, the tunnel uses AmneziaWG instead of WireGuard. |
+| `masque` | object | | MASQUE settings. When any is set, or `enabled`, the tunnel uses MASQUE instead of WireGuard. See below. Needs the `with_masque` build tag. |
 | `scanner` | object | off | Endpoint scanner and failover. See below. |
 | `mtu` | number | WireGuard default | Tunnel MTU. |
 | `system` | bool | `false` | Use a system interface, as in the `wireguard` endpoint. |
@@ -179,6 +206,26 @@ and the network name check.
 | `id`, `auth_token` | string | | An existing device. With both, the device is fetched instead of registered, and `private_key` is required: it must be the device's own key. |
 | `detour` | string | direct | Outbound tag used to reach Cloudflare's API for registration. |
 | `recreate` | bool | `false` | Ignore the saved profile and get a new one. |
+
+### `masque`
+
+An empty `masque` object is dropped when the config is read, so write `"masque": {"enabled": true}`
+to use MASQUE with every default.
+
+| Field | Type | Default | Meaning |
+|---|---|---|---|
+| `enabled` | bool | `false` | Use MASQUE with every default. |
+| `vhttp` | string | `auto` | `h3`, `h2`, or `auto` (HTTP/3, falling back to HTTP/2). |
+| `server_name` | string | `consumer-masque.cloudflareclient.com` | TLS server name. |
+| `use_ipv6` | bool | `false` | Use the IPv6 endpoint. |
+| `tls` | object | | `insecure`, `cipher_suites`, `curve_preferences`, `fragment`, `fragment_fallback_delay`, `record_fragment`, `kernel_tx`, `kernel_rx`. |
+| `udp_keepalive_period` | duration | `30s` | QUIC keepalive. |
+| `udp_initial_packet_size` | number | | First QUIC packet size. |
+| `reconnect_delay` | duration | | Wait between connect attempts. |
+
+The endpoint's `mtu` (1280 to 9000 over MASQUE), `udp_timeout`, `scanner`, `server`,
+`server_port` and dialer fields apply too. `noise`, `listen_port`, `workers`, `system` and `name`
+are WireGuard settings and are not used.
 
 ### `noise.fake_packet`
 
@@ -218,7 +265,8 @@ Notes:
   a new account and the scanner starts with no history.
 - The tunnel starts in the background. Connections wait for the first start to finish. If it
   failed, they fail with "endpoint not initialized".
-- If registration fails, the error is logged and the endpoint does not start.
+- If registration or the first start fails, the error is logged and it is tried again until it
+  works or the endpoint closes.
 
 ## See also
 

@@ -14,8 +14,8 @@ an English and a Persian version.
 
 ## Protocols
 
-- [WARP](features/protocols/warp.en.md): Cloudflare WARP over WireGuard or AmneziaWG, with free account registration, noise packets and an endpoint scanner that fails over per network.
-- [WARP over MASQUE](features/protocols/warp-masque.en.md): Cloudflare WARP over MASQUE on HTTP/3, HTTP/2 or both, with its own scanner and failover.
+- [WARP](features/protocols/warp.en.md): Cloudflare WARP over WireGuard, AmneziaWG or MASQUE, with free account registration, noise packets and an endpoint scanner that fails over per network.
+- [WARP over MASQUE](features/protocols/warp-masque.en.md): the standalone `masque` outbound for WARP over HTTP/3, HTTP/2 or both; for a self-hosted MASQUE server, use upstream `masque-client`.
 - [AmneziaWG](features/protocols/amneziawg.en.md): WireGuard with junk packets, padded handshakes and custom message types that defeat WireGuard fingerprinting.
 - [WireGuard: Hiddify additions](features/protocols/wireguard-hiddify.en.md): noise packets before handshakes, per-peer user names, socket recovery and UDP fragmentation on by default.
 - [WireGuard outbound (legacy format)](features/protocols/wireguard-legacy.en.md): the old WireGuard outbound that upstream removed, kept so old configs still load.

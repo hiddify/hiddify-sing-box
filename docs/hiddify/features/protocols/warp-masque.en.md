@@ -7,8 +7,16 @@ official WARP apps now use. Your IP packets travel inside an HTTP CONNECT-IP req
 HTTP/3 (QUIC) or HTTP/2 (TLS over TCP). It registers a free WARP account by itself. It is an
 outbound: `"type": "masque"` in the `outbounds` list.
 
-This page is about the WARP `masque` outbound only. The `masque-client` and `masque-server`
-types come from upstream sing-box and are documented there.
+This page is about MASQUE to WARP. The same tunnel runs in two places:
+
+- **The `warp` endpoint with `masque` set** (recommended): one endpoint that registers the
+  device, looks up endpoints, and runs WireGuard, AmneziaWG or MASQUE. Its display type is
+  `WARP · MASQUE`. See [WARP](warp.en.md).
+- **The `masque` outbound**, described here, which registers its own device.
+
+For your own MASQUE server, use the `masque-client` and `masque-server` types from upstream
+sing-box (RFC 9484 CONNECT-IP, with a path, a username and password, and the usual TLS
+settings). They are documented there.
 
 ## Why use it
 
@@ -43,7 +51,9 @@ Cloudflare's endpoints. It takes the first one it finds:
    is empty.
 2. A new one: it registers a free WARP device, or uses the device given by `profile.id` and
    `profile.auth_token`, and enrolls a new MASQUE key on it. The requests go through
-   `profile.detour` when set.
+   `profile.detour` when set, and only through it. A failed registration is tried again after
+   1 s, then after twice as long each time, up to every 30 s, until it works or the outbound
+   closes.
 
 A new profile is saved in the cache file when `store_masque_config` is on, so later starts don't
 register again.
@@ -89,7 +99,16 @@ and drops the tunnel connection. The next use connects again.
 
 **Connected state.** The outbound counts as connected (no "Connecting...") only while it has a
 connection to Cloudflare's server, not as soon as it is set up; when the connection drops,
-through a detour or otherwise, it shows as connecting until it reconnects.
+through a detour or otherwise, it shows as connecting until it reconnects. Its display type is
+`WARP · MASQUE`, with the scanner status after it as for [WARP](warp.en.md).
+
+**Group detour.** When `detour` is a group, the tunnel reconnects when the group moves to
+another member.
+
+**Through a proxy.** QUIC reads each packet into a buffer of about one packet. A proxy that
+decrypts in place, like Shadowsocks, needs more room, so each packet is read whole from a
+proxy's packet connection and then copied. Before, a full packet was cut off and the HTTP/3
+tunnel never connected through Shadowsocks, VLESS or Trojan.
 
 ## Configuration
 

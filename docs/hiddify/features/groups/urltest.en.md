@@ -48,6 +48,9 @@ most once every 2 minutes, counted from the end of the last such test.
 - The first choice is the fastest member.
 - Each `interval`, only the selected member is tested (the TCP one, and the UDP one when it
   differs). While it answers, it stays selected, even when another member is faster.
+- Unless it slowed down: when it is more than 2 times slower than the fastest other member (by
+  their last results), it is tested once more. If it is still that slow, all members are tested,
+  and the group moves when one is more than 1.5 times faster.
 - When it fails, all members are tested and the fastest is selected.
 - A manual test tests all members and selects the fastest.
 - `tolerance` does not apply.

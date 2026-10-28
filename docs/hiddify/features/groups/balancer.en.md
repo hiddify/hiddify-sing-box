@@ -52,6 +52,20 @@ connection is not retried on another member.
   together. A new pair gets a random member, and the group remembers it, for up to 1,000 pairs,
   for `ttl`. A remembered member that is dead is replaced with another alive member, picked the
   same way as above.
+- **`pool`**: a fixed number of slots (`pool`, 3 by default, at most the number of members),
+  each held by a working member. A connection goes to the slot picked by a hash of what
+  `sticky_hash` names, so the same app or site keeps its member.
+  - A member keeps its slot while it answers, so the connections of the other slots never move.
+  - A dead member is replaced in its slot by a working member outside the pool. While there is
+    none, the slot is skipped: its connections spread over the working slots, the same way each
+    time, and come back when the member answers again.
+  - With `pool_tolerance` 0, the slots keep the first working members in config order. With
+    more, a member outside replaces a slot member only when it is faster by more than that many
+    milliseconds.
+  - `sticky_hash` is a list of `process`, `domain` (the registrable domain), `source_ip`,
+    `dest_ip` and `dest_port`; the default is `["process", "domain"]`. `["none"]` sends
+    connections round-robin over the working slots.
+  - Refilling a slot does not interrupt connections.
 
 ## Configuration
 
@@ -68,7 +82,10 @@ connection is not retried on another member.
 | Field | Type | Default | Meaning |
 |---|---|---|---|
 | `outbounds` | list of strings | required | Tags of the members. |
-| `strategy` | string | `"round-robin"` | `round-robin`, `lowest-delay`, `consistent-hashing` or `sticky-sessions`. |
+| `strategy` | string | `"round-robin"` | `round-robin`, `lowest-delay`, `consistent-hashing`, `sticky-sessions` or `pool`. |
+| `pool` | int | `3` | For `pool`: the number of slots. |
+| `pool_tolerance` | int | `0` | For `pool`: how much faster, in milliseconds, a member outside the pool must be to take a slot. At most `15000`. |
+| `sticky_hash` | list of strings | `["process", "domain"]` | For `pool`: what a connection sticks to its slot by. `["none"]` turns sticking off. |
 | `delay_acceptable_ratio` | number | `2` | How much slower than the fastest member a member may be and still be used. `2` means up to twice the fastest delay. Unset or `0` is `2`. |
 | `max_retry` | int | `0` | For `consistent-hashing` and `sticky-sessions`: how many other hash picks to try before going down the list. |
 | `ttl` | duration | `0` (no expiry) | For `sticky-sessions`: how long a pair keeps its member. |

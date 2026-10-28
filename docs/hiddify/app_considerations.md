@@ -17,6 +17,12 @@ do about it. Items marked **Required** break or misbehave until they are handled
   config using one of them fails with "… is not included in this build" unless the tag is set.
   Decide per platform whether to ship them; `with_call` pulls in a large WebRTC stack. rmux needs
   no tag.
+- **Go 1.27.** Binaries with Psiphon crashed at start when built with Go 1.27 (psiphon-tls
+  checked the old `tls.ConnectionState` layout). Fixed in `bb18926a9`; Go 1.26.3 and 1.27.3 both
+  work.
+- **uTLS fork.** `github.com/metacubex/utls` is replaced by `github.com/Leadaxe/utls-lx` in
+  `go.mod` and `test/go.mod`. The `firefox` fingerprint is now Firefox 148 and `safari` is
+  Safari 26.3; `chrome` stays Chrome 133. Nothing to change in configs.
 - **Tailscale.** The core Makefile no longer lists `with_tailscale` (an uncommitted local change at
   the time of writing). If that stays, `tailscale` configs fail to load; keep the app from
   generating them, or put the tag back.
@@ -51,6 +57,11 @@ do about it. Items marked **Required** break or misbehave until they are handled
 - **Balancer.** `delay_acceptable_ratio` now defaults to 2 when unset or 0 (the app sends 2
   already). With `interrupt_exist_connections`, the hashing strategies interrupt only when the
   set of usable members changes, not on every test round.
+- **Balancer `pool` strategy.** `strategy: "pool"` with `pool`, `pool_tolerance` and
+  `sticky_hash` gives a fixed set of slots with sticky keys that do not move when another member
+  dies (lx's `round_robin`).
+- **URL test failover.** A failover member that is more than 2 times slower than the fastest
+  other one, twice in a row, is now left for one more than 1.5 times faster.
 - **New options worth exposing:**
   - DNS group: `mode` `stable` and `fastest`, `error_ttl`, `win_ttl`.
   - URL test: `urls` (more test URLs) and `mode: "failover"`.
@@ -61,6 +72,26 @@ do about it. Items marked **Required** break or misbehave until they are handled
     `random_trailers`, `disable_cookies`), `s3`/`s4` and `h1`–`h4` ranges now work.
   - Multiplex: `protocol: "rmux"`.
   - New types (build-tagged): `mkcp` transport, `sudoku`, `bond`, `call`; new `fallback` group.
+- **WARP over MASQUE in the warp endpoint.** A `warp` endpoint can now run MASQUE instead of
+  WireGuard: `"masque": {"enabled": true}`, or any MASQUE setting (`vhttp`, `server_name`,
+  `use_ipv6`, `tls`, …). Prefer this to a separate `masque` outbound: one endpoint handles
+  registration, the scanner and failover for all three tunnels. An empty `"masque": {}` is
+  dropped by the config parser and gives WireGuard, so always write `enabled` or a setting.
+  `awg` and `masque` together fail the config. MASQUE needs the `with_masque` tag. The MASQUE
+  device is saved apart from the WireGuard one (`<unique_identifier>/masque`), so switching an
+  endpoint between the two does not break either.
+- **Self-hosted MASQUE.** Use upstream's `masque-client` (and `masque-server`). The Hiddify
+  `masque` type is WARP only.
+- **Display types.** WARP shows `WARP · WG`, `WARP · AWG` or `WARP · MASQUE`; the `masque`
+  outbound shows `WARP · MASQUE`. After them comes the scanner status, once it has run
+  (` · 🔍 Scanning...`, ` · 🔍 <address:port>`, ` · 🔍 Not found`), then ` ⚠️ Connecting...` while
+  not connected. If the app maps display types to icons or labels, match on the prefix.
+- **WARP registration fallback.** When registration through `profile.detour` fails, WARP (all
+  three tunnels) tries again through every other outbound, direct included. That was already so
+  for WireGuard and is kept; it lets a cold detour group not block registration, but it means
+  Cloudflare's API can be reached outside the detour. If the app must never do that, it should
+  not rely on `profile.detour` alone, or ask for an option to turn the fallback off. The `masque`
+  outbound only uses its `profile.detour`.
 - **MASQUE profile key.** The saved MASQUE profile is still keyed by the tag unless
   `unique_identifier` is set. If the app renames outbounds, set `unique_identifier` so the device
   is not registered again.
