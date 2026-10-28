@@ -39,32 +39,54 @@ checks the whole flow can still find it.
 
 ## How it works
 
-**Account.** At start, WARP needs a profile: a private key, the tunnel addresses and the
-Cloudflare peer. It takes the first one it finds:
+**Devices.** WARP needs a device registered with Cloudflare for each tunnel: a WireGuard one, an
+AmneziaWG one (a WireGuard device of its own) and a MASQUE one (a device given a MASQUE key). In
+`awg` mode alone, a saved WireGuard device is taken when there is no AmneziaWG one, so the device
+of an earlier version keeps working. It keeps every device it
+registered in the cache file, under `unique_identifier` (or the tag) + `/warp-profiles`, when
+`cache_file.store_warp_config` is on, and takes, in order:
 
-1. The saved profile in the cache file, when `cache_file.store_warp_config` is on and
-   `profile.recreate` is off. It is saved under `unique_identifier`, or the tag when that is
-   empty.
-2. A profile written in the config itself (`private_key`, `interface`, `peers`).
-3. A new free account, registered with Cloudflare's API. With `profile.license`, the license
-   (for example a WARP+ key) is applied to it. The request goes through `profile.detour` when
-   set. If it fails, WARP tries again through each outbound in turn.
+1. A profile written in the config itself (`private_key`, `interface`, `peers`), for WireGuard.
+2. A saved device of the kind that is not retired, unless `profile.recreate` is on (then each
+   start registers a new one).
+3. A new device, registered with Cloudflare's API. With `profile.id` and `profile.auth_token`,
+   that device is taken instead, until it is retired. With `profile.license`, the license (for
+   example a WARP+ key) is applied to a new WireGuard device. The requests go through
+   `profile.detour` when set; if that fails, WARP tries again through each outbound in turn. A
+   failed registration is tried again after 1 s, then after twice as long each time, up to every
+   30 s, until it works or the endpoint closes.
 
-A new profile is saved in the cache file when `store_warp_config` is on, so later starts don't
-register a new account. When registration fails, it is tried again after 1 s, then after twice
-as long each time, up to every 30 s, until it works or the endpoint closes.
+Devices saved by earlier versions (one per key) are taken into the list.
 
-**Tunnel.** WARP then starts one of three tunnels inside it:
+**When a device is given up.** A network that blocks WARP is not a reason for a new device: a
+new one would be blocked the same way, and Cloudflare limits registrations. When WARP has not
+been connected for 3 minutes, it asks Cloudflare about the device in use, at most every 10
+minutes. Only when Cloudflare answers that the device is gone (HTTP 401, 403, 404 or 410),
+disabled, or that its account used up its quota, is the device retired: WARP starts again with
+the next saved device, or registers a new one. When the API cannot be reached, or it says the
+device is fine, the device stays in use. A device in the config is never retired.
 
-- WireGuard, by default.
-- AmneziaWG, when any `awg` setting is set.
-- MASQUE, when any `masque` setting is set, or `masque.enabled`. The device gets a MASQUE key
-  instead of using its WireGuard one, so it is registered and saved apart from the WireGuard
-  device of the same endpoint (under `unique_identifier` + `/masque`). The scanner then looks for
-  MASQUE endpoints over HTTP/3 and HTTP/2. `server` and `server_port` set the MASQUE server.
+**Tunnel.** `mode` picks the tunnel:
 
-`awg` and `masque` together are a config error. When the first start fails (AmneziaWG fails at
-once when its detour does not work yet), it is tried again in the same way as registration.
+- `wg`: WireGuard, the default.
+- `awg`: AmneziaWG, with the `awg` settings, or without them those of the `dns-google` noise
+  preset. An `awg` block without `mode` means `awg` too.
+- `masque`: MASQUE, over HTTP/3 or HTTP/2. A `masque` block (any setting, or `enabled`) without
+  `mode` means `masque` too. The scanner then looks for MASQUE endpoints. `server` and
+  `server_port` set the MASQUE server.
+- `auto`: WARP gets a WireGuard, an AmneziaWG and a MASQUE device, then makes one handshake with
+  each tunnel at once (WireGuard with the endpoint's `noise`, AmneziaWG with its `awg` settings, MASQUE with
+  its `masque` settings), two tries each within 5 seconds, and runs the fastest that answered.
+  Each tunnel has its own device, so the handshakes do not share a key, and they are handshakes
+  rather than whole tunnels so the race costs nothing once it is over. When none answers it uses WireGuard, so the scanner and the
+  port rotation can still find a way. While it has not been connected for 3 minutes it races
+  again (at most every 10 minutes) and moves to another tunnel that answers. `server` and
+  `server_port` apply to the WireGuard peer only. Until it has chosen, the display type is
+  `WARP · Auto`, with ` 🔍 Searching...` during the race.
+
+Without `mode`, `awg` and `masque` together are a config error. When the first start fails
+(AmneziaWG fails at once when its detour does not work yet), it is tried again in the same way as
+registration.
 
 **Peer.** The tunnel uses the profile's IPv4 peer address (its IPv6 one when there is no IPv4
 one) and one of its ports, chosen at random. `server` and `server_port` replace them. Without the
@@ -195,6 +217,7 @@ keeps the current endpoint. The first handshake of each endpoint also counts as 
 | `server_port` | number | a profile port | Peer port to use instead of the profile's. |
 | `noise` | object | off | Fake packets before each handshake. See below. |
 | `awg` | object | | AmneziaWG settings (`jc`, `jmin`, `jmax`, `s1`–`s4`, `h1`–`h4`, `i1`–`i5`). When any is set, the tunnel uses AmneziaWG instead of WireGuard. |
+| `mode` | string | from the blocks | `wg`, `awg`, `masque`, or `auto` (the fastest that answers). See How it works. |
 | `masque` | object | | MASQUE settings. When any is set, or `enabled`, the tunnel uses MASQUE instead of WireGuard. See below. Needs the `with_masque` build tag. |
 | `scanner` | object | off | Endpoint scanner and failover. See below. |
 | `mtu` | number | WireGuard default | Tunnel MTU. |
@@ -216,7 +239,7 @@ and the network name check.
 | `license` | string | | WARP license key to apply to the new account (for example WARP+). |
 | `id`, `auth_token` | string | | An existing device. With both, the device is fetched instead of registered, and `private_key` is required: it must be the device's own key. |
 | `detour` | string | direct | Outbound tag used to reach Cloudflare's API for registration. |
-| `recreate` | bool | `false` | Ignore the saved profile and get a new one. |
+| `recreate` | bool | `false` | Register a new device at each start instead of taking a saved one. |
 
 ### `masque`
 

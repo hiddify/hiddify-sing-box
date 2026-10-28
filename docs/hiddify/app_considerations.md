@@ -75,6 +75,18 @@ do about it. Items marked **Required** break or misbehave until they are handled
     `random_trailers`, `disable_cookies`), `s3`/`s4` and `h1`–`h4` ranges now work.
   - Multiplex: `protocol: "rmux"`.
   - New types (build-tagged): `mkcp` transport, `sudoku`, `bond`, `call`; new `fallback` group.
+- **WARP mode.** A `warp` endpoint takes `mode`: `wg`, `awg`, `masque` or `auto`. `auto` races
+  one handshake per tunnel and runs the fastest; it needs `with_masque` for the MASQUE leg. The app
+  can offer `auto` as the default WARP choice. Its display type is `WARP · Auto` until it chose,
+  then the chosen tunnel's.
+- **WARP devices are kept.** Registered devices are kept in the cache file
+  (`<unique_identifier>/warp-profiles`) and used again; a device is only replaced when Cloudflare
+  says it is gone, disabled or out of quota, not when the network blocks it. Keep
+  `store_warp_config` on, and a stable `unique_identifier`, or every start registers again (and
+  Cloudflare limits registrations).
+- **Status in OutboundInfo.** `OutboundInfo.status` (field 18, enum `Status`: READY, CONNECTING,
+  RECONNECTING, SEARCHING, FAILED, REGISTERING) mirrors `adapter.Status`, so the app can show the
+  state without parsing the label (in hiddify-core, uncommitted at the time of writing).
 - **WARP over MASQUE in the warp endpoint.** A `warp` endpoint can now run MASQUE instead of
   WireGuard: `"masque": {"enabled": true}`, or any MASQUE setting (`vhttp`, `server_name`,
   `use_ipv6`, `tls`, …). Prefer this to a separate `masque` outbound: one endpoint handles
