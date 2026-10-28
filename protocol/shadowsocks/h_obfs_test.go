@@ -457,3 +457,30 @@ func TestH_ShadowsocksObfsFallbackAfterObfs(t *testing.T) {
 		}
 	}
 }
+
+// With obfs_host, a client that uses another host is not let in, even with the right password:
+// it gets the fallback. A listed host connects.
+func TestH_ShadowsocksObfsHost(t *testing.T) {
+	t.Parallel()
+	for _, mode := range []string{"http", "tls"} {
+		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
+			fallback, received := startRawDecoy(t)
+			router := &fallbackRouter{testRouter: newTestRouter(), fallback: fallback.Build()}
+			port := startShadowsocksInboundWithRouter(t, router, option.ShadowsocksInboundOptions{
+				Method: "aes-128-gcm", Password: "pass", ObfsMode: mode, ObfsFallback: &fallback,
+				ObfsHost: "cdn.example.net, www.example.com",
+			})
+			require.Error(t, dialShadowsocks(t, port, "pass", "obfs-local", "obfs="+mode+";obfs-host=probe.example.org", "wrong host"))
+			select {
+			case got := <-received:
+				require.NotEmpty(t, got)
+			case <-time.After(5 * time.Second):
+				t.Fatal("decoy received nothing")
+			}
+			require.NoError(t, dialShadowsocks(t, port, "pass", "obfs-local", "obfs="+mode+";obfs-host=www.example.com", "right host"))
+		})
+	}
+	_, err := newObfsServer(option.ShadowsocksInboundOptions{Method: "aes-128-gcm", Password: "p", ObfsHost: "www.example.com"})
+	require.ErrorContains(t, err, "obfs_host requires obfs_mode")
+}

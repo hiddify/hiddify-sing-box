@@ -108,7 +108,7 @@ func TestH_ServerHandshakeRejectsTamperedObfsHello(t *testing.T) {
 	hello := make([]byte, binary.BigEndian.Uint16(header[3:5]))
 	_, err = io.ReadFull(rawServer, hello)
 	require.NoError(t, err)
-	payload, err := parseTLSObfsClientHello(hello)
+	payload, _, err := parseTLSObfsClientHello(hello)
 	require.NoError(t, err)
 	require.Equal(t, []byte("payload"), payload)
 
@@ -123,7 +123,7 @@ func TestH_ServerHandshakeRejectsTamperedObfsHello(t *testing.T) {
 	} {
 		tampered := append([]byte{}, hello...)
 		tampered[offset] ^= 0xff
-		_, err := parseTLSObfsClientHello(tampered)
+		_, _, err := parseTLSObfsClientHello(tampered)
 		require.ErrorIs(t, err, ErrNotObfs, name)
 	}
 }

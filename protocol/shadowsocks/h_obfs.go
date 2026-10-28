@@ -3,6 +3,7 @@ package shadowsocks
 import (
 	"context"
 	"net"
+	"strings"
 	"sync"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -29,6 +30,7 @@ const obfsRecordLimit = 16 << 10
 // gets the decoy as well.
 type obfsServer struct {
 	mode     string
+	hosts    []string
 	fallback M.Socksaddr
 }
 
@@ -39,6 +41,14 @@ func newObfsServer(options option.ShadowsocksInboundOptions) (obfsServer, error)
 		return obfsServer{}, E.New("shadowsocks: unsupported obfs mode: ", options.ObfsMode)
 	}
 	server := obfsServer{mode: options.ObfsMode}
+	for _, host := range strings.Split(options.ObfsHost, ",") {
+		if host = strings.TrimSpace(host); host != "" {
+			server.hosts = append(server.hosts, host)
+		}
+	}
+	if len(server.hosts) > 0 && options.ObfsMode == "" {
+		return obfsServer{}, E.New("shadowsocks: obfs_host requires obfs_mode")
+	}
 	if options.ObfsFallback != nil && options.ObfsFallback.Server != "" {
 		if options.ObfsMode == "" {
 			return obfsServer{}, E.New("shadowsocks: obfs_fallback requires obfs_mode")
@@ -65,7 +75,7 @@ func (s obfsServer) serve(ctx context.Context, conn net.Conn, metadata adapter.I
 	var err error
 	if s.mode != "" {
 		var obfsConn net.Conn
-		obfsConn, _, err = obfs.ServerHandshake(conn, s.mode)
+		obfsConn, _, err = obfs.ServerHandshake(conn, s.mode, s.hosts...)
 		if err == nil {
 			conn = obfsConn
 		}

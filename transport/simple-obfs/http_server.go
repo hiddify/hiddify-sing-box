@@ -16,6 +16,7 @@ import (
 // It strips the client's HTTP upgrade request and replies with HTTP 101.
 type HTTPObfsServer struct {
 	net.Conn
+	hosts         []string //H obfs_host; empty allows any
 	buf           []byte
 	bio           *bufio.Reader
 	recorder      *recordingReader
@@ -59,6 +60,9 @@ func (hos *HTTPObfsServer) handshake() ([]byte, error) {
 	}
 	if !strings.EqualFold(req.Header.Get("Upgrade"), "websocket") ||
 		!strings.Contains(strings.ToLower(req.Header.Get("Connection")), "upgrade") {
+		return hos.recorder.recorded, ErrNotObfs
+	}
+	if !hostAllowed(req.Host, hos.hosts) { //H obfs_host
 		return hos.recorder.recorded, ErrNotObfs
 	}
 	body, err := io.ReadAll(req.Body)

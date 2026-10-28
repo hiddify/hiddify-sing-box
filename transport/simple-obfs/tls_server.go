@@ -15,6 +15,7 @@ import (
 // It reads the client's fake ClientHello and writes a fake ServerHello.
 type TLSObfsServer struct {
 	net.Conn
+	hosts         []string //H obfs_host; empty allows any
 	remain        int
 	pending       []byte
 	handshakeDone bool
@@ -78,9 +79,12 @@ func (tos *TLSObfsServer) handshake() ([]byte, error) {
 	if err != nil {
 		return record[:5+n], err
 	}
-	payload, err := parseTLSObfsClientHello(record[5:])
+	payload, serverName, err := parseTLSObfsClientHello(record[5:])
 	if err != nil {
 		return record, err
+	}
+	if !hostAllowed(serverName, tos.hosts) { //H obfs_host
+		return record, ErrNotObfs
 	}
 	tos.pending = payload
 	return nil, nil
@@ -88,26 +92,26 @@ func (tos *TLSObfsServer) handshake() ([]byte, error) {
 
 // parseTLSObfsClientHello checks that hello has the exact layout of the simple-obfs
 // ClientHello and returns the payload carried in the session ticket extension.
-func parseTLSObfsClientHello(hello []byte) ([]byte, error) {
+func parseTLSObfsClientHello(hello []byte) ([]byte, string, error) {
 	if hello[0] != 0x01 || int(hello[1])<<16|int(hello[2])<<8|int(hello[3]) != len(hello)-4 {
-		return nil, ErrNotObfs
+		return nil, "", ErrNotObfs
 	}
 	if hello[4] != 0x03 || hello[5] != 0x03 || hello[38] != 32 {
-		return nil, ErrNotObfs
+		return nil, "", ErrNotObfs
 	}
 	if binary.BigEndian.Uint16(hello[71:73]) != tlsCipherSuitesSize || hello[129] != 0x01 || hello[130] != 0x00 {
-		return nil, ErrNotObfs
+		return nil, "", ErrNotObfs
 	}
 	if int(binary.BigEndian.Uint16(hello[131:133])) != len(hello)-tlsHelloFixedLength {
-		return nil, ErrNotObfs
+		return nil, "", ErrNotObfs
 	}
 	extensions := hello[tlsHelloFixedLength:]
 	if binary.BigEndian.Uint16(extensions[0:2]) != 0x0023 {
-		return nil, ErrNotObfs
+		return nil, "", ErrNotObfs
 	}
 	ticketLength := int(binary.BigEndian.Uint16(extensions[2:4]))
 	if ticketLength == 0 || 4+ticketLength+9 > len(extensions) {
-		return nil, ErrNotObfs
+		return nil, "", ErrNotObfs
 	}
 	payload := extensions[4 : 4+ticketLength]
 	serverName := extensions[4+ticketLength:]
@@ -117,9 +121,9 @@ func parseTLSObfsClientHello(hello []byte) ([]byte, error) {
 		int(binary.BigEndian.Uint16(serverName[4:6])) != nameLength+3 ||
 		serverName[6] != 0 ||
 		len(serverName) != 9+nameLength+tlsHelloTailLength {
-		return nil, ErrNotObfs
+		return nil, "", ErrNotObfs
 	}
-	return payload, nil
+	return payload, string(serverName[9 : 9+nameLength]), nil
 }
 
 func (tos *TLSObfsServer) Read(b []byte) (int, error) {
