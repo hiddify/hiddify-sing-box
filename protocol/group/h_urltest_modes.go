@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/common/monitoring"
 	"github.com/sagernet/sing-box/common/urltest"
 	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -396,4 +397,15 @@ func testLinks(link string, links []string) []string {
 		return []string{""}
 	}
 	return result
+}
+
+// signalSelection tells monitoring that the group moved to another member, as a selector does:
+// what follows the group (a tunnel through it, the app's list) learns it at once, not at the next
+// monitoring test.
+func (g *URLTestGroup) signalSelection() {
+	if mon := monitoring.Get(g.ctx); mon != nil && g.tag != "" {
+		if err := mon.SignalChange(g.tag); err != nil {
+			g.logger.Debug("signal selection change: ", err)
+		}
+	}
 }

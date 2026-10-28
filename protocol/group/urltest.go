@@ -102,6 +102,7 @@ func (s *URLTest) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 		}
 		group.links = s.links       //H
 		group.failover = s.failover //H
+		group.tag = s.Tag()         //H
 		s.group = group
 	case adapter.StartStateStarted:
 		s.group.PostStart()
@@ -220,6 +221,7 @@ type URLTestGroup struct {
 	cancel                       context.CancelFunc //H: stops running tests on close
 	links                        []string           //H: h_urltest_modes.go
 	failover                     bool               //H
+	tag                          string             //H: for signalSelection
 	penalties                    sync.Map           //H: tag -> *atomic.Int64
 	degraded                     sync.Map           //H: network -> struct{}, a failover member slowed down
 	lastForcedRetest             atomic.Value       //H: time.Time
@@ -549,6 +551,7 @@ func (g *URLTestGroup) performUpdateCheck() {
 	}
 	if updated {
 		g.interruptGroup.Interrupt(g.interruptExternalConnections)
+		g.signalSelection() //H
 	}
 	if selected {
 		g.history.NotifyUpdated()

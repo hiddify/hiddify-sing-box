@@ -152,6 +152,7 @@ func (s *Balancer) worker() {
 			outbounds := s.monitor.OutboundsHistory(s.Tag())
 			if s.strategyFn.UpdateOutboundsInfo(outbounds) {
 				s.interruptGroup.Interrupt(s.interruptExternalConnections)
+				s.monitor.SignalChange(s.Tag()) //H: what follows the group learns the new member at once
 			}
 
 		}
