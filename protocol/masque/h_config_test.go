@@ -198,7 +198,7 @@ func TestH_OutboundMalformedCache(t *testing.T) {
 	require.Len(t, logger.logged(), 1)
 	_, err := out.ListenPacket(context.Background(), M.ParseSocksaddr("1.1.1.1:53"))
 	require.ErrorContains(t, err, "tunnel not initialized")
-	require.ErrorContains(t, out.Close(), "tunnel not initialized")
+	require.NoError(t, out.Close(), "nothing to close")
 }
 
 func TestH_OutboundWaitsForStartup(t *testing.T) {

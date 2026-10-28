@@ -74,9 +74,13 @@ func (e *Tunnel) connectLeg(ctx context.Context, http2 bool) (*connection, net.A
 		endpoint = e.options.H2Endpoint
 	}
 	e.endpointAccess.Unlock()
+	connectURI := e.options.ConnectURI
+	if connectURI == "" {
+		connectURI = DefaultConnectURI
+	}
 	udpConn, tr, ipConn, rsp, err := connectTunnel(ctx, e.options.Dialer, e.options.TLSConfig,
 		DefaultQuicConfig(e.options.UDPKeepalivePeriod, e.options.UDPInitialPacketSize),
-		"https://cloudflareaccess.com", endpoint, http2)
+		connectURI, endpoint, http2)
 	conn := &connection{udpConn, tr, ipConn, http2}
 	if err != nil {
 		conn.close()

@@ -74,6 +74,16 @@ const (
 	TypeURLTest  = "urltest"
 )
 
+// Display names of a warp endpoint, and of a masque outbound to WARP, by tunnel. //H
+const (
+	DisplayWARPWireGuard = "WARP · WG"
+	DisplayWARPAWG       = "WARP · AWG"
+	DisplayWARPMASQUE    = "WARP · MASQUE"
+)
+
+// DisplayConnecting is added to a display type while the outbound is not connected. //H
+const DisplayConnecting = " ⚠️ Connecting..."
+
 func ProxyDisplayName(proxyType string) string {
 	switch proxyType {
 	case TypeTun:

@@ -9,6 +9,7 @@ import (
 	"github.com/sagernet/sing-box/common/cloudflare"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/transport/masque"
+	M "github.com/sagernet/sing/common/metadata"
 
 	"github.com/stretchr/testify/require"
 )
@@ -24,7 +25,7 @@ func hProfileConfig() *Config {
 
 func hSelect(t *testing.T, mode string, useIPv6 bool, scan func(bool) (net.Addr, error)) (net.Addr, net.Addr, string, error) {
 	t.Helper()
-	return selectEndpoints(context.Background(), log.NewNOPFactory().Logger(), hProfileConfig(), mode, useIPv6, scan)
+	return selectEndpoints(context.Background(), log.NewNOPFactory().Logger(), hProfileConfig(), mode, useIPv6, M.Socksaddr{}, scan)
 }
 
 // The profile has no HTTP/2 IPv6 endpoint: auto with use_ipv6 must still start, on HTTP/3.

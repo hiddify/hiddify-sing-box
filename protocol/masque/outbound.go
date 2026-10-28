@@ -2,18 +2,19 @@ package masque
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"net"
 	"net/netip"
+	"sync"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/outbound"
-	"github.com/sagernet/sing-box/common/cloudflare"
 	"github.com/sagernet/sing-box/common/dialer"
+	"github.com/sagernet/sing-box/common/monitoring"
 	"github.com/sagernet/sing-box/common/tls"
 	C "github.com/sagernet/sing-box/constant"
+	"github.com/sagernet/sing-box/hiddify/warpscan"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-box/transport/masque"
@@ -23,13 +24,21 @@ import (
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/service"
-	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
+)
+
+// The registration of a WARP device is retried with a backoff between these.
+const (
+	registerRetryMin = time.Second
+	registerRetryMax = 30 * time.Second
 )
 
 func RegisterOutbound(registry *outbound.Registry) {
 	outbound.Register[option.MASQUEOutboundOptions](registry, C.TypeMASQUE, NewOutbound)
 }
 
+// Outbound is a MASQUE tunnel to Cloudflare WARP. It registers a device itself, unless the warp
+// endpoint passes the one it registered (NewWARPOutbound). A self-hosted MASQUE server is
+// reached with masque-client.
 type Outbound struct {
 	outbound.Adapter
 	ctx          context.Context
@@ -40,161 +49,268 @@ type Outbound struct {
 	startHandler func()
 	scanner      *masqueScanner //H
 
+	warpConfig *Config     // the device of the warp endpoint, which registered it
+	peer       M.Socksaddr // the endpoint of the warp endpoint's server and server_port
+	profileKey string
+	scanStatus warpscan.Status
+	done       chan struct{}
+	doneOnce   sync.Once
+	closeOnce  sync.Once
+
 	await chan struct{}
 }
 
 func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.MASQUEOutboundOptions) (adapter.Outbound, error) {
-	outbound := &Outbound{
-		Adapter:   outbound.NewAdapterWithDialerOptions(C.TypeMASQUE, tag, []string{N.NetworkTCP, N.NetworkUDP, N.NetworkICMP}, options.DialerOptions),
-		ctx:       ctx,
-		dnsRouter: service.FromContext[adapter.DNSRouter](ctx),
-		logger:    logger,
-		options:   options,
-		await:     make(chan struct{}),
+	return newWARPOutbound(ctx, logger, tag, options, nil, M.Socksaddr{}, "")
+}
+
+// NewWARPOutbound creates a MASQUE tunnel to WARP for the warp endpoint, with the device it
+// registered and the endpoint it chose (unset for the profile's). profileKey names the scanner
+// scores.
+func NewWARPOutbound(ctx context.Context, logger log.ContextLogger, tag string, options option.MASQUEOutboundOptions, config *Config, peer M.Socksaddr, profileKey string) (*Outbound, error) {
+	if config == nil {
+		return nil, E.New("missing WARP MASQUE config")
 	}
-	profileKey := options.UniqueIdentifier //H
-	if profileKey == "" {                  //H
-		profileKey = tag //H
-	} //H
+	return newWARPOutbound(ctx, logger, tag, options, config, peer, profileKey)
+}
+
+func newWARPOutbound(ctx context.Context, logger log.ContextLogger, tag string, options option.MASQUEOutboundOptions, config *Config, peer M.Socksaddr, profileKey string) (*Outbound, error) {
+	if _, err := tunnelMode(options); err != nil { // a wrong vhttp fails the config, not the start
+		return nil, err
+	}
+	if profileKey == "" {
+		profileKey = options.UniqueIdentifier //H: unique_identifier, so renaming the outbound keeps the device
+	}
+	if profileKey == "" {
+		profileKey = tag
+	}
+	outbound := &Outbound{
+		Adapter:    outbound.NewAdapterWithDialerOptions(C.TypeMASQUE, tag, []string{N.NetworkTCP, N.NetworkUDP, N.NetworkICMP}, options.DialerOptions),
+		ctx:        ctx,
+		dnsRouter:  service.FromContext[adapter.DNSRouter](ctx),
+		logger:     logger,
+		options:    options,
+		warpConfig: config,
+		peer:       peer,
+		profileKey: profileKey,
+		done:       make(chan struct{}),
+		await:      make(chan struct{}),
+	}
 	outbound.startHandler = func() {
 		defer close(outbound.await)
-		cacheFile := service.FromContext[adapter.CacheFile](ctx)
-		var appConfig *Config
-		var err error
-		if !options.Profile.Recreate && cacheFile != nil && cacheFile.StoreMASQUEConfig() {
-			savedProfile := cacheFile.LoadBinary(profileKey) //H: unique_identifier, so renaming the outbound keeps the device
-			if savedProfile != nil {
-				if err = json.Unmarshal(savedProfile.Content, &appConfig); err != nil {
-					logger.ErrorContext(ctx, err)
-					return
-				}
-			}
-		}
+		appConfig := outbound.warpConfig
 		if appConfig == nil {
-			appConfig, err = outbound.createConfig()
-			if err != nil {
-				logger.ErrorContext(ctx, err)
+			var ok bool
+			appConfig, ok = outbound.loadOrRegister()
+			if !ok {
 				return
 			}
-			if cacheFile != nil && cacheFile.StoreMASQUEConfig() {
-				content, err := json.Marshal(appConfig)
-				if err != nil {
-					logger.ErrorContext(ctx, err)
-					return
-				}
-				cacheFile.SaveBinary(profileKey, &adapter.SavedBinary{ //H
-					LastUpdated: time.Now(),
-					Content:     content,
-					LastEtag:    "",
-				})
-			}
 		}
-		privKey, err := appConfig.GetEcPrivateKey()
-		if err != nil {
-			logger.ErrorContext(ctx, E.New("failed to get private key: ", err))
-			return
-		}
-		peerPubKey, err := appConfig.GetEcEndpointPublicKey()
-		if err != nil {
-			logger.ErrorContext(ctx, E.New("failed to get public key: ", err))
-			return
-		}
-		cert, err := masque.GenerateCert(privKey, &privKey.PublicKey)
-		if err != nil {
-			logger.ErrorContext(ctx, E.New("failed to generate cert: ", err))
-			return
-		}
-		serverName := options.ServerName //H
-		if serverName == "" {            //H
-			serverName = defaultServerName //H
-		} //H
-		mode, err := tunnelMode(options) //H
-		if err != nil {                  //H
-			logger.ErrorContext(ctx, err) //H
-			return                        //H
-		} //H
-		tlsConfig, err := tls.NewMASQUEClient(ctx, logger, serverName, cert, privKey, peerPubKey, options.MASQUEOutboundTLSOptions) //H
-		if err != nil {
-			logger.ErrorContext(ctx, E.New("failed to prepare TLS config: ", err))
-			return
-		}
-		var udpTimeout time.Duration
-		if options.UDPTimeout != 0 {
-			udpTimeout = time.Duration(options.UDPTimeout)
-		} else {
-			udpTimeout = C.UDPTimeout
-		}
-		var udpKeepalivePeriod time.Duration
-		if options.UDPKeepalivePeriod != 0 {
-			udpKeepalivePeriod = time.Duration(options.UDPKeepalivePeriod)
-		} else {
-			udpKeepalivePeriod = time.Second * 30
-		}
-		outboundDialer, err := dialer.NewWithOptions(dialer.Options{
-			Context:          ctx,
-			Options:          options.DialerOptions,
-			RemoteIsDomain:   false,
-			ResolverOnDetour: true,
-		})
-		if err != nil {
+		if err := outbound.startTunnel(appConfig); err != nil {
 			logger.ErrorContext(ctx, err)
-			return
 		}
-		var scanner *masqueScanner                             //H
-		var scan func(http2 bool) (net.Addr, error)            //H
-		if options.Scanner != nil && options.Scanner.Enabled { //H: look for endpoints that answer
-			scanner, err = newMASQUEScanner(ctx, logger, profileKey, options, outboundDialer, tlsConfig) //H
-			if err != nil {                                                                              //H
-				logger.WarnContext(ctx, "WARP scanner: ", err) //H
-				scanner = nil                                  //H
-			} else { //H
-				scan = func(http2 bool) (net.Addr, error) { return scanner.Scan(http2, nil) } //H
-			} //H
-		} //H
-		endpoint, h2Endpoint, mode, err := selectEndpoints(ctx, logger, appConfig, mode, options.UseIPv6, scan) //H
-		if err != nil {                                                                                         //H
-			logger.ErrorContext(ctx, E.New("failed to select endpoint: ", err)) //H
-			return                                                              //H
-		} //H
-		tunnel, err := masque.NewTunnel(
-			ctx,
-			logger,
-			masque.TunnelOptions{
-				Dialer: outboundDialer,
-				Address: []netip.Prefix{
-					netip.MustParsePrefix(appConfig.IPv4 + "/32"),
-					netip.MustParsePrefix(appConfig.IPv6 + "/128"),
-				},
-				Endpoint:             endpoint,
-				TLSConfig:            tlsConfig,
-				UseHTTP2:             mode == masque.ModeHTTP2, //H
-				Mode:                 mode,                     //H
-				H2Endpoint:           h2Endpoint,               //H
-				UDPTimeout:           udpTimeout,
-				UDPKeepalivePeriod:   udpKeepalivePeriod,
-				UDPInitialPacketSize: options.UDPInitialPacketSize,
-				MTU:                  options.MTU, //H
-				ReconnectDelay:       options.ReconnectDelay.Build(),
-			})
-		if err != nil {
-			logger.ErrorContext(ctx, err)
-			return
-		}
-		if scanner != nil { //H: scores and failover
-			tunnel.SetFailover(scanner.OnConnected, scanner.NextEndpoint)
-			outbound.scanner = scanner
-		}
-		outbound.tunnel = tunnel
-		if err = outbound.tunnel.Start(false); err != nil {
-			logger.ErrorContext(ctx, err)
-			return
-		}
-		if err = outbound.tunnel.Start(true); err != nil {
-			logger.ErrorContext(ctx, err)
-			return
+		if outbound.isClosed() { // closed while the tunnel was set up
+			outbound.closeTunnel()
 		}
 	}
 	return outbound, nil
+}
+
+// loadOrRegister returns the saved device, or registers one, retrying until it works or the
+// outbound closes.
+func (w *Outbound) loadOrRegister() (*Config, bool) {
+	cacheFile := service.FromContext[adapter.CacheFile](w.ctx)
+	if !w.options.Profile.Recreate && cacheFile != nil && cacheFile.StoreMASQUEConfig() {
+		if savedProfile := cacheFile.LoadBinary(w.profileKey); savedProfile != nil {
+			var appConfig *Config
+			if err := json.Unmarshal(savedProfile.Content, &appConfig); err != nil {
+				w.logger.ErrorContext(w.ctx, err)
+				return nil, false
+			}
+			return appConfig, true
+		}
+	}
+	backoff := registerRetryMin
+	for {
+		appConfig, err := w.createConfig()
+		if err == nil {
+			if cacheFile != nil && cacheFile.StoreMASQUEConfig() {
+				if content, err := json.Marshal(appConfig); err != nil {
+					w.logger.ErrorContext(w.ctx, err)
+				} else {
+					cacheFile.SaveBinary(w.profileKey, &adapter.SavedBinary{LastUpdated: time.Now(), Content: content})
+				}
+			}
+			return appConfig, true
+		}
+		w.logger.ErrorContext(w.ctx, E.Cause(err, "register WARP MASQUE device"))
+		select {
+		case <-w.ctx.Done():
+			return nil, false
+		case <-w.done:
+			return nil, false
+		case <-time.After(backoff):
+		}
+		backoff = min(backoff*2, registerRetryMax)
+	}
+}
+
+// startTunnel starts the tunnel to WARP with the device in appConfig.
+func (w *Outbound) startTunnel(appConfig *Config) error {
+	ctx, logger, options := w.ctx, w.logger, w.options
+	privKey, err := appConfig.GetEcPrivateKey()
+	if err != nil {
+		return E.New("failed to get private key: ", err)
+	}
+	peerPubKey, err := appConfig.GetEcEndpointPublicKey()
+	if err != nil {
+		return E.New("failed to get public key: ", err)
+	}
+	cert, err := masque.GenerateCert(privKey, &privKey.PublicKey)
+	if err != nil {
+		return E.New("failed to generate cert: ", err)
+	}
+	serverName := options.ServerName //H
+	if serverName == "" {
+		serverName = defaultServerName
+	}
+	mode, err := tunnelMode(options)
+	if err != nil {
+		return err
+	}
+	tlsConfig, err := tls.NewMASQUEClient(ctx, logger, serverName, cert, privKey, peerPubKey, options.MASQUEOutboundTLSOptions) //H
+	if err != nil {
+		return E.New("failed to prepare TLS config: ", err)
+	}
+	udpTimeout := C.UDPTimeout
+	if options.UDPTimeout != 0 {
+		udpTimeout = time.Duration(options.UDPTimeout)
+	}
+	udpKeepalivePeriod := 30 * time.Second
+	if options.UDPKeepalivePeriod != 0 {
+		udpKeepalivePeriod = time.Duration(options.UDPKeepalivePeriod)
+	}
+	outboundDialer, err := dialer.NewWithOptions(dialer.Options{
+		Context:          ctx,
+		Options:          options.DialerOptions,
+		RemoteIsDomain:   false,
+		ResolverOnDetour: true,
+	})
+	if err != nil {
+		return err
+	}
+	addresses, err := appConfig.Addresses()
+	if err != nil {
+		return err
+	}
+	var scanner *masqueScanner
+	var scan func(http2 bool) (net.Addr, error)
+	if options.Scanner != nil && options.Scanner.Enabled && !hasPeer(w.peer) { //H: look for endpoints that answer
+		scanner, err = newMASQUEScanner(ctx, logger, w.profileKey, options, outboundDialer, tlsConfig, &w.scanStatus)
+		if err != nil {
+			logger.WarnContext(ctx, "WARP scanner: ", err)
+			scanner = nil
+		} else {
+			scan = func(http2 bool) (net.Addr, error) { return scanner.Scan(http2, nil) }
+		}
+	}
+	peer := w.peer
+	if peer.IsFqdn() { // the warp endpoint's server is a domain
+		addresses, err := w.dnsRouter.Lookup(ctx, peer.Fqdn, adapter.DNSQueryOptions{})
+		if err != nil {
+			return E.Cause(err, "resolve WARP server ", peer.Fqdn)
+		}
+		peer = M.SocksaddrFrom(addresses[0], peer.Port)
+	}
+	endpoint, h2Endpoint, mode, err := selectEndpoints(ctx, logger, appConfig, mode, options.UseIPv6, peer, scan)
+	if err != nil {
+		return E.New("failed to select endpoint: ", err)
+	}
+	tunnel, err := masque.NewTunnel(ctx, logger, masque.TunnelOptions{
+		Dialer:               outboundDialer,
+		Address:              addresses,
+		Endpoint:             endpoint,
+		TLSConfig:            tlsConfig,
+		UseHTTP2:             mode == masque.ModeHTTP2,
+		Mode:                 mode,
+		H2Endpoint:           h2Endpoint,
+		UDPTimeout:           udpTimeout,
+		UDPKeepalivePeriod:   udpKeepalivePeriod,
+		UDPInitialPacketSize: options.UDPInitialPacketSize,
+		MTU:                  options.MTU,
+		ReconnectDelay:       options.ReconnectDelay.Build(),
+	})
+	if err != nil {
+		return err
+	}
+	if scanner != nil { //H: scores and failover
+		tunnel.SetFailover(scanner.OnConnected, scanner.NextEndpoint)
+		w.scanner = scanner
+	}
+	w.tunnel = tunnel
+	if err = tunnel.Start(false); err != nil {
+		return err
+	}
+	// the tunnel connects, and reconnects, by itself
+	if err = tunnel.Start(true); err != nil {
+		return err
+	}
+	w.followDetour()
+	return nil
+}
+
+// followDetour reconnects the tunnel when a group detour moves to another member: the tunnel
+// keeps its connection on the member it was opened through.
+func (w *Outbound) followDetour() {
+	if w.options.Detour == "" {
+		return
+	}
+	outboundManager := service.FromContext[adapter.OutboundManager](w.ctx)
+	if outboundManager == nil {
+		return
+	}
+	detour, loaded := outboundManager.Outbound(w.options.Detour)
+	if !loaded {
+		return
+	}
+	network := N.NetworkUDP
+	if mode, _ := tunnelMode(w.options); mode == masque.ModeHTTP2 {
+		network = N.NetworkTCP
+	}
+	monitoring.FollowDetour(w.ctx, w.done, detour, network, func(from string, to string) {
+		w.logger.InfoContext(w.ctx, "detour moved from ", from, " to ", to, ", reconnecting")
+		w.tunnel.ResetConnection()
+	})
+}
+
+func (w *Outbound) isClosed() bool {
+	select {
+	case <-w.done:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsReady reports whether the tunnel has a connection to the server, not only whether it is
+// set up. //H
+func (w *Outbound) IsReady() bool {
+	select {
+	case <-w.await:
+		return w.tunnel != nil && w.tunnel.IsConnected()
+	default:
+		return false
+	}
+}
+
+// DisplayType names the tunnel, the scanner status and whether it is connected. //H
+func (w *Outbound) DisplayType() string {
+	return warpscan.DisplayType(C.DisplayWARPMASQUE, &w.scanStatus, w.IsReady(), C.DisplayConnecting)
+}
+
+// ScanStatus is the status of the scanner, for the warp endpoint's display type. //H
+func (w *Outbound) ScanStatus() *warpscan.Status {
+	return &w.scanStatus
 }
 
 func (w *Outbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
@@ -209,10 +325,23 @@ func (w *Outbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 }
 
 func (w *Outbound) Close() error {
-	if err := w.isTunnelInitialized(w.ctx); err != nil {
-		return err
+	w.doneOnce.Do(func() { close(w.done) }) // ends a registration in progress
+	select {
+	case <-w.await:
+		return w.closeTunnel()
+	default:
+		return nil // not started, or the start handler closes the tunnel once set up
 	}
-	return w.tunnel.Close()
+}
+
+func (w *Outbound) closeTunnel() error {
+	var err error
+	w.closeOnce.Do(func() {
+		if w.tunnel != nil {
+			err = w.tunnel.Close()
+		}
+	})
+	return err
 }
 
 func (w *Outbound) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
@@ -282,73 +411,6 @@ func (w *Outbound) isTunnelInitialized(ctx context.Context) error {
 	return nil
 }
 
-func (w *Outbound) createConfig() (*Config, error) {
-	opts := make([]cloudflare.CloudflareApiOption, 0, 1)
-	if w.options.Profile.Detour != "" {
-		outboundManager := service.FromContext[adapter.OutboundManager](w.ctx) //H: missing in some contexts; it was dereferenced
-		if outboundManager == nil {                                            //H
-			return nil, E.New("missing outbound manager") //H
-		} //H
-		detour, ok := outboundManager.Outbound(w.options.Profile.Detour)
-		if !ok {
-			return nil, E.New("outbound detour not found: ", w.options.Profile.Detour)
-		}
-		opts = append(opts, cloudflare.WithDialContext(func(ctx context.Context, network, addr string) (net.Conn, error) {
-			return detour.DialContext(ctx, network, M.ParseSocksaddr(addr))
-		}))
-	}
-	api := cloudflare.NewCloudflareApi(opts...)
-	var profile *cloudflare.CloudflareProfile
-	var err error
-	if w.options.Profile.AuthToken != "" && w.options.Profile.ID != "" {
-		profile, err = api.GetProfile4471(w.ctx, w.options.Profile.AuthToken, w.options.Profile.ID)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		wgPrivateKey, err := wgtypes.GeneratePrivateKey()
-		if err != nil {
-			return nil, err
-		}
-		profile, err = api.CreateProfile(w.ctx, wgPrivateKey.PublicKey().String())
-		if err != nil {
-			return nil, err
-		}
-	}
-	privateKey, publicKey, err := masque.GenerateEcKeyPair()
-	if err != nil {
-		return nil, E.New("failed to generate key pair: ", err)
-	}
-	updatedProfile, err := api.EnrollKey(w.ctx, profile.Token, profile.ID, cloudflare.KeyTypeMasque, cloudflare.TunTypeMasque, base64.StdEncoding.EncodeToString(publicKey))
-	if err != nil {
-		return nil, err
-	}
-	return &Config{
-		PrivateKey:     base64.StdEncoding.EncodeToString(privateKey),
-		EndpointV4:     updatedProfile.Config.Peers[0].Endpoint.V4[:len(updatedProfile.Config.Peers[0].Endpoint.V4)-2],
-		EndpointV6:     updatedProfile.Config.Peers[0].Endpoint.V6[1 : len(updatedProfile.Config.Peers[0].Endpoint.V6)-3],
-		EndpointH2V4:   cloudflare.DefaultEndpointH2V4,
-		EndpointH2V6:   cloudflare.DefaultEndpointH2V6,
-		EndpointPubKey: updatedProfile.Config.Peers[0].PublicKey,
-		License:        updatedProfile.Account.License,
-		ID:             updatedProfile.ID,
-		AccessToken:    profile.Token,
-		IPv4:           updatedProfile.Config.Interface.Addresses.V4,
-		IPv6:           updatedProfile.Config.Interface.Addresses.V6,
-	}, nil
-}
-
-// IsReady reports whether the tunnel has a connection to the server, not only whether it is
-// set up. //H
-func (w *Outbound) IsReady() bool {
-	select {
-	case <-w.await:
-		return w.tunnel != nil && w.tunnel.IsConnected()
-	default:
-		return false
-	}
-}
-
 // InterfaceUpdated reconnects the tunnel on the new network, after naming it for the scores. //H
 func (w *Outbound) InterfaceUpdated(ctx context.Context) {
 	select {
@@ -365,4 +427,9 @@ func (w *Outbound) InterfaceUpdated(ctx context.Context) {
 		}
 		w.tunnel.ResetConnection()
 	}()
+}
+
+// hasPeer reports whether the warp endpoint fixed the server, its port, or both.
+func hasPeer(peer M.Socksaddr) bool {
+	return peer.IsValid() || peer.Port != 0
 }

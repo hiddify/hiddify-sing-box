@@ -30,4 +30,9 @@ type TunnelOptions struct {
 	OnConnected func(endpoint net.Addr, http2 bool, elapsed time.Duration)
 	// NextEndpoint is asked for another endpoint after failed connects; nil keeps the endpoint.
 	NextEndpoint func(failed net.Addr, http2 bool) net.Addr
+	// ConnectURI is the URI template of the CONNECT-IP request; DefaultConnectURI when empty.
+	ConnectURI string
 }
+
+// DefaultConnectURI is the CONNECT-IP URI of Cloudflare's MASQUE servers.
+const DefaultConnectURI = "https://cloudflareaccess.com"
