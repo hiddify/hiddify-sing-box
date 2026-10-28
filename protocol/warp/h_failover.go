@@ -11,7 +11,6 @@ import (
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/dialer"
-	"github.com/sagernet/sing-box/common/monitoring"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/hiddify/warpscan"
 	"github.com/sagernet/sing-box/log"
@@ -93,6 +92,12 @@ func (w *WARPEndpoint) connect(done <-chan struct{}, config *C.WARPConfig) {
 	}) {
 		return
 	}
+	select {
+	case <-done: // the start ended meanwhile
+		adapter.CloseLate(w.scope, inner)
+		return
+	default:
+	}
 	w.mtx.Lock()
 	w.endpoint = inner
 	w.peerAddr, w.peerPort = peerAddr, peerPort
@@ -106,20 +111,6 @@ func (w *WARPEndpoint) connect(done <-chan struct{}, config *C.WARPConfig) {
 		w.failover.connectedAt = time.Now()
 	}
 	w.mtx.Unlock()
-	w.followDetour(done, config)
-	if w.failover != nil {
-		go w.watch(done)
-	} else if w.options.ServerPort == 0 && len(config.Peers[0].Endpoint.Ports) > 1 {
-		ports := make([]uint16, 0, len(config.Peers[0].Endpoint.Ports))
-		current := 0
-		for i, port := range config.Peers[0].Endpoint.Ports {
-			ports = append(ports, uint16(port))
-			if uint16(port) == peerPort {
-				current = i
-			}
-		}
-		go w.rotatePorts(done, config, peerAddr, ports, current)
-	}
 }
 
 // replaceInner starts a new inner endpoint for the peer and closes the old one once it is in
@@ -149,31 +140,6 @@ func (w *WARPEndpoint) replaceInner(done <-chan struct{}, config *C.WARPConfig, 
 	w.mtx.Unlock()
 	adapter.CloseLate(w.scope, old)
 	return nil
-}
-
-// followDetour reconnects when a group detour moves to another member: the WireGuard socket
-// stays on the member it was opened through, which the group may have left because it failed.
-func (w *WARPEndpoint) followDetour(done <-chan struct{}, config *C.WARPConfig) {
-	if w.options.Detour == "" || w.mode == modeAuto { // auto mode races again instead (followDetourAuto)
-		return
-	}
-	outboundManager := service.FromContext[adapter.OutboundManager](w.ctx)
-	if outboundManager == nil {
-		return
-	}
-	detour, loaded := outboundManager.Outbound(w.options.Detour)
-	if !loaded {
-		return
-	}
-	monitoring.FollowDetour(w.ctx, done, detour, N.NetworkUDP, func(from string, to string) {
-		w.mtx.Lock()
-		peerAddr, peerPort := w.peerAddr, w.peerPort
-		w.mtx.Unlock()
-		w.logger.InfoContext(w.ctx, "WARP: detour moved from ", from, " to ", to, ", reconnecting")
-		if err := w.replaceInner(done, config, peerAddr, peerPort); err != nil {
-			w.logger.ErrorContext(w.ctx, err)
-		}
-	})
 }
 
 // newInner creates and starts a WireGuard or AmneziaWG endpoint for the given peer.

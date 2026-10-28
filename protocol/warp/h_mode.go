@@ -9,12 +9,9 @@ import (
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/dialer"
-	"github.com/sagernet/sing-box/common/monitoring"
 	"github.com/sagernet/sing-box/hiddify/warpscan"
 	"github.com/sagernet/sing-box/option"
 	E "github.com/sagernet/sing/common/exceptions"
-	N "github.com/sagernet/sing/common/network"
-	"github.com/sagernet/sing/service"
 	"github.com/sagernet/wireguard-go/hiddify"
 )
 
@@ -123,6 +120,9 @@ func (w *WARPEndpoint) beginSession() <-chan struct{} {
 	case <-w.done:
 		w.current.end()
 	default:
+		if w.discarded.Load() {
+			w.current.end()
+		}
 	}
 	return w.current.done
 }
@@ -155,10 +155,12 @@ func (w *WARPEndpoint) start() {
 	w.mtx.Lock()
 	w.profile = profile
 	w.mtx.Unlock()
-	if w.mode == modeAuto {
+	if !w.candidate {
 		// before connecting: a start that keeps failing (the tunnel cannot open through the
 		// detour) blocks in connect, and must be left as well
-		w.followDetourAuto(done)
+		w.followDetourMoves(done)
+	}
+	if w.mode == modeAuto {
 		go w.confirmAuto(done, mode)
 	}
 	if mode == modeMASQUE {
@@ -166,7 +168,14 @@ func (w *WARPEndpoint) start() {
 	} else {
 		w.connect(done, profile.WireGuard)
 	}
-	go w.watchHealth(done)
+	select {
+	case <-done:
+		return
+	default:
+	}
+	if !w.candidate {
+		w.runChecks(done)
+	}
 }
 
 // confirmAuto leaves the tunnel auto mode chose when it does not connect within
@@ -182,26 +191,6 @@ func (w *WARPEndpoint) confirmAuto(done <-chan struct{}, mode string) {
 	}
 	w.failedModes.Store(mode, struct{}{})
 	w.restart("auto mode: " + mode + " did not connect")
-}
-
-// followDetourAuto races the tunnels again when a group detour moves to another member: the new
-// path may carry another tunnel better, or only another (a proxy without UDP carries no WireGuard).
-func (w *WARPEndpoint) followDetourAuto(done <-chan struct{}) {
-	if w.options.Detour == "" {
-		return
-	}
-	outboundManager := service.FromContext[adapter.OutboundManager](w.ctx)
-	if outboundManager == nil {
-		return
-	}
-	detour, loaded := outboundManager.Outbound(w.options.Detour)
-	if !loaded {
-		return
-	}
-	monitoring.FollowDetour(w.ctx, done, detour, N.NetworkTCP, func(from string, to string) {
-		w.clearFailedModes()
-		w.restart("auto mode: the detour moved from " + from + " to " + to)
-	})
 }
 
 // clearFailedModes forgets the tunnels that did not connect: on a new path or network they may.

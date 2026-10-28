@@ -33,6 +33,10 @@ const (
 	registerRetryMax = 30 * time.Second
 )
 
+// detourSettle is the least time between two moves of the tunnel when a group detour moves by
+// itself (a URL test, a balancer). //H
+const detourSettle = 30 * time.Second //H
+
 func RegisterOutbound(registry *outbound.Registry) {
 	outbound.Register[option.MASQUEOutboundOptions](registry, C.TypeMASQUE, NewOutbound)
 }
@@ -61,6 +65,8 @@ type Outbound struct {
 	closeOnce   sync.Once
 
 	await chan struct{}
+
+	ownerFollowsDetour bool //H: see followDetour
 }
 
 func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.MASQUEOutboundOptions) (adapter.Outbound, error) {
@@ -74,7 +80,11 @@ func NewWARPOutbound(ctx context.Context, logger log.ContextLogger, tag string, 
 	if config == nil {
 		return nil, E.New("missing WARP MASQUE config")
 	}
-	return newWARPOutbound(ctx, logger, tag, options, config, peer, profileKey)
+	outbound, err := newWARPOutbound(ctx, logger, tag, options, config, peer, profileKey) //H
+	if err == nil {                                                                       //H
+		outbound.ownerFollowsDetour = true // H: the warp endpoint moves the tunnel itself
+	} //H
+	return outbound, err //H
 }
 
 func newWARPOutbound(ctx context.Context, logger log.ContextLogger, tag string, options option.MASQUEOutboundOptions, config *Config, peer M.Socksaddr, profileKey string) (*Outbound, error) {
@@ -277,7 +287,7 @@ func (w *Outbound) startTunnel(appConfig *Config) error {
 // followDetour reconnects the tunnel when a group detour moves to another member: the tunnel
 // keeps its connection on the member it was opened through.
 func (w *Outbound) followDetour() {
-	if w.options.Detour == "" {
+	if w.options.Detour == "" || w.ownerFollowsDetour { //H
 		return
 	}
 	outboundManager := service.FromContext[adapter.OutboundManager](w.ctx)
@@ -292,8 +302,9 @@ func (w *Outbound) followDetour() {
 	if mode, _ := tunnelMode(w.options); mode == masque.ModeHTTP2 {
 		network = N.NetworkTCP
 	}
-	monitoring.FollowDetour(w.ctx, w.done, detour, network, func(from string, to string) {
-		w.logger.InfoContext(w.ctx, "detour moved from ", from, " to ", to, ", reconnecting")
+	// H: a move a group made by itself waits a little: another may follow soon
+	monitoring.FollowDetourSettled(w.ctx, w.done, detour, network, detourSettle, func() bool { return !adapter.IsReady(w) }, func(change monitoring.DetourChange) { //H
+		w.logger.InfoContext(w.ctx, "detour moved from ", change.From, " to ", change.To, ", reconnecting") //H
 		w.tunnel.ResetConnection()
 	})
 }

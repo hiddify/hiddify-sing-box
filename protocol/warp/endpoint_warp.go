@@ -66,6 +66,8 @@ type WARPEndpoint struct {
 	recreated     sync.Map      // H: kinds registered anew for profile.recreate
 	sessionAccess sync.Mutex    // H
 	current       *warpSession  // H: the current start
+	candidate     bool          // H: a new tunnel next to the one in use, see h_switch.go
+	discarded     atomic.Bool   // H: the candidate is not used
 }
 
 func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.WARPEndpointOptions) (adapter.Endpoint, error) {
