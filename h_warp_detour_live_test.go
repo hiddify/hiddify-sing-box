@@ -20,6 +20,7 @@ import (
 	"github.com/sagernet/sing-box/protocol/group"
 	"github.com/sagernet/sing/common/json"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -38,14 +39,14 @@ var hWARPVariants = []hWARPVariant{
 	{"masque-h3", `{"type": "warp", "tag": "warp", "detour": "DETOUR", "unique_identifier": "live-masque", "masque": {"vhttp": "h3"}}`, false, "WARP · MASQUE"},
 	{"masque-h2", `{"type": "warp", "tag": "warp", "detour": "DETOUR", "unique_identifier": "live-masque", "masque": {"vhttp": "h2"}}`, false, "WARP · MASQUE"},
 	{"masque-auto", `{"type": "warp", "tag": "warp", "detour": "DETOUR", "unique_identifier": "live-masque", "masque": {"enabled": true}}`, false, "WARP · MASQUE"},
-	{"auto", `{"type": "warp", "tag": "warp", "detour": "DETOUR", "unique_identifier": "live-auto", "mode": "auto"}`, false, "auto"},
+	{"auto", `{"type": "warp", "tag": "warp", "detour": "DETOUR", "unique_identifier": "live-auto", "mode": "auto", "masque": {"vhttp": "h2"}}`, false, "auto"},
 	{"masque-outbound", `{"type": "masque", "tag": "warp", "detour": "DETOUR", "unique_identifier": "live-masque-outbound"}`, true, "WARP · MASQUE"},
 }
 
 // hWARPDetours are the outbounds WARP goes through; each reaches a server in the same box that
 // goes out direct. dead is a SOCKS server that does not listen, and group a selector that starts
 // on dead.
-var hWARPDetours = []string{"socks", "shadowsocks", "vless", "trojan"}
+var hWARPDetours = []string{"socks", "shadowsocks", "vless", "trojan", "http"}
 
 const hWARPLivePassword = "warp-live-password"
 const hWARPLiveUUID = "b831381d-6324-4d53-ad4f-8cda48b30811"
@@ -98,8 +99,10 @@ func hStartWARPBox(t *testing.T, cachePath string, variant hWARPVariant, detour 
 			{"type": "shadowsocks", "tag": "d-shadowsocks", "server": "127.0.0.1", "server_port": `+port(ssPort)+`, "method": "aes-128-gcm", "password": "`+hWARPLivePassword+`"},
 			{"type": "vless", "tag": "d-vless", "server": "127.0.0.1", "server_port": `+port(vlessPort)+`, "uuid": "`+hWARPLiveUUID+`", "packet_encoding": "xudp"},
 			{"type": "trojan", "tag": "d-trojan", "server": "127.0.0.1", "server_port": `+port(trojanPort)+`, "password": "`+hWARPLivePassword+`"},
+			{"type": "http", "tag": "d-http", "server": "127.0.0.1", "server_port": `+port(socksPort)+`},
+			{"type": "socks", "tag": "d-tcp", "server": "127.0.0.1", "server_port": `+port(socksPort)+`, "version": "4a"},
 			{"type": "socks", "tag": "d-dead", "server": "127.0.0.1", "server_port": `+port(deadPort)+`},
-			{"type": "selector", "tag": "`+groupTag+`", "outbounds": ["d-dead", "d-shadowsocks", "d-socks"], "default": "`+groupDefault+`"},
+			{"type": "selector", "tag": "`+groupTag+`", "outbounds": ["d-dead", "d-shadowsocks", "d-socks", "d-http", "d-tcp"], "default": "`+groupDefault+`"},
 			{"type": "direct", "tag": "direct"}
 		],
 		"route": {"rules": [{"inbound": ["socks-srv", "ss-srv", "vless-srv", "trojan-srv"], "outbound": "direct"}], "final": "warp"}
@@ -211,6 +214,21 @@ func TestH_WARPLiveDetour(t *testing.T) {
 				// the tunnel moves to the new member: SOCKS can go away, WARP still works
 				require.Eventually(t, instance.traceOK, 60*time.Second, 2*time.Second, "no WARP traffic after the switch")
 				require.Eventually(t, instance.ready, 30*time.Second, 200*time.Millisecond, "not ready after the switch")
+			})
+			t.Run("switch-to-tcp", func(t *testing.T) {
+				// a proxy without UDP carries no WireGuard nor AmneziaWG: auto mode must move to MASQUE
+				// over HTTP/2, even after a handshake got through before the switch
+				if !runDetour("switch-to-tcp") || variant.name != "auto" {
+					t.Skip()
+				}
+				instance := hStartWARPBox(t, cachePath, variant, "switch")
+				instance.requireConnected(t)
+				selector, _ := instance.instance.Outbound().Outbound(instance.groupTag)
+				require.True(t, selector.(*group.Selector).SelectOutbound("d-tcp"))
+				// SOCKS4 has no UDP at all
+				ok := assert.Eventually(t, func() bool { return instance.ready() && instance.displayType() == "WARP · MASQUE" && instance.traceOK() },
+					90*time.Second, 2*time.Second)
+				require.True(t, ok, "auto mode did not move to MASQUE behind a TCP-only proxy: %q", instance.displayType())
 			})
 			t.Run("group", func(t *testing.T) {
 				if !runDetour("group") {
