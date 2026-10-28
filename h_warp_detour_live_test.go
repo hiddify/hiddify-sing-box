@@ -65,8 +65,12 @@ func hStartWARPBox(t *testing.T, cachePath string, variant hWARPVariant, detour 
 	// the cache file keeps a selector's choice, so each box gets its own selector
 	groupTag := "d-group-" + strconv.Itoa(mixedPort)
 	detourTag := "d-" + detour
-	if detour == "group" {
+	groupDefault := "d-dead"
+	switch detour {
+	case "group":
 		detourTag = groupTag
+	case "switch": // a group that starts on a working member, and moves to another
+		detourTag, groupDefault = groupTag, "d-socks"
 	}
 	warp := strings.ReplaceAll(variant.warp, "DETOUR", detourTag)
 	endpoints, extraOutbounds := `[`+warp+`]`, ""
@@ -95,7 +99,7 @@ func hStartWARPBox(t *testing.T, cachePath string, variant hWARPVariant, detour 
 			{"type": "vless", "tag": "d-vless", "server": "127.0.0.1", "server_port": `+port(vlessPort)+`, "uuid": "`+hWARPLiveUUID+`", "packet_encoding": "xudp"},
 			{"type": "trojan", "tag": "d-trojan", "server": "127.0.0.1", "server_port": `+port(trojanPort)+`, "password": "`+hWARPLivePassword+`"},
 			{"type": "socks", "tag": "d-dead", "server": "127.0.0.1", "server_port": `+port(deadPort)+`},
-			{"type": "selector", "tag": "`+groupTag+`", "outbounds": ["d-dead", "d-shadowsocks"], "default": "d-dead"},
+			{"type": "selector", "tag": "`+groupTag+`", "outbounds": ["d-dead", "d-shadowsocks", "d-socks"], "default": "`+groupDefault+`"},
 			{"type": "direct", "tag": "direct"}
 		],
 		"route": {"rules": [{"inbound": ["socks-srv", "ss-srv", "vless-srv", "trojan-srv"], "outbound": "direct"}], "final": "warp"}
@@ -195,6 +199,18 @@ func TestH_WARPLiveDetour(t *testing.T) {
 					t.Skip()
 				}
 				hStartWARPBox(t, cachePath, variant, "dead").requireNeverConnected(t, 20*time.Second)
+			})
+			t.Run("switch", func(t *testing.T) {
+				if !runDetour("switch") {
+					t.Skip()
+				}
+				instance := hStartWARPBox(t, cachePath, variant, "switch")
+				instance.requireConnected(t)
+				selector, _ := instance.instance.Outbound().Outbound(instance.groupTag)
+				require.True(t, selector.(*group.Selector).SelectOutbound("d-shadowsocks"))
+				// the tunnel moves to the new member: SOCKS can go away, WARP still works
+				require.Eventually(t, instance.traceOK, 60*time.Second, 2*time.Second, "no WARP traffic after the switch")
+				require.Eventually(t, instance.ready, 30*time.Second, 200*time.Millisecond, "not ready after the switch")
 			})
 			t.Run("group", func(t *testing.T) {
 				if !runDetour("group") {
