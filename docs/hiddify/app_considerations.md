@@ -86,6 +86,11 @@ do about it. Items marked **Required** break or misbehave until they are handled
   outbound shows `WARP · MASQUE`. After them comes the scanner status, once it has run
   (` · 🔍 Scanning...`, ` · 🔍 <address:port>`, ` · 🔍 Not found`), then ` ⚠️ Connecting...` while
   not connected. If the app maps display types to icons or labels, match on the prefix.
+- **The connecting mark, for every outbound.** ` ⚠️ Connecting...` is now added by
+  `adapter.DisplayType(outbound)` to any outbound that is not ready, not by each outbound's own
+  `DisplayType`. hiddify-core must show `adapter.DisplayType(outbound)` (v2/hcore/proxy_info.go
+  does, uncommitted at the time of writing); calling `DisplayType()` directly loses the mark.
+  Psiphon no longer shows "✔️ Connected".
 - **WARP registration fallback.** When registration through `profile.detour` fails, WARP (all
   three tunnels) tries again through every other outbound, direct included. That was already so
   for WireGuard and is kept; it lets a cold detour group not block registration, but it means
