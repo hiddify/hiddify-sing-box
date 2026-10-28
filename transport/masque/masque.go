@@ -61,6 +61,7 @@ func ConnectTunnel(ctx context.Context, dialer N.Dialer, tlsConfig aTLS.Config, 
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
+	udpConn = WholePacketConn(udpConn) //H: a full QUIC packet was cut off through Shadowsocks
 	conn, err := qtls.Dial(
 		ctx,
 		bufio.NewBindPacketConn(udpConn, quicEndpoint),

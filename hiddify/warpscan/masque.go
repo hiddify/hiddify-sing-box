@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/sagernet/quic-go"
+	"github.com/sagernet/sing-box/transport/masque"
 	qtls "github.com/sagernet/sing-quic"
 	"github.com/sagernet/sing/common/bufio"
 	M "github.com/sagernet/sing/common/metadata"
@@ -54,6 +55,9 @@ func MASQUEProbe(dialer N.Dialer, tlsConfig aTLS.Config, useHTTP2 bool) Probe {
 	return func(ctx context.Context, addrPort netip.AddrPort) (time.Duration, error) {
 		start := time.Now()
 		packetConn, err := dialer.ListenPacket(ctx, M.SocksaddrFromNetIP(addrPort))
+		if err == nil {
+			packetConn = masque.WholePacketConn(packetConn)
+		}
 		if err != nil {
 			return 0, err
 		}
