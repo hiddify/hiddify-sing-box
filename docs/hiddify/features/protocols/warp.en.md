@@ -120,9 +120,20 @@ The hourglass flips between ⏳ and ⌛ each second. For example
 `WARP · MASQUE · 🔍 162.159.198.1:443`, or `WARP · WG ⏳ Reconnecting...`.
 
 **Group detour.** When `detour` is a group (a selector, URL test or balancer), WARP follows the
-member it resolves to, through nested groups. When the group moves to another member, WARP
-reconnects through the new one: the WireGuard or AmneziaWG socket, or the MASQUE connection,
-would otherwise stay on the member the group left.
+member it resolves to, through nested groups. The WireGuard or AmneziaWG socket, or the MASQUE
+connection, would otherwise stay on the member the group left. How WARP moves depends on who
+moved the group:
+
+- **The user moved a selector:** WARP reconnects through the new member at once, and in auto mode
+  races the tunnels again.
+- **The group moved by itself** (a URL test, a balancer, a fallback): WARP moves at most every 30
+  seconds, and joins the moves in between; a group that comes back to its member before then
+  changes nothing. It moves at once when the member it left had failed its last test, or when
+  WARP is not connected. Then it opens a new tunnel through the new member next to the one in use
+  (in auto mode, after a new race), and moves traffic to it only once it connects, within 25
+  seconds; when it does not connect, the old tunnel stays.
+
+The standalone `masque` outbound follows the same rules, and reconnects its tunnel.
 
 **Noise.** Before each handshake initiation, the device sends `count` fake packets, with a
 random `delay` between them. In the default mode each packet is a short header and `size`

@@ -151,7 +151,18 @@ do about it. Items marked **Required** break or misbehave until they are handled
 
 - **URL test.** A dial that fails because the path is dead moves the group to another member
   immediately, without closing live connections, so the selected member can change between tests.
-  `failover` keeps a member until it fails.
+  `failover` keeps a member until it fails. A URL test or balancer that moves now signals
+  monitoring at once, as a selector does, so the proxy list stream updates without waiting for
+  the next test.
+- **WARP behind a group.** WARP (and the `masque` outbound) moves at once when the user changes a
+  selector in its detour, but follows a URL test or balancer at most every 30 seconds, through a
+  new tunnel that replaces the old one only once it connects. hiddify-core's chain mode
+  `selectable` relies on this: in Extra Security its WARP hops dial through `select`, and the user can move both
+  `select` and the hop selector on the fly. The app offers `selectable` as a
+  mode of both hops; the proxy list then has a selectable group named after the hop (`🔒 Extra
+  Security · Selectable` or `🔓 Unblocker · Selectable`; its tag ends in `§hide§` like every chain
+  hop, so do not hide it) whose items are `Lowest → <hop>` (the
+  default, a lowest-delay balancer) and each WARP tunnel and Psiphon, moved with `SelectOutbound`.
 - **DNS predefined answers.** In legacy DNS mode, A/AAAA records in 10.0.0.0/8 and
   2001:4188:2:600::/64 are removed from `predefined` answers (`dns/blocked_checker.go`). This is
   deliberate and tested, but a predefined answer in those ranges returns nothing; keep it in mind

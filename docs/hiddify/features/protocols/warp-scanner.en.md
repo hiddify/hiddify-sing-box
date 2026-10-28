@@ -121,9 +121,12 @@ starts by racing the three tunnels:
    every tunnel failed it starts over.
 5. When none answered, WireGuard is used, so the scanner and the noise search can still look for
    an endpoint and a noise.
-6. When a group `detour` (a selector, say) moves to another member, the race runs again: the new
-   proxy may carry another tunnel better, or only one (a proxy without UDP, such as SOCKS4,
-   carries MASQUE over HTTP/2 only). A network change forgets which tunnels failed.
+6. When a group `detour` moves to another member, the race runs again: the new proxy may carry
+   another tunnel better, or only one (a proxy without UDP, such as SOCKS4, carries MASQUE over
+   HTTP/2 only). After a selector the user moved, at once; after a group that moved by itself (a
+   URL test, a balancer), at most every 30 seconds, through a new tunnel next to the one in use
+   that replaces it only once it connects (see [group detour](warp.en.md)). A network change
+   forgets which tunnels failed.
 7. While the endpoint has not been connected for 3 minutes, it races again, at most every 10
    minutes, and moves to another tunnel that answers.
 
