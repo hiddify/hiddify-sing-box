@@ -154,7 +154,7 @@ func (w *WARPEndpoint) replaceInner(done <-chan struct{}, config *C.WARPConfig, 
 // followDetour reconnects when a group detour moves to another member: the WireGuard socket
 // stays on the member it was opened through, which the group may have left because it failed.
 func (w *WARPEndpoint) followDetour(done <-chan struct{}, config *C.WARPConfig) {
-	if w.options.Detour == "" {
+	if w.options.Detour == "" || w.mode == modeAuto { // auto mode races again instead (followDetourAuto)
 		return
 	}
 	outboundManager := service.FromContext[adapter.OutboundManager](w.ctx)
@@ -404,6 +404,7 @@ func (w *WARPEndpoint) saveScores() {
 // InterfaceUpdated passes the network change to the inner endpoint (which rebinds its socket)
 // and checks the endpoint in use on the new network.
 func (w *WARPEndpoint) InterfaceUpdated(ctx context.Context) {
+	w.clearFailedModes() //H: auto mode: on a new network every tunnel may connect again
 	w.mtx.Lock()
 	inner := w.endpoint
 	w.mtx.Unlock()

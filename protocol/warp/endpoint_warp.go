@@ -56,6 +56,7 @@ type WARPEndpoint struct {
 	failed        atomic.Bool           // H: see Status
 	tracker       adapter.StatusTracker // H
 	registering   atomic.Bool           // H: a device is being registered
+	failedModes   sync.Map              // H: auto mode: the tunnels that did not connect
 
 	mode          string        // H: the tunnel, see h_mode.go
 	active        atomic.Value  // H: in auto mode, the tunnel chosen

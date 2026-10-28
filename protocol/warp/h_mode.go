@@ -9,9 +9,12 @@ import (
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/dialer"
+	"github.com/sagernet/sing-box/common/monitoring"
 	"github.com/sagernet/sing-box/hiddify/warpscan"
 	"github.com/sagernet/sing-box/option"
 	E "github.com/sagernet/sing/common/exceptions"
+	N "github.com/sagernet/sing/common/network"
+	"github.com/sagernet/sing/service"
 	"github.com/sagernet/wireguard-go/hiddify"
 )
 
@@ -38,6 +41,11 @@ const (
 	healthInterval       = time.Minute
 	healthAfter          = 3 * time.Minute
 	profileCheckInterval = 10 * time.Minute
+
+	// autoConfirmWait is how long the tunnel auto mode chose has to connect: an answer to one
+	// handshake does not make a tunnel that carries traffic, so a tunnel that does not connect
+	// is left for the next.
+	autoConfirmWait = 20 * time.Second
 )
 
 // warpMode returns the tunnel of options: mode, or without it the masque or awg block. awg and auto
@@ -147,12 +155,66 @@ func (w *WARPEndpoint) start() {
 	w.mtx.Lock()
 	w.profile = profile
 	w.mtx.Unlock()
+	if w.mode == modeAuto {
+		// before connecting: a start that keeps failing (the tunnel cannot open through the
+		// detour) blocks in connect, and must be left as well
+		w.followDetourAuto(done)
+		go w.confirmAuto(done, mode)
+	}
 	if mode == modeMASQUE {
 		w.connectMASQUE(done, profile)
 	} else {
 		w.connect(done, profile.WireGuard)
 	}
 	go w.watchHealth(done)
+}
+
+// confirmAuto leaves the tunnel auto mode chose when it does not connect within
+// autoConfirmWait: the race runs again without it.
+func (w *WARPEndpoint) confirmAuto(done <-chan struct{}, mode string) {
+	select {
+	case <-done:
+		return
+	case <-time.After(autoConfirmWait):
+	}
+	if adapter.IsReady(w) {
+		return
+	}
+	w.failedModes.Store(mode, struct{}{})
+	w.restart("auto mode: " + mode + " did not connect")
+}
+
+// followDetourAuto races the tunnels again when a group detour moves to another member: the new
+// path may carry another tunnel better, or only another (a proxy without UDP carries no WireGuard).
+func (w *WARPEndpoint) followDetourAuto(done <-chan struct{}) {
+	if w.options.Detour == "" {
+		return
+	}
+	outboundManager := service.FromContext[adapter.OutboundManager](w.ctx)
+	if outboundManager == nil {
+		return
+	}
+	detour, loaded := outboundManager.Outbound(w.options.Detour)
+	if !loaded {
+		return
+	}
+	monitoring.FollowDetour(w.ctx, done, detour, N.NetworkTCP, func(from string, to string) {
+		w.clearFailedModes()
+		w.restart("auto mode: the detour moved from " + from + " to " + to)
+	})
+}
+
+// clearFailedModes forgets the tunnels that did not connect: on a new path or network they may.
+func (w *WARPEndpoint) clearFailedModes() {
+	w.failedModes.Range(func(key, _ any) bool {
+		w.failedModes.Delete(key)
+		return true
+	})
+}
+
+func (w *WARPEndpoint) modeFailed(mode string) bool {
+	_, failed := w.failedModes.Load(mode)
+	return failed
 }
 
 // modeKind is the kind of device a tunnel runs on: each has its own, so the tunnels of auto mode
@@ -317,7 +379,14 @@ func (w *WARPEndpoint) chooseMode(done <-chan struct{}) string {
 		return ""
 	default:
 	}
-	w.logger.WarnContext(w.ctx, "WARP auto mode: no tunnel answered, using WireGuard")
+	for _, mode := range []string{modeWireGuard, modeAWG, modeMASQUE} {
+		if !w.modeFailed(mode) && (mode != modeMASQUE || masqueIncluded) {
+			w.logger.WarnContext(w.ctx, "WARP auto mode: no tunnel answered, using ", mode)
+			return mode
+		}
+	}
+	w.clearFailedModes() // each was tried: start over
+	w.logger.WarnContext(w.ctx, "WARP auto mode: no tunnel connected, starting over with WireGuard")
 	return modeWireGuard
 }
 
@@ -375,6 +444,11 @@ func (w *WARPEndpoint) raceModes(done <-chan struct{}) string {
 		rtt  time.Duration
 	}
 	answers := make(chan answer, len(probes))
+	for mode := range probes {
+		if w.modeFailed(mode) {
+			delete(probes, mode) // it answered a handshake before, but did not connect
+		}
+	}
 	for mode, probe := range probes {
 		go func() {
 			var err error
