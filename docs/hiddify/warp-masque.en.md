@@ -87,6 +87,10 @@ current one.
 **Network change.** After a network change, the outbound names the new network (for the scores)
 and drops the tunnel connection. The next use connects again.
 
+**Connected state.** The outbound counts as connected (no "Connecting...") only while it has a
+connection to Cloudflare's server, not as soon as it is set up; when the connection drops,
+through a detour or otherwise, it shows as connecting until it reconnects.
+
 ## Configuration
 
 ```json

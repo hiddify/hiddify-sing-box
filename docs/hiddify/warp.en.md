@@ -52,8 +52,15 @@ Cloudflare peer. It takes the first one it finds:
 A new profile is saved in the cache file when `store_warp_config` is on, so later starts don't
 register a new account.
 
-**Peer.** The tunnel uses the profile's peer address and one of its ports, chosen at random.
-`server` and `server_port` replace them.
+**Peer.** The tunnel uses the profile's IPv4 peer address (its IPv6 one when there is no IPv4
+one) and one of its ports, chosen at random. `server` and `server_port` replace them. Without the
+scanner and without `server_port`, a port that completes no handshake within 10 seconds is
+replaced by the profile's next port.
+
+**Connected state.** The peer gets a keepalive every 25 seconds, as in the WARP apps, so the
+handshake stays fresh while the path works. WARP counts as connected (no "Connecting...") only
+while the last handshake is less than 3 minutes old; through a detour that stops working, it
+shows as connecting again.
 
 **Noise.** Before each handshake initiation, the device sends `count` fake packets, with a
 random `delay` between them. In the default mode each packet is a short header and `size`
