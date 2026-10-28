@@ -37,6 +37,13 @@ server it knows is blocked and it cannot fetch a new list.
   outbound's dial settings (for example `detour`), through a local SOCKS bridge, so they do
   not loop back into your VPN. If you set `upstream_proxy_url`, that proxy is used instead.
 - When the network changes, the outbound tells the tunnel core to reconnect.
+- When the tunnel core stops (it gives up after `establish_tunnel_timeout`, or fails), it is
+  started again after 5 seconds, then twice as long each time, up to every 5 minutes; a
+  connection resets the wait.
+- Several Psiphon outbounds can run at once, for example one per `egress_region`. Each keeps its
+  downloads in `data_directory/<tag>`; what an earlier version kept in `data_directory` itself is
+  moved there. The tunnel core reports its state without saying which outbound it is about, so
+  next to other Psiphon outbounds each one checks its own tunnel before it shows as connected.
 - Each TCP connection is opened through the Psiphon tunnel to its real destination. UDP is not
   supported.
 
@@ -53,7 +60,7 @@ server it knows is blocked and it cannot fetch a new list.
 | Field | Type | Default | Meaning |
 |---|---|---|---|
 | `config` | string | `""` | A Psiphon config to start from. `"hiddify"` uses the config built into the Hiddify app, if this build has one; otherwise a warning is logged and the defaults are used. Any other value is the Psiphon JSON config, either encrypted with this build's key or in base64. Empty means the defaults. |
-| `data_directory` | string | `"data/psiphon"` | Where Psiphon keeps its data store and server list. |
+| `data_directory` | string | `"data/psiphon"` | Where Psiphon keeps its data: each outbound in a folder named after its tag. |
 | `egress_region` | string | `""` | Two-letter country code of the exit server, for example `"US"` or `"DE"`. Empty lets Psiphon choose. |
 | `propagation_channel_id` | string | `"FFFFFFFFFFFFFFFF"` | Psiphon client identity value. |
 | `sponsor_id` | string | `"FFFFFFFFFFFFFFFF"` | Psiphon client identity value. |
