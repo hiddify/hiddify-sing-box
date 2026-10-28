@@ -1,4 +1,4 @@
-package masque
+package wholepacket
 
 import (
 	"bytes"
@@ -24,7 +24,7 @@ func (c *hInPlacePacketConn) ReadFrom(p []byte) (int, net.Addr, error) {
 	return copy(p, c.packet), &net.UDPAddr{IP: net.IPv4(162, 159, 198, 1), Port: 443}, nil
 }
 
-func TestH_WholePacketConn(t *testing.T) {
+func TestH_Wrap(t *testing.T) {
 	packet := bytes.Repeat([]byte{0x42}, 1452) // a full QUIC packet
 	conn := &hInPlacePacketConn{packet: packet, overhead: 39}
 	buffer := make([]byte, 1452) // what QUIC reads into
@@ -32,7 +32,7 @@ func TestH_WholePacketConn(t *testing.T) {
 	_, _, err := conn.ReadFrom(buffer)
 	require.Error(t, err, "the packet does not fit with the proxy's overhead")
 
-	n, addr, err := WholePacketConn(conn).ReadFrom(buffer)
+	n, addr, err := Wrap(conn).ReadFrom(buffer)
 	require.NoError(t, err)
 	require.Equal(t, packet, buffer[:n])
 	require.Equal(t, "162.159.198.1:443", addr.String())
@@ -40,5 +40,7 @@ func TestH_WholePacketConn(t *testing.T) {
 	udpConn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	require.NoError(t, err)
 	defer udpConn.Close()
-	require.Same(t, udpConn, WholePacketConn(udpConn), "a UDP socket needs no copy")
+	require.Same(t, udpConn, Wrap(udpConn), "a UDP socket needs no copy")
+	wrapped := Wrap(conn)
+	require.Same(t, wrapped, Wrap(wrapped), "wrapped once")
 }

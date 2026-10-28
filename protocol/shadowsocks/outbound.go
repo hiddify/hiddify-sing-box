@@ -8,6 +8,7 @@ import (
 	"github.com/sagernet/sing-box/adapter/outbound"
 	"github.com/sagernet/sing-box/common/dialer"
 	"github.com/sagernet/sing-box/common/mux"
+	"github.com/sagernet/sing-box/common/wholepacket"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
@@ -192,7 +193,7 @@ func (h *shadowsocksDialer) DialContext(ctx context.Context, network string, des
 		if err != nil {
 			return nil, err
 		}
-		return bufio.NewBindPacketConn(h.method.DialPacketConn(outConn), destination), nil
+		return bufio.NewBindPacketConn(wholepacket.Wrap(h.method.DialPacketConn(outConn)), destination), nil //H
 	default:
 		return nil, E.Extend(N.ErrUnknownNetwork, network)
 	}
@@ -206,5 +207,5 @@ func (h *shadowsocksDialer) ListenPacket(ctx context.Context, destination M.Sock
 	if err != nil {
 		return nil, err
 	}
-	return h.method.DialPacketConn(outConn), nil
+	return wholepacket.Wrap(h.method.DialPacketConn(outConn)), nil //H: QUIC through Shadowsocks cut full packets off
 }
