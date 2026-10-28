@@ -111,6 +111,12 @@ func (s *Balancer) Start() error {
 		s.strategyFn = NewStickySession(outbounds, s.options)
 	case StrategyLowestDelay:
 		s.strategyFn = NewLowestDelay(outbounds, s.options)
+	case StrategyPool: //H
+		pool, err := NewPool(outbounds, s.options) //H
+		if err != nil {                            //H
+			return err //H
+		} //H
+		s.strategyFn = pool //H
 	default:
 		return E.New("unknown load balance strategy: ", s.options.Strategy)
 	}
