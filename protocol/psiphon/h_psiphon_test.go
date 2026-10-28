@@ -20,9 +20,9 @@ import (
 
 func TestH_PsiphonBuildConfigDefaults(t *testing.T) {
 	t.Parallel()
-	config, err := buildConfig(option.PsiphonOutboundOptions{}, defaultEstablishTunnelTimeout)
+	config, err := buildConfig(option.PsiphonOutboundOptions{}, defaultEstablishTunnelTimeout, "psiphon")
 	require.NoError(t, err)
-	require.Equal(t, defaultDataDirectory, config.DataRootDirectory)
+	require.Equal(t, filepath.Join(defaultDataDirectory, "psiphon"), config.DataRootDirectory, "a directory per outbound")
 	require.Equal(t, defaultPropagationChannelID, config.PropagationChannelId)
 	require.Equal(t, defaultSponsorID, config.SponsorId)
 	require.Equal(t, defaultNetworkID, config.NetworkID)
@@ -59,9 +59,9 @@ func TestH_PsiphonBuildConfigOverrides(t *testing.T) {
 		UpstreamProxyURL:                        "socks5://127.0.0.1:1080",
 		AllowDefaultDNSResolverWithBindToDevice: &allow,
 	}
-	config, err := buildConfig(options, 90*time.Second)
+	config, err := buildConfig(options, 90*time.Second, "psiphon")
 	require.NoError(t, err)
-	require.Equal(t, "/tmp/psi", config.DataRootDirectory)
+	require.Equal(t, filepath.Join("/tmp/psi", "psiphon"), config.DataRootDirectory)
 	require.Equal(t, "DE", config.EgressRegion)
 	require.Equal(t, "PC", config.PropagationChannelId)
 	require.Equal(t, "SP", config.SponsorId)
@@ -148,7 +148,7 @@ const hTestPartnerConfig = `{
 
 func TestH_PsiphonBuildConfigFromPartnerConfig(t *testing.T) {
 	t.Parallel()
-	config, err := buildConfig(option.PsiphonOutboundOptions{Config: base64.StdEncoding.EncodeToString([]byte(hTestPartnerConfig))}, 90*time.Second)
+	config, err := buildConfig(option.PsiphonOutboundOptions{Config: base64.StdEncoding.EncodeToString([]byte(hTestPartnerConfig))}, 90*time.Second, "psiphon")
 	require.NoError(t, err)
 	require.Equal(t, "AAAAAAAAAAAAAAAA", config.PropagationChannelId)
 	require.Equal(t, "BBBBBBBBBBBBBBBB", config.SponsorId)
@@ -158,7 +158,7 @@ func TestH_PsiphonBuildConfigFromPartnerConfig(t *testing.T) {
 	require.Equal(t, "encrypted-parameters", config.AdditionalParameters)
 	// unset values still get the defaults; managed values are not taken from the config
 	require.Equal(t, defaultRemoteServerListURL, config.RemoteServerListUrl)
-	require.Equal(t, defaultDataDirectory, config.DataRootDirectory)
+	require.Equal(t, filepath.Join(defaultDataDirectory, "psiphon"), config.DataRootDirectory, "a directory per outbound")
 	require.Equal(t, 90, *config.EstablishTunnelTimeoutSeconds, "a 0 (forever) timeout must not hang the outbound")
 	require.True(t, config.DisableLocalHTTPProxy)
 	require.True(t, config.DisableLocalSocksProxy)
@@ -170,7 +170,7 @@ func TestH_PsiphonExplicitOptionsOverridePartnerConfig(t *testing.T) {
 		Config:       base64.StdEncoding.EncodeToString([]byte(hTestPartnerConfig)),
 		SponsorID:    "CCCCCCCCCCCCCCCC",
 		EgressRegion: "DE",
-	}, defaultEstablishTunnelTimeout)
+	}, defaultEstablishTunnelTimeout, "psiphon")
 	require.NoError(t, err)
 	require.Equal(t, "CCCCCCCCCCCCCCCC", config.SponsorId)
 	require.Equal(t, "AAAAAAAAAAAAAAAA", config.PropagationChannelId)
@@ -181,13 +181,13 @@ func TestH_PsiphonBuildConfigBase64Variants(t *testing.T) {
 	t.Parallel()
 	// URL-safe without padding, surrounded by whitespace
 	encoded := "  " + base64.RawURLEncoding.EncodeToString([]byte(hTestPartnerConfig)) + "\n"
-	config, err := buildConfig(option.PsiphonOutboundOptions{Config: encoded}, defaultEstablishTunnelTimeout)
+	config, err := buildConfig(option.PsiphonOutboundOptions{Config: encoded}, defaultEstablishTunnelTimeout, "psiphon")
 	require.NoError(t, err)
 	require.Equal(t, "BBBBBBBBBBBBBBBB", config.SponsorId)
 
-	_, err = buildConfig(option.PsiphonOutboundOptions{Config: "not base64!"}, defaultEstablishTunnelTimeout)
+	_, err = buildConfig(option.PsiphonOutboundOptions{Config: "not base64!"}, defaultEstablishTunnelTimeout, "psiphon")
 	require.ErrorContains(t, err, "decode psiphon config")
-	_, err = buildConfig(option.PsiphonOutboundOptions{Config: base64.StdEncoding.EncodeToString([]byte("{not json"))}, defaultEstablishTunnelTimeout)
+	_, err = buildConfig(option.PsiphonOutboundOptions{Config: base64.StdEncoding.EncodeToString([]byte("{not json"))}, defaultEstablishTunnelTimeout, "psiphon")
 	require.ErrorContains(t, err, "parse psiphon config")
 }
 
@@ -213,7 +213,7 @@ func TestH_PsiphonEncryptedConfig(t *testing.T) {
 	encrypted, err := secret.Encrypt(key, []byte(hTestPartnerConfig))
 	require.NoError(t, err)
 
-	config, err := buildConfig(option.PsiphonOutboundOptions{Config: encrypted}, defaultEstablishTunnelTimeout)
+	config, err := buildConfig(option.PsiphonOutboundOptions{Config: encrypted}, defaultEstablishTunnelTimeout, "psiphon")
 	require.NoError(t, err)
 	require.Equal(t, "BBBBBBBBBBBBBBBB", config.SponsorId)
 	require.Equal(t, "encrypted-parameters", config.AdditionalParameters)
@@ -225,7 +225,7 @@ func TestH_PsiphonHiddifyConfig(t *testing.T) {
 	require.NoError(t, err)
 	hWithEmbedded(t, key, encrypted)
 
-	config, err := buildConfig(option.PsiphonOutboundOptions{Config: "hiddify", EgressRegion: "DE"}, defaultEstablishTunnelTimeout)
+	config, err := buildConfig(option.PsiphonOutboundOptions{Config: "hiddify", EgressRegion: "DE"}, defaultEstablishTunnelTimeout, "psiphon")
 	require.NoError(t, err)
 	require.Equal(t, "BBBBBBBBBBBBBBBB", config.SponsorId, "config hiddify uses the embedded config")
 	require.Equal(t, "DE", config.EgressRegion)
@@ -233,7 +233,7 @@ func TestH_PsiphonHiddifyConfig(t *testing.T) {
 
 func TestH_PsiphonHiddifyConfigNotEmbedded(t *testing.T) {
 	hWithEmbedded(t, "", "")
-	config, err := buildConfig(option.PsiphonOutboundOptions{Config: "hiddify"}, defaultEstablishTunnelTimeout)
+	config, err := buildConfig(option.PsiphonOutboundOptions{Config: "hiddify"}, defaultEstablishTunnelTimeout, "psiphon")
 	require.NoError(t, err, "builds without the secret fall back to the defaults")
 	require.Equal(t, defaultSponsorID, config.SponsorId)
 }
@@ -244,6 +244,20 @@ func TestH_PsiphonEncryptedConfigWrongKey(t *testing.T) {
 	other := make([]byte, 32)
 	hWithEmbedded(t, base64.StdEncoding.EncodeToString(other), "")
 	// not decryptable with this build's key: treated as plain base64, which is not a JSON config
-	_, err = buildConfig(option.PsiphonOutboundOptions{Config: encrypted}, defaultEstablishTunnelTimeout)
+	_, err = buildConfig(option.PsiphonOutboundOptions{Config: encrypted}, defaultEstablishTunnelTimeout, "psiphon")
 	require.ErrorContains(t, err, "parse psiphon config")
+}
+
+func TestH_PsiphonInstanceDirectory(t *testing.T) {
+	require.Equal(t, "psiphon", instanceDirectory("psiphon"))
+	require.Equal(t, "psiphon__US", instanceDirectory("psiphon§US"), "each byte of a non-ASCII letter")
+	require.Equal(t, "a_b_c", instanceDirectory("a/b c"))
+	require.Equal(t, "default", instanceDirectory(""))
+	require.Equal(t, "default", instanceDirectory(".."))
+	us, err := buildConfig(option.PsiphonOutboundOptions{EgressRegion: "US"}, defaultEstablishTunnelTimeout, "psiphon-us")
+	require.NoError(t, err)
+	de, err := buildConfig(option.PsiphonOutboundOptions{EgressRegion: "DE"}, defaultEstablishTunnelTimeout, "psiphon-de")
+	require.NoError(t, err)
+	require.NotEqual(t, us.DataRootDirectory, de.DataRootDirectory, "two outbounds never share their files")
+	require.Equal(t, defaultDataDirectory, us.MigrateDataStoreDirectory, "the shared directory of before is migrated")
 }

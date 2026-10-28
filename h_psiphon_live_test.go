@@ -74,3 +74,29 @@ func TestH_PsiphonLiveStatus(t *testing.T) {
 		instance.Close()
 	}
 }
+
+// Two Psiphon outbounds start together, each with its own data directory, and close.
+func TestH_PsiphonTwoOutbounds(t *testing.T) {
+	dataDirectory := filepath.Join(t.TempDir(), "psiphon")
+	ctx := include.Context(context.Background())
+	options, err := json.UnmarshalExtendedContext[option.Options](ctx, []byte(`{
+		"log": {"disabled": true},
+		"outbounds": [
+			{"type": "psiphon", "tag": "psiphon-us", "egress_region": "US", "data_directory": "`+dataDirectory+`"},
+			{"type": "psiphon", "tag": "psiphon-de", "egress_region": "DE", "data_directory": "`+dataDirectory+`"},
+			{"type": "direct", "tag": "direct"}
+		],
+		"route": {"final": "direct"}
+	}`))
+	require.NoError(t, err)
+	instance, err := box.New(box.Options{Context: ctx, Options: options})
+	require.NoError(t, err)
+	require.NoError(t, instance.Start())
+	for _, tag := range []string{"psiphon-us", "psiphon-de"} {
+		outbound, loaded := instance.Outbound().Outbound(tag)
+		require.True(t, loaded)
+		require.NotEqual(t, adapter.StatusFailed, outbound.Status(), tag)
+		require.DirExists(t, filepath.Join(dataDirectory, tag), "a directory of its own")
+	}
+	require.NoError(t, instance.Close())
+}

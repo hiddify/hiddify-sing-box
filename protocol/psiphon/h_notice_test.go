@@ -73,3 +73,25 @@ func TestH_NoticeHubSurvivesAnotherClose(t *testing.T) {
 	require.False(t, noticeHub.installed, "the writer is reset with the last instance")
 	noticeHub.access.Unlock()
 }
+
+// Notices do not say which controller sent them: next to another instance, a Tunnels notice only
+// makes each instance check its own controller, and one without a tunnel stays connecting.
+func TestH_NoticeOfAnotherInstance(t *testing.T) {
+	logger := log.NewNOPFactory().Logger()
+	first := &Psiphon{logger: logger, ctx: context.Background()}
+	second := &Psiphon{logger: logger, ctx: context.Background()}
+	for _, p := range []*Psiphon{first, second} {
+		require.NoError(t, listenNotices(p, func(event NoticeEvent) { p.onNotice(event, func() {}) }))
+	}
+	defer stopListeningNotices(first)
+	defer stopListeningNotices(second)
+
+	psiphon.NoticeTunnels(1) // from a controller neither of them has
+	time.Sleep(200 * time.Millisecond)
+	require.False(t, first.connected.Load(), "another instance's tunnel is not this one's")
+	require.False(t, second.connected.Load())
+
+	stopListeningNotices(second)
+	psiphon.NoticeTunnels(1) // alone, the notice is its own
+	require.Eventually(t, first.connected.Load, time.Second, 10*time.Millisecond)
+}

@@ -66,6 +66,8 @@ type Psiphon struct {
 	dataStoreOpened bool
 	connected       atomic.Bool // driven by NoticeTunnels; read by IsReady/DisplayType
 	tag             string
+	access          sync.Mutex
+	runDone         chan struct{} // closed when the controller started last stops
 }
 
 // Dial opens a connection through the tunnel. The controller only dials while a tunnel is up, so
@@ -127,6 +129,13 @@ func listenNotices(p *Psiphon, listener func(NoticeEvent)) error {
 	}
 	noticeHub.listeners[p] = listener
 	return nil
+}
+
+// noticeListeners is how many instances listen to the notices.
+func noticeListeners() int {
+	noticeHub.access.Lock()
+	defer noticeHub.access.Unlock()
+	return len(noticeHub.listeners)
 }
 
 func stopListeningNotices(p *Psiphon) {
@@ -219,15 +228,26 @@ func (p *Psiphon) NetworkChanged() {
 }
 
 func (p *Psiphon) Close() error {
-	p.controller.Store(nil)
-	p.connected.Store(false)
+	p.stop()
 	stopListeningNotices(p) // the writer is reset only when no other instance listens
-	if p.cancel != nil {    // nil until Start runs
-		p.cancel()
-	}
 	p.closeDataStore()
 	return nil
 }
+
+// stop ends the running controller, if any, and keeps what a restart needs: the notice listener
+// and the data store.
+func (p *Psiphon) stop() {
+	p.access.Lock()
+	cancel := p.cancel
+	p.cancel = nil
+	p.access.Unlock()
+	p.controller.Store(nil)
+	p.connected.Store(false)
+	if cancel != nil {
+		cancel()
+	}
+}
+
 func NewPsiphon(ctx context.Context, l logger.ContextLogger, config *psiphon.Config, tag string) (*Psiphon, error) {
 	p := Psiphon{
 		logger: l,
@@ -238,50 +258,85 @@ func NewPsiphon(ctx context.Context, l logger.ContextLogger, config *psiphon.Con
 	return &p, nil
 }
 
+// onNotice follows the tunnel notices. They come from every controller of the process and do not
+// say which: alone, an instance takes them as its own; next to others, a notice only makes each
+// one check its own controller (hasTunnel).
+func (p *Psiphon) onNotice(event NoticeEvent, connectedSignal func()) {
+	p.logger.Debug(fmt.Sprint("Notice ", event.Type, " data ", event.Data))
+	if event.Type != "Tunnels" {
+		return
+	}
+	count, ok := noticeCount(event.Data)
+	if !ok {
+		return
+	}
+	if noticeListeners() > 1 {
+		go func() {
+			if p.hasTunnel() {
+				p.setConnected(true)
+				connectedSignal()
+			} else {
+				p.setConnected(false)
+			}
+		}()
+		return
+	}
+	if count > 0 {
+		p.setConnected(true)
+		connectedSignal()
+	} else {
+		p.setConnected(false)
+	}
+}
+
+// tunnelCheckTarget is where hasTunnel asks for a port forward: the controller refuses at once,
+// before asking any server, when it has no tunnel; with one, the server's answer, whatever it
+// is, means the tunnel is up. Port 0 is never forwarded, so nothing leaves the server.
+const tunnelCheckTarget = "127.0.0.1:0"
+
+// hasTunnel reports whether this instance's controller has an active tunnel.
+func (p *Psiphon) hasTunnel() bool {
+	ctl := p.controller.Load()
+	if ctl == nil {
+		return false
+	}
+	conn, err := ctl.Dial(tunnelCheckTarget, nil)
+	if conn != nil {
+		conn.Close()
+	}
+	return err == nil || !strings.Contains(err.Error(), noActiveTunnels)
+}
+
+// Start starts a controller and returns once it is connected, or failed. The controller then
+// keeps running; Wait returns when it stops.
 func (p *Psiphon) Start() error {
 	ctx, cancel := context.WithCancel(p.ctx)
+	runDone := make(chan struct{})
+	p.access.Lock()
 	p.cancel = cancel
+	p.runDone = runDone
+	p.access.Unlock()
 	// config.Commit must be called before calling config.SetParameters
 	// or attempting to connect.
 	if err := p.config.Commit(true); err != nil {
 		return errors.New("config.Commit failed")
 	}
 
-	// Same contract as clientlib.StartTunnel: NoticeTunnels(count>0) means
-	// connected. Handle notices synchronously so readiness flips before Dial
-	// / urltest can observe a live tunnel while DisplayType still says Connecting.
+	// Same contract as clientlib.StartTunnel: NoticeTunnels(count>0) means connected. Notices
+	// are handled synchronously so readiness flips before Dial / urltest can observe a live
+	// tunnel while the display type still says connecting.
 	connectedSignal := make(chan struct{})
 	var connectedOnce sync.Once
-	errored := make(chan error, 1)
-
-	if err := listenNotices(p, func(event NoticeEvent) {
-		p.logger.Debug(fmt.Sprint("Notice ", event.Type, " data ", event.Data))
-		switch event.Type {
-		case "EstablishTunnelTimeout":
-			select {
-			case errored <- errors.New("clientlib: tunnel establishment timeout"):
-			default:
-			}
-		case "Tunnels":
-			count, ok := noticeCount(event.Data)
-			if !ok {
-				return
-			}
-			if count > 0 {
-				p.setConnected(true)
-				connectedOnce.Do(func() { close(connectedSignal) })
-			} else {
-				p.setConnected(false)
-			}
-		}
-	}); err != nil {
+	signal := func() { connectedOnce.Do(func() { close(connectedSignal) }) }
+	if err := listenNotices(p, func(event NoticeEvent) { p.onNotice(event, signal) }); err != nil {
 		return err
 	}
-
-	if err := psiphon.OpenDataStore(p.config); err != nil {
-		return errors.New("failed to open data store")
+	if !p.dataStoreOpened { // PreStart opened it; a restart after Close opens it again
+		if err := psiphon.OpenDataStore(p.config); err != nil {
+			return errors.New("failed to open data store")
+		}
+		p.dataStoreOpened = true
 	}
-
 	if err := psiphon.ImportEmbeddedServerEntries(ctx, p.config, "", ""); err != nil {
 		return err
 	}
@@ -293,28 +348,37 @@ func (p *Psiphon) Start() error {
 	p.controller.Store(controller)
 
 	go func() {
-		controller.Run(ctx) // Run will block until the controller is stopped
-
-		select {
-		case errored <- errors.New("controller.Run exited unexpectedly"):
-		default:
-		}
+		// Run blocks until the controller stops: closed, or it gave up (an establish timeout
+		// stops it too, so its notice, which another instance may have sent, is not needed)
+		controller.Run(ctx)
+		p.controller.CompareAndSwap(controller, nil)
+		p.connected.Store(false)
+		close(runDone)
 	}()
 	p.logger.Debug("Waiting for success or failure of tunnel connection...")
 	select {
 	case <-ctx.Done():
-		p.logger.Debug("Context done while waiting for success or failure of tunnel connection")
-		p.Close()
 		return ctx.Err()
 	case <-connectedSignal:
 		p.logger.Debug("Tunnel connection established")
 		return nil
-	case err := <-errored:
-		p.logger.Debug("Tunnel connection failed: ", err)
-		p.Close()
-		return err
+	case <-runDone:
+		return errors.New("the controller stopped before it connected")
 	}
+}
 
+// Wait blocks until the controller started last stops, or the instance closes.
+func (p *Psiphon) Wait() {
+	p.access.Lock()
+	runDone := p.runDone
+	p.access.Unlock()
+	if runDone == nil {
+		return
+	}
+	select {
+	case <-runDone:
+	case <-p.ctx.Done():
+	}
 }
 
 // func RunPsiphon(ctx context.Context, l logger.ContextLogger, wgBind netip.AddrPort, dir string, localSocksAddr netip.AddrPort, country string) error {

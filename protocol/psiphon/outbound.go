@@ -82,7 +82,7 @@ func NewOutbound(ctx context.Context, _ adapter.Router, logger log.ContextLogger
 	if strings.TrimSpace(options.Config) == hiddifyConfigName && embeddedHiddifyConfig == "" {
 		logger.Warn("this build has no embedded hiddify psiphon config, using the default psiphon config")
 	}
-	config, err := buildConfig(options, timeout)
+	config, err := buildConfig(options, timeout, tag)
 	if err != nil {
 		return nil, err
 	}
@@ -231,7 +231,21 @@ func resolveConfig(value string) ([]byte, error) {
 // buildConfig starts from options.Config (see resolveConfig), then
 // applies explicit outbound options and fills values left unset with the defaults. The data directory,
 // tunnel timeout and local proxies are always managed here.
-func buildConfig(options option.PsiphonOutboundOptions, timeout time.Duration) (*psiphon.Config, error) {
+// instanceDirectory is the name of an outbound's data directory: its tag, made safe for a path.
+func instanceDirectory(tag string) string {
+	name := []byte(tag)
+	for i, c := range name {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' || c == '_' || c == '.') {
+			name[i] = '_'
+		}
+	}
+	if len(name) == 0 || string(name) == "." || string(name) == ".." {
+		return "default"
+	}
+	return string(name)
+}
+
+func buildConfig(options option.PsiphonOutboundOptions, timeout time.Duration, tag string) (*psiphon.Config, error) {
 	raw, err := resolveConfig(options.Config)
 	if err != nil {
 		return nil, E.Cause(err, "decode psiphon config")
@@ -272,7 +286,10 @@ func buildConfig(options option.PsiphonOutboundOptions, timeout time.Duration) (
 	if dataDir == "" {
 		dataDir = defaultDataDirectory
 	}
-	config.DataRootDirectory = dataDir
+	// each outbound downloads into a directory of its own: several Psiphon outbounds run at once
+	// (one per egress region), and must not write the same server list files. What was kept in
+	// the shared directory before is migrated.
+	config.DataRootDirectory = filepath.Join(dataDir, instanceDirectory(tag))
 	config.MigrateDataStoreDirectory = dataDir
 	config.MigrateObfuscatedServerListDownloadDirectory = dataDir
 	config.MigrateRemoteServerListDownloadFilename = filepath.Join(dataDir, "server_list_compressed")
@@ -302,34 +319,36 @@ func durationToSecondsPtr(duration time.Duration) *int {
 	return &seconds
 }
 
+// The controller is started again after it stops (it gives up after the establish timeout, or
+// fails), with a backoff between these.
+const (
+	restartMin = 5 * time.Second
+	restartMax = 5 * time.Minute
+)
+
+// run keeps a controller running: it starts one, waits until it stops, and starts another. Before,
+// a controller that gave up left the outbound dead until the box restarted.
 func (h *Outbound) run() {
-	h.connectOnce()
-	// defer h.closeDataStore()
-	// for {
-	// 	if h.ctx.Err() != nil {
-	// 		return
-	// 	}
-	// 	if h.psiphon.IsConnected() {
-	// 		h.logger.Debug("psiphon tunnel is active")
-	// 		select {
-	// 		case <-h.ctx.Done():
-	// 			return
-	// 		case <-h.reconnectCh:
-	// 			h.resetTunnel()
-	// 		}
-	// 		continue
-	// 	}
-	// 	h.logger.Debug("psiphon tunnel is not active, trying to connect")
-	// 	if err := h.connectOnce(); err != nil {
-	// 		h.logger.Warn("psiphon connect failed: ", err)
-	// 		select {
-	// 		case <-h.ctx.Done():
-	// 			return
-	// 		case <-time.After(5 * time.Second):
-	// 		}
-	// 		continue
-	// 	}
-	// }
+	backoff := restartMin
+	for {
+		err := h.connectOnce()
+		if err == nil {
+			backoff = restartMin // it connected: a later stop starts over quickly
+			h.psiphon.Wait()
+			err = E.New("the controller stopped")
+		}
+		h.psiphon.stop()
+		if h.ctx.Err() != nil {
+			return
+		}
+		h.logger.Warn("psiphon: ", err, ", starting again in ", backoff)
+		select {
+		case <-h.ctx.Done():
+			return
+		case <-time.After(backoff):
+		}
+		backoff = min(backoff*2, restartMax)
+	}
 }
 
 func (h *Outbound) connectOnce() error {
