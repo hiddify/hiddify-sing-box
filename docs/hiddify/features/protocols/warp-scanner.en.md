@@ -116,9 +116,15 @@ starts by racing the three tunnels:
    the race, then `WARP · WG`, `WARP · AWG` or `WARP · MASQUE`.
 3. The chosen tunnel then runs as in its own mode: the scanner and the noise search apply to it
    (the WireGuard scanner for WireGuard and AmneziaWG, the MASQUE scanner for MASQUE).
-4. When none answered, WireGuard is used, so the scanner and the noise search can still look for
+4. The chosen tunnel has 20 seconds to connect. An answer to one handshake does not prove that
+   the tunnel carries traffic: when it does not connect, the race runs again without it, and when
+   every tunnel failed it starts over.
+5. When none answered, WireGuard is used, so the scanner and the noise search can still look for
    an endpoint and a noise.
-5. While the endpoint has not been connected for 3 minutes, it races again, at most every 10
+6. When a group `detour` (a selector, say) moves to another member, the race runs again: the new
+   proxy may carry another tunnel better, or only one (a proxy without UDP, such as SOCKS4,
+   carries MASQUE over HTTP/2 only). A network change forgets which tunnels failed.
+7. While the endpoint has not been connected for 3 minutes, it races again, at most every 10
    minutes, and moves to another tunnel that answers.
 
 The race uses the configured noise, not the presets: the noise search runs inside the tunnel that
