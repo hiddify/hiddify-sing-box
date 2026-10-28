@@ -6,6 +6,7 @@ import (
 	"errors"
 	"github.com/sagernet/sing-box/adapter/htest"
 	"net"
+	"net/netip"
 	"sync"
 	"testing"
 	"time"
@@ -13,11 +14,15 @@ import (
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/endpoint"
 	C "github.com/sagernet/sing-box/constant"
+	"github.com/sagernet/sing-box/hiddify/warpscan"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
+	E "github.com/sagernet/sing/common/exceptions"
+	"github.com/sagernet/sing/common/json/badoption"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/service"
+	"github.com/sagernet/wireguard-go/hiddify"
 	"github.com/stretchr/testify/require"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -382,4 +387,55 @@ func TestH_WARPStatusRegisteringAndFailed(t *testing.T) {
 	require.Equal(t, adapter.StatusFailed, broken.Status(), "a config without peers cannot work")
 	_, mark := adapter.SplitStatus(adapter.DisplayType(broken))
 	require.Equal(t, "❌ Failed", mark)
+}
+
+// With search_noise, a network where the configured noise gets no answer tries the presets: the
+// first that gets an answer is used by the next inner endpoint and remembered for the network.
+func TestH_WARPSearchNoise(t *testing.T) {
+	ep := hNewWARP(t, hTestContext(t), option.WARPEndpointOptions{
+		WARPConfig: hWARPConfig(t, hWARPConfigJSON),
+		Scanner:    &option.WARPScannerOptions{Enabled: true, SearchNoise: true, Count: 4, Timeout: badoption.Duration(time.Second)},
+	})
+	answers := func(ctx context.Context, addrPort netip.AddrPort) (time.Duration, error) {
+		return time.Millisecond, nil
+	}
+	blocked := func(ctx context.Context, addrPort netip.AddrPort) (time.Duration, error) {
+		return 0, E.New("no answer")
+	}
+	ep.failover = &warpFailover{
+		config: ep.options.WARPConfig,
+		book:   warpscan.NewBook(),
+		logger: hLogger(),
+		probes: map[string]warpscan.Probe{"": blocked, "xray-random": blocked, "quic": blocked},
+	}
+	for _, preset := range warpscan.NoisePresets {
+		if _, set := ep.failover.probes[preset.Name]; !set {
+			ep.failover.probes[preset.Name] = blocked
+		}
+	}
+	ep.failover.probes["dns-google"] = answers
+	ep.failover.network = warpscan.NetworkInfo{Name: "wifi/IR", IPv4: true}
+
+	results, err := ep.scan(nil)
+	require.NoError(t, err)
+	require.NotEmpty(t, results)
+	require.Equal(t, "dns-google", ep.failover.currentNoise())
+	require.Equal(t, "dns-google", ep.failover.book.Noise("wifi/IR"), "remembered for the network")
+	dns, _ := warpscan.NoisePresetByName("dns-google")
+	require.Equal(t, dns.WireGuard(), ep.innerOptions().Noise, "the next inner endpoint sends it")
+	require.Equal(t, []string{"dns-google", "", "xray-random"}, ep.noiseCandidates("wifi/IR")[:3], "tried first next time")
+
+	ep.options.Scanner.SearchNoise = false
+	require.Equal(t, []string{""}, ep.noiseCandidates("wifi/IR"), "only the configured noise without search_noise")
+}
+
+func TestH_WARPNoisePresetOption(t *testing.T) {
+	_, err := NewWARPEndpoint(hTestContext(t), nil, hLogger(), "warp-tag", option.WARPEndpointOptions{
+		Scanner: &option.WARPScannerOptions{Enabled: true, SearchNoise: true, NoisePresets: []string{"dns-google", "nope"}},
+	})
+	require.ErrorContains(t, err, "unknown noise preset: nope")
+	options := option.WARPEndpointOptions{}
+	options.Noise.FakePacket = hiddify.FakePacketOptions{Enabled: true, Packets: []string{"<x>"}}
+	_, err = NewWARPEndpoint(hTestContext(t), nil, hLogger(), "warp-tag", options)
+	require.ErrorContains(t, err, "unknown tag")
 }

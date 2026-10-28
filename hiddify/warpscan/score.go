@@ -43,6 +43,8 @@ type Book struct {
 type network struct {
 	LastSeen time.Time                  `json:"last_seen"`
 	Records  map[netip.AddrPort]*Record `json:"records"`
+	// Noise is the noise preset that got through on this network, empty for the configured noise.
+	Noise string `json:"noise,omitempty"`
 }
 
 func NewBook() *Book {
@@ -57,6 +59,23 @@ func (b *Book) network(name string, now time.Time) *network {
 	}
 	n.LastSeen = now
 	return n
+}
+
+// Noise returns the noise preset that got through on network, empty for the configured noise.
+func (b *Book) Noise(networkName string) string {
+	b.access.Lock()
+	defer b.access.Unlock()
+	if n := b.networks[networkName]; n != nil {
+		return n.Noise
+	}
+	return ""
+}
+
+// SetNoise records the noise preset that got through on network, empty for the configured noise.
+func (b *Book) SetNoise(networkName string, noise string) {
+	b.access.Lock()
+	defer b.access.Unlock()
+	b.network(networkName, time.Now()).Noise = noise
 }
 
 // Success records that addrPort answered on network: +1, or 1 when it was negative.

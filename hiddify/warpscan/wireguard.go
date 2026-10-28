@@ -135,39 +135,23 @@ func wireGuardHandshake(ctx context.Context, dialer N.Dialer, addrPort netip.Add
 	}
 }
 
-// sendNoise sends the endpoint's fake packets before the initiation, as its WireGuard device
-// does: on networks that need them, a bare initiation gets no answer.
+// sendNoise sends the endpoint's fake packets before the initiation, the same ones its WireGuard
+// device sends (FakePacketOptions.Build): on networks that need them, a bare initiation gets no
+// answer.
 func sendNoise(ctx context.Context, conn interface{ Write([]byte) (int, error) }, options hiddify.NoiseOptions) error {
-	fake := options.FakePacket
-	if !fake.Enabled || fake.Count.To == 0 || fake.Size.To == 0 && fake.Mode != hiddify.NoiseModeQUIC {
-		return nil
+	packets, err := options.FakePacket.Build()
+	if err != nil {
+		return err
 	}
-	count := int(hiddify.RandBetween(int64(fake.Count.From), int64(fake.Count.To)))
-	var quicPackets [][]byte
-	if fake.Mode == hiddify.NoiseModeQUIC { // the start of a QUIC connection, as the device sends
-		var err error
-		quicPackets, err = hiddify.QUICInitialPackets(fake.QUICServerName(), count)
-		if err != nil {
+	for _, packet := range packets {
+		if _, err := conn.Write(packet.Data); err != nil {
 			return err
 		}
-	}
-	for i := range count {
-		var packet []byte
-		if quicPackets != nil {
-			packet = quicPackets[i]
-		} else {
-			payload := make([]byte, hiddify.RandBetween(int64(fake.Size.From), int64(fake.Size.To)))
-			rand.Read(payload)
-			packet = append(append([]byte(nil), fake.Header...), payload...)
-		}
-		if _, err := conn.Write(packet); err != nil {
-			return err
-		}
-		if i < count-1 {
+		if packet.Delay > 0 {
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
-			case <-time.After(time.Duration(hiddify.RandBetween(int64(fake.Delay.From), int64(fake.Delay.To))) * time.Millisecond):
+			case <-time.After(packet.Delay):
 			}
 		}
 	}

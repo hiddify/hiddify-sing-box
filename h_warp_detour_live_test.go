@@ -14,6 +14,7 @@ import (
 
 	box "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/hiddify/warpscan"
 	"github.com/sagernet/sing-box/include"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-box/protocol/group"
@@ -222,5 +223,28 @@ func TestH_WARPLiveScannerStatus(t *testing.T) {
 			require.NotContains(t, display, "Connecting")
 			require.NotContains(t, display, "Scanning")
 		})
+	}
+}
+
+// Every noise preset gets a real WARP handshake through, as WireGuard noise and as AmneziaWG
+// junk and special packets.
+func TestH_WARPLiveNoisePresets(t *testing.T) {
+	if os.Getenv("HIDDIFY_WARP_E2E") == "" {
+		t.Skip("HIDDIFY_WARP_E2E is not set")
+	}
+	cachePath := filepath.Join(t.TempDir(), "cache.db")
+	for _, preset := range warpscan.NoisePresets {
+		noise, err := json.Marshal(preset.WireGuard())
+		require.NoError(t, err)
+		awg, err := json.Marshal(preset.AWG(nil))
+		require.NoError(t, err)
+		for _, variant := range []hWARPVariant{
+			{preset.Name + "/wireguard", `{"type": "warp", "tag": "warp", "detour": "DETOUR", "unique_identifier": "live-wg", "noise": ` + string(noise) + `}`, false, "WARP · WG"},
+			{preset.Name + "/awg", `{"type": "warp", "tag": "warp", "detour": "DETOUR", "unique_identifier": "live-wg", "awg": ` + string(awg) + `}`, false, "WARP · AWG"},
+		} {
+			t.Run(variant.name, func(t *testing.T) {
+				hStartWARPBox(t, cachePath, variant, "socks").requireConnected(t)
+			})
+		}
 	}
 }

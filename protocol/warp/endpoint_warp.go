@@ -74,6 +74,16 @@ func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.Cont
 	if options.MASQUE.IsEnabled() && options.AWG.IsAvailble() { //H
 		return nil, E.New("warp: masque and awg are two tunnels, set one") //H
 	} //H
+	if err := options.Noise.FakePacket.Validate(); err != nil { //H: a bad template fails the config, not the handshake
+		return nil, E.Cause(err, "warp") //H
+	} //H
+	if options.Scanner != nil { //H
+		for _, name := range options.Scanner.NoisePresets { //H
+			if _, found := warpscan.NoisePresetByName(name); !found { //H
+				return nil, E.New("warp: unknown noise preset: ", name) //H
+			} //H
+		} //H
+	} //H
 	warpEndpoint := &WARPEndpoint{
 		Adapter:  endpoint.NewAdapter(C.TypeWARP, tag, []string{N.NetworkTCP, N.NetworkUDP}, dependencies),
 		ctx:      ctx,                 //H

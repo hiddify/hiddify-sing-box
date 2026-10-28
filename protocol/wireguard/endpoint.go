@@ -58,6 +58,9 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 	if options.AWG.IsAvailble() { //H: it was ignored, so the endpoint ran plain WireGuard
 		return nil, E.New(`the awg block is not read by "type": "wireguard", use "type": "awg"`) //H
 	} //H
+	if err := options.Noise.FakePacket.Validate(); err != nil { //H: a bad template fails the config, not the handshake
+		return nil, E.Cause(err, "wireguard") //H
+	} //H
 	ep := &Endpoint{
 		Adapter:        endpoint.NewAdapterWithDialerOptions(C.TypeWireGuard, tag, []string{N.NetworkTCP, N.NetworkUDP, N.NetworkICMP}, options.DialerOptions),
 		ctx:            ctx,
