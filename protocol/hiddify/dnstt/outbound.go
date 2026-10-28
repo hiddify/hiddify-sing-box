@@ -170,12 +170,10 @@ func (c *Outbound) IsReady() bool {
 	return c.started > 0
 }
 func (w *Outbound) DisplayType() string {
-	str := C.ProxyDisplayName(w.Type())
-	if w.started == 0 {
-		str += " ⚠️ Connecting..."
-	} else if w.started < 0 {
+	str := C.ProxyDisplayName(w.Type()) //H: adapter.DisplayType adds the connecting mark
+	if w.started < 0 {
 		str += " ❌ Failed!"
-	} else {
+	} else if w.started > 0 {
 		str += fmt.Sprint(" ✔️ ", len(w.resolvers), " resolvers")
 	}
 	return str

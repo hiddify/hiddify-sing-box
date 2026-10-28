@@ -482,7 +482,8 @@ func (s *Outbound) IsReady() bool {
 	return s.ready.Load()
 }
 
-// ProxyDisplayName is the protocol name, with the connection state while not connected.
+// DisplayType is the protocol name, with the last connection error while not connected;
+// adapter.DisplayType adds the connecting mark.
 func (s *Outbound) DisplayType() string {
 	name := C.ProxyDisplayName(s.Type())
 	if s.IsReady() {
@@ -491,5 +492,5 @@ func (s *Outbound) DisplayType() string {
 	if connectionErr := s.connectionErr.Load(); connectionErr != "" {
 		return name + " ❌ " + connectionErr
 	}
-	return name + " ⚠️ Connecting..."
+	return name
 }

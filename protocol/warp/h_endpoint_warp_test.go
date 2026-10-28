@@ -206,7 +206,7 @@ func TestH_WARPStartFailureLeavesEndpointUninitialized(t *testing.T) {
 	ep.startHandler()
 
 	require.False(t, ep.IsReady())
-	require.Equal(t, "WARP · WG ⚠️ Connecting...", ep.DisplayType())
+	require.Equal(t, "WARP · WG ⚠️ Connecting...", adapter.DisplayType(ep))
 	_, err := ep.DialContext(context.Background(), N.NetworkTCP, M.ParseSocksaddr("1.1.1.1:80"))
 	require.ErrorContains(t, err, "endpoint not initialized")
 	_, err = ep.ListenPacket(context.Background(), M.ParseSocksaddr("1.1.1.1:53"))
@@ -332,11 +332,11 @@ func TestH_WARPMASQUEAndAWGConflict(t *testing.T) {
 }
 
 func TestH_WARPDisplayTypeByTunnel(t *testing.T) {
-	require.Equal(t, "WARP · WG ⚠️ Connecting...", hNewWARP(t, hTestContext(t), option.WARPEndpointOptions{}).DisplayType())
-	require.Equal(t, "WARP · AWG ⚠️ Connecting...", hNewWARP(t, hTestContext(t), option.WARPEndpointOptions{AWG: &option.AwgOptions{Jc: 4}}).DisplayType())
-	require.Equal(t, "WARP · MASQUE ⚠️ Connecting...", hNewWARP(t, hTestContext(t), option.WARPEndpointOptions{MASQUE: &option.WARPMASQUEOptions{Enabled: true}}).DisplayType())
-	require.Equal(t, "WARP · MASQUE ⚠️ Connecting...", hNewWARP(t, hTestContext(t), option.WARPEndpointOptions{MASQUE: &option.WARPMASQUEOptions{VHTTP: "h2"}}).DisplayType(), "any setting turns it on")
-	require.Equal(t, "WARP · WG ⚠️ Connecting...", hNewWARP(t, hTestContext(t), option.WARPEndpointOptions{MASQUE: &option.WARPMASQUEOptions{}}).DisplayType(), "an empty block is not MASQUE")
+	require.Equal(t, "WARP · WG ⚠️ Connecting...", adapter.DisplayType(hNewWARP(t, hTestContext(t), option.WARPEndpointOptions{})))
+	require.Equal(t, "WARP · AWG ⚠️ Connecting...", adapter.DisplayType(hNewWARP(t, hTestContext(t), option.WARPEndpointOptions{AWG: &option.AwgOptions{Jc: 4}})))
+	require.Equal(t, "WARP · MASQUE ⚠️ Connecting...", adapter.DisplayType(hNewWARP(t, hTestContext(t), option.WARPEndpointOptions{MASQUE: &option.WARPMASQUEOptions{Enabled: true}})))
+	require.Equal(t, "WARP · MASQUE ⚠️ Connecting...", adapter.DisplayType(hNewWARP(t, hTestContext(t), option.WARPEndpointOptions{MASQUE: &option.WARPMASQUEOptions{VHTTP: "h2"}})), "any setting turns it on")
+	require.Equal(t, "WARP · WG ⚠️ Connecting...", adapter.DisplayType(hNewWARP(t, hTestContext(t), option.WARPEndpointOptions{MASQUE: &option.WARPMASQUEOptions{}})), "an empty block is not MASQUE")
 }
 
 // The box closes the endpoint's scope, not the endpoint: its background work (port rotation,

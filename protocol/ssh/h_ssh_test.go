@@ -366,7 +366,7 @@ func TestH_SSHOutboundProxyDisplayName(t *testing.T) {
 	t.Parallel()
 	f := startInbound(t, nil)
 	out := newTestOutbound(t, f, nil)
-	require.Contains(t, out.DisplayType(), "Connecting")
+	require.Contains(t, adapter.DisplayType(out), "Connecting")
 }
 
 func TestH_SSHOutboundUDPOverTCP(t *testing.T) {
@@ -481,7 +481,7 @@ func TestH_SSHOutboundUnreachableServer(t *testing.T) {
 	})
 	require.NoError(t, err)
 	ssh := out.(*Outbound)
-	require.Contains(t, ssh.DisplayType(), "Connecting")
+	require.Contains(t, adapter.DisplayType(ssh), "Connecting")
 	require.NoError(t, ssh.PostStart())
 	require.Eventually(t, func() bool {
 		return strings.Contains(ssh.DisplayType(), "❌") && strings.Contains(ssh.DisplayType(), "refused")

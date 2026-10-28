@@ -250,7 +250,7 @@ func TestH_EndpointNewPacketConnectionRewritesLocalAddress(t *testing.T) {
 func TestH_EndpointReadinessAndDialValidation(t *testing.T) {
 	ep := hTestEndpoint(&hRecordingRouter{})
 	require.False(t, ep.IsReady())
-	require.Equal(t, "Awg ⚠️ Connecting...", ep.DisplayType())
+	require.Equal(t, "Awg ⚠️ Connecting...", adapter.DisplayType(ep))
 	ep.started = true
 	require.True(t, ep.IsReady())
 	require.Equal(t, "Awg", ep.DisplayType())

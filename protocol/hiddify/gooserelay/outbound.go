@@ -236,9 +236,9 @@ func (h *Outbound) DisplayType() string {
 	h.mu.Lock()
 	state := h.started
 	h.mu.Unlock()
-	switch {
+	switch { // adapter.DisplayType adds the connecting mark
 	case state == 0:
-		return str + " ⚠️ Connecting..."
+		return str
 	case state < 0:
 		return str + " ❌ Failed!"
 	default:

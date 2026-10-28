@@ -303,9 +303,9 @@ func (w *Outbound) IsReady() bool {
 	}
 }
 
-// DisplayType names the tunnel, the scanner status and whether it is connected. //H
+// DisplayType names the tunnel and the scanner status. //H
 func (w *Outbound) DisplayType() string {
-	return warpscan.DisplayType(C.DisplayWARPMASQUE, &w.scanStatus, w.IsReady(), C.DisplayConnecting)
+	return C.DisplayWARPMASQUE + w.scanStatus.String()
 }
 
 // ScanStatus is the status of the scanner, for the warp endpoint's display type. //H

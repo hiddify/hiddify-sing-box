@@ -60,12 +60,3 @@ func (s *Status) String() string {
 	}
 	return ""
 }
-
-// DisplayType is name with the scanner status and, when not ready, the connecting mark.
-func DisplayType(name string, status *Status, ready bool, connecting string) string {
-	display := name + status.String()
-	if !ready {
-		display += connecting
-	}
-	return display
-}

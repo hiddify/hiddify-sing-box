@@ -13,7 +13,6 @@ import (
 	"github.com/sagernet/sing-box/common/dialer"
 	"github.com/sagernet/sing-box/common/monitoring"
 	"github.com/sagernet/sing-box/constant"
-	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/hiddify/peeruser"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
@@ -375,12 +374,4 @@ func (w *Endpoint) deviceReady() bool {
 
 func (w *Endpoint) IsReady() bool {
 	return w.started || w.deviceReady()
-}
-
-func (w *Endpoint) DisplayType() string {
-	str := C.ProxyDisplayName(w.Type())
-	if !w.IsReady() {
-		str += " ⚠️ Connecting..."
-	}
-	return str
 }

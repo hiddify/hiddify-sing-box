@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sagernet/sing-box/adapter"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/hiddify/secret"
 	"github.com/sagernet/sing-box/log"
@@ -100,7 +101,7 @@ func TestH_PsiphonOutboundBeforeStart(t *testing.T) {
 	require.Equal(t, 10, *out.psiphon.config.EstablishTunnelTimeoutSeconds)
 	require.False(t, out.IsReady())
 	require.Equal(t, "connecting...", out.psiphon.State())
-	require.Contains(t, out.DisplayType(), "Connecting")
+	require.Contains(t, adapter.DisplayType(out), "Connecting")
 
 	_, err := out.DialContext(context.Background(), N.NetworkTCP, M.ParseSocksaddr("1.1.1.1:443"))
 	require.ErrorContains(t, err, "controller not initialized")

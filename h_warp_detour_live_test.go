@@ -120,7 +120,7 @@ func (b *hWARPBox) ready() bool {
 }
 
 func (b *hWARPBox) displayType() string {
-	return b.warp().(interface{ DisplayType() string }).DisplayType()
+	return adapter.DisplayType(b.warp())
 }
 
 // traceOK reports whether a request through the box comes out of WARP.

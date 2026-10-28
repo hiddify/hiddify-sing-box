@@ -168,7 +168,7 @@ func TestH_DnsttNotStarted(t *testing.T) {
 	_, err = out.ListenPacket(context.Background(), M.ParseSocksaddr("1.1.1.1:53"))
 	require.ErrorContains(t, err, "not started")
 
-	require.Contains(t, out.DisplayType(), "Connecting")
+	require.Contains(t, adapter.DisplayType(out), "Connecting")
 	out.started = -1
 	require.Contains(t, out.DisplayType(), "Failed")
 	out.started = 1

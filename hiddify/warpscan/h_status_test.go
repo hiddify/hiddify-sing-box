@@ -7,14 +7,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestH_StatusDisplayType(t *testing.T) {
+func TestH_StatusString(t *testing.T) {
 	var status Status
-	require.Equal(t, "WARP · WG", DisplayType("WARP · WG", &status, true, " (connecting)"), "no scan yet")
-	require.Equal(t, "WARP · WG (connecting)", DisplayType("WARP · WG", nil, false, " (connecting)"))
+	require.Empty(t, status.String(), "no scan yet")
+	require.Empty(t, (*Status)(nil).String())
 	status.Scanning()
-	require.Equal(t, "WARP · WG · 🔍 Scanning... (connecting)", DisplayType("WARP · WG", &status, false, " (connecting)"))
+	require.Equal(t, " · 🔍 Scanning...", status.String())
 	status.Found(netip.MustParseAddrPort("162.159.192.7:2408"))
-	require.Equal(t, "WARP · WG · 🔍 162.159.192.7:2408", DisplayType("WARP · WG", &status, true, " (connecting)"))
+	require.Equal(t, " · 🔍 162.159.192.7:2408", status.String())
 	status.NotFound()
-	require.Equal(t, "WARP · WG · 🔍 Not found", DisplayType("WARP · WG", &status, true, " (connecting)"))
+	require.Equal(t, " · 🔍 Not found", status.String())
 }

@@ -272,7 +272,7 @@ func (w *WARPEndpoint) currentEndpoint() adapter.Endpoint {
 	return w.endpoint
 }
 
-// DisplayType names the tunnel WARP uses, the scanner status and whether it is connected. //H
+// DisplayType names the tunnel WARP uses and the scanner status. //H
 func (w *WARPEndpoint) DisplayType() string {
 	name := C.DisplayWARPWireGuard
 	status := &w.scanStatus
@@ -289,7 +289,7 @@ func (w *WARPEndpoint) DisplayType() string {
 	case w.options.AWG.IsAvailble():
 		name = C.DisplayWARPAWG
 	}
-	return warpscan.DisplayType(name, status, w.IsReady(), C.DisplayConnecting)
+	return name + status.String()
 }
 
 // warpPeerEndpoint picks the address and port of the WARP peer: the configured server and
