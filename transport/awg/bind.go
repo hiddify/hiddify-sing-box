@@ -120,6 +120,18 @@ func (b *bind_adapter) Close() error {
 	return errors.Join(err4, err6)
 }
 
+// abort closes the connections without forgetting them, so a send stuck on a stalled detour
+// returns; Close, under the device's network lock, forgets them.
+func (b *bind_adapter) abort() {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	for _, c := range []net.PacketConn{b.conn4, b.conn6} {
+		if c != nil {
+			c.Close()
+		}
+	}
+}
+
 func (b *bind_adapter) SetMark(mark uint32) error {
 	return nil
 }

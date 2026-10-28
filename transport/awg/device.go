@@ -98,6 +98,11 @@ func (d *Device) IsUnderLoad() bool {
 
 func (d *Device) Close() error {
 	if d.awgDevice != nil {
+		// H: close the detour's connections first: a send stuck on a stalled detour holds the
+		// device's network lock, which device.Close needs to close the bind //H
+		if bind, isBind := d.bind.(*bind_adapter); isBind { //H
+			bind.abort() //H
+		} //H
 		d.awgDevice.Close()
 	}
 	return nil
