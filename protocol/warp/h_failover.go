@@ -93,6 +93,16 @@ func (w *WARPEndpoint) connect(config *C.WARPConfig) {
 		w.failover.current = current
 		w.failover.connectedAt = time.Now()
 		go w.watch()
+	} else if w.options.ServerPort == 0 && len(config.Peers[0].Endpoint.Ports) > 1 {
+		ports := make([]uint16, 0, len(config.Peers[0].Endpoint.Ports))
+		current := 0
+		for i, port := range config.Peers[0].Endpoint.Ports {
+			ports = append(ports, uint16(port))
+			if uint16(port) == peerPort {
+				current = i
+			}
+		}
+		go w.rotatePorts(config, peerAddr, ports, current)
 	}
 }
 

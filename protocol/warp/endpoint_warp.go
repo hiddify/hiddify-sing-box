@@ -159,7 +159,7 @@ func (w *WARPEndpoint) IsReady() bool {
 	if inner == nil {
 		return false
 	}
-	return inner.IsReady()
+	return handshakeFresh(inner) //H: connected only while the peer answers, not once the endpoint exists
 }
 func (w *WARPEndpoint) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage == adapter.StartStateInitialize {
@@ -231,6 +231,12 @@ func warpPeerEndpoint(config *C.WARPConfig, server option.ServerOptions) (string
 	}
 	if server.Server != "" {
 		address = server.Server
+	} else if !M.ParseAddr(address).IsValid() { //H: the profile's host is a domain
+		// use the profile's own address: a domain peer resolves to IPv4 and IPv6, and WireGuard
+		// sends to both over one UDP association, which a detour without IPv6 then closes
+		if profileAddress := warpProfileAddress(endpoint.V4, endpoint.V6); profileAddress != "" { //H
+			address = profileAddress //H
+		} //H
 	}
 	if server.ServerPort != 0 {
 		port = server.ServerPort
@@ -262,4 +268,18 @@ func warpInterfaceAddresses(config *C.WARPConfig) (badoption.Listable[netip.Pref
 		return nil, E.New("WARP config has no interface address")
 	}
 	return addresses, nil
+}
+
+// warpProfileAddress returns the IP of the profile's IPv4 endpoint, or of its IPv6 one when there
+// is no IPv4 one. The endpoints are written as "ip:port" or "[ip]:port". //H
+func warpProfileAddress(v4 string, v6 string) string {
+	for _, candidate := range []string{v4, v6} {
+		if candidate == "" {
+			continue
+		}
+		if addrPort := M.ParseSocksaddr(candidate); addrPort.Addr.IsValid() {
+			return addrPort.Addr.String()
+		}
+	}
+	return ""
 }

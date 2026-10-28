@@ -338,6 +338,17 @@ func (w *Outbound) createConfig() (*Config, error) {
 	}, nil
 }
 
+// IsReady reports whether the tunnel has a connection to the server, not only whether it is
+// set up. //H
+func (w *Outbound) IsReady() bool {
+	select {
+	case <-w.await:
+		return w.tunnel != nil && w.tunnel.IsConnected()
+	default:
+		return false
+	}
+}
+
 // InterfaceUpdated reconnects the tunnel on the new network, after naming it for the scores. //H
 func (w *Outbound) InterfaceUpdated(ctx context.Context) {
 	select {

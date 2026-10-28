@@ -294,3 +294,22 @@ func TestH_RegisterWARPEndpoint(t *testing.T) {
 	require.True(t, loaded)
 	require.IsType(t, &option.WARPEndpointOptions{}, options)
 }
+
+// a profile whose host is a domain uses its own IPv4 address, so WireGuard does not send to
+// both families over one detour association
+func TestH_WarpPeerEndpointProfileAddress(t *testing.T) {
+	config := hWARPConfig(t, `{"private_key":"x","peers":[{"endpoint":{"host":"engage.cloudflareclient.com:2408","v4":"162.159.192.1:0","v6":"[2606:4700:d0::a29f:c001]:0"}}]}`)
+	address, port, err := warpPeerEndpoint(config, option.ServerOptions{})
+	require.NoError(t, err)
+	require.Equal(t, "162.159.192.1", address)
+	require.EqualValues(t, 2408, port)
+
+	config = hWARPConfig(t, `{"private_key":"x","peers":[{"endpoint":{"host":"engage.cloudflareclient.com:2408","v6":"[2606:4700:d0::a29f:c001]:0"}}]}`)
+	address, _, err = warpPeerEndpoint(config, option.ServerOptions{})
+	require.NoError(t, err)
+	require.Equal(t, "2606:4700:d0::a29f:c001", address)
+
+	address, _, err = warpPeerEndpoint(config, option.ServerOptions{Server: "engage.cloudflareclient.com"})
+	require.NoError(t, err)
+	require.Equal(t, "engage.cloudflareclient.com", address, "a server set in the config is kept")
+}

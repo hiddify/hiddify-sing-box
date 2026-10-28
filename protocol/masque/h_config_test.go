@@ -226,7 +226,9 @@ func TestH_RegisterOutbound(t *testing.T) {
 // unique_identifier names the saved profile, so renaming the outbound keeps its device
 func TestH_OutboundUniqueIdentifier(t *testing.T) {
 	cache := &hMASQUECache{store: map[string]*adapter.SavedBinary{}}
-	ctx := service.ContextWith[adapter.CacheFile](context.Background(), cache)
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond) // registration retries until the context ends
+	defer cancel()
+	ctx = service.ContextWith[adapter.CacheFile](ctx, cache)
 	logger := &hErrorLogger{ContextLogger: log.NewNOPFactory().NewLogger("masque")}
 	out := hNewOutbound(t, ctx, logger, option.MASQUEOutboundOptions{UniqueIdentifier: "device-1", Profile: option.CloudflareProfile{Detour: "missing"}})
 	out.startHandler()

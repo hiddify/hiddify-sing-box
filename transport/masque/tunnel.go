@@ -43,6 +43,12 @@ type Tunnel struct {
 	http2Until     time.Time
 	http2Step      int
 	activeHTTP2    atomic.Bool // the current connection is HTTP/2
+	connected      atomic.Bool // H: a connection to the server is up; read without the lock, which a connect holds
+}
+
+// IsConnected reports whether the tunnel has a connection to the server. //H
+func (e *Tunnel) IsConnected() bool {
+	return e.connected.Load()
 }
 
 func NewTunnel(ctx context.Context, logger logger.ContextLogger, options TunnelOptions) (*Tunnel, error) {
@@ -202,6 +208,7 @@ func (e *Tunnel) getIpConn() (*connectip.Conn, error) {
 			e.tr = conn.tr
 			e.ipConn = conn.ipConn
 			e.activeHTTP2.Store(conn.http2)
+			e.connected.Store(true) //H
 			e.logger.InfoContext(e.ctx, "connected to MASQUE server over ", map[bool]string{true: "HTTP/2", false: "HTTP/3"}[conn.http2])
 			return conn.ipConn, nil
 		}
@@ -222,6 +229,7 @@ func (e *Tunnel) closeIpConn(ipConn *connectip.Conn) bool {
 	e.mtx.Lock()
 	defer e.mtx.Unlock()
 	if ipConn == e.ipConn {
+		e.connected.Store(false) //H
 		e.ipConn.Close()
 		if e.udpConn != nil {
 			e.udpConn.Close()

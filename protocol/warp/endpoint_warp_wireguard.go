@@ -39,9 +39,10 @@ func createWARPWireGuardEndpoint(
 		PrivateKey:    config.PrivateKey,
 		Peers: []option.WireGuardPeer{
 			{
-				Address:   peerAddr,
-				Port:      peerPort,
-				PublicKey: peerPublicKey,
+				Address:                     peerAddr,
+				Port:                        peerPort,
+				PublicKey:                   peerPublicKey,
+				PersistentKeepaliveInterval: warpKeepalive, //H: keeps the handshake fresh, so IsReady can tell a dead path
 				AllowedIPs: option.LegacyListable[netip.Prefix]{
 					netip.MustParsePrefix("0.0.0.0/0"),
 					netip.MustParsePrefix("::/0"),

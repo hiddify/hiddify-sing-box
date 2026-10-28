@@ -38,9 +38,10 @@ func createWARPAwgEndpoint(
 		Awg:              *options.AWG,
 		Peers: []option.AwgPeerOptions{
 			{
-				Address:   peerAddr,
-				Port:      peerPort,
-				PublicKey: peerPublicKey,
+				Address:                     peerAddr,
+				Port:                        peerPort,
+				PublicKey:                   peerPublicKey,
+				PersistentKeepaliveInterval: warpKeepalive, //H: keeps the handshake fresh, so IsReady can tell a dead path
 				AllowedIPs: badoption.Listable[netip.Prefix]{
 					netip.MustParsePrefix("0.0.0.0/0"),
 					netip.MustParsePrefix("::/0"),
