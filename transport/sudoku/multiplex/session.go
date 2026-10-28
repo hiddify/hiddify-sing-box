@@ -638,11 +638,16 @@ func (c *stream) enqueue(payload []byte) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	// backpressure: wait for the reader to make room, which stops the session's read loop and so
+	// the peer, instead of resetting the stream as soon as the reader falls behind //H
+	for c.queuedBytes > 0 && c.queuedBytes+len(payload) > maxQueuedBytesPerStream && !c.closed && !c.localReadClosed && !c.remoteWriteClosed { //H
+		c.cond.Wait() //H
+	} //H
 	if c.closed || c.localReadClosed || c.remoteWriteClosed {
 		return nil
 	}
 	if c.queuedBytes+len(payload) > maxQueuedBytesPerStream {
-		return errMuxReceiveQueueFull
+		return errMuxReceiveQueueFull // one frame larger than the window
 	}
 	c.queuedBytes += len(payload)
 	if len(c.readBuf) == 0 && len(c.queue) == 0 {
