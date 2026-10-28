@@ -23,9 +23,9 @@ do about it. Items marked **Required** break or misbehave until they are handled
 - **uTLS fork.** `github.com/metacubex/utls` is replaced by `github.com/Leadaxe/utls-lx` in
   `go.mod` and `test/go.mod`. The `firefox` fingerprint is now Firefox 148 and `safari` is
   Safari 26.3; `chrome` stays Chrome 133. Nothing to change in configs.
-- **Tailscale.** The core Makefile no longer lists `with_tailscale` (an uncommitted local change at
-  the time of writing). If that stays, `tailscale` configs fail to load; keep the app from
-  generating them, or put the tag back.
+- **Tailscale.** The core Makefile no longer lists `with_tailscale` (`573719dd5`), so `tailscale`
+  configs fail to load in the default build; keep the app from generating them, or build with the
+  tag.
 
 ## Configuration the app generates
 
