@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"sync"
 	"sync/atomic"
 
 	"github.com/Psiphon-Labs/psiphon-tunnel-core/psiphon"
@@ -48,9 +49,7 @@ var Countries = []string{
 	"US",
 }
 
-// NoticeEvent represents the notices emitted by tunnel core. It will be passed to
-// noticeReceiver, if supplied.
-// NOTE: Ordinary users of this library should never need this.
+// NoticeEvent represents the notices emitted by tunnel core.
 type NoticeEvent struct {
 	Data      map[string]interface{} `json:"data"`
 	Type      string                 `json:"noticeType"`
@@ -64,7 +63,7 @@ type Psiphon struct {
 	ctx             context.Context
 	cancel          context.CancelFunc
 	dataStoreOpened bool
-	connected       bool
+	connected       atomic.Bool // driven by NoticeTunnels; read by IsReady/DisplayType
 	tag             string
 }
 
@@ -73,6 +72,40 @@ func (p *Psiphon) Dial(address string, conn net.Conn) (net.Conn, error) {
 		return ctl.Dial(address, conn)
 	}
 	return nil, errors.New("controller not initialized")
+}
+
+// setConnected updates readiness from NoticeTunnels. On first connect it asks
+// monitoring to urltest — same pattern as SSH/AWG/DNSTT after they are ready.
+func (p *Psiphon) setConnected(ok bool) {
+	was := p.connected.Swap(ok)
+	if ok && !was {
+		if m := monitoring.Get(p.ctx); m != nil {
+			m.TestNow(p.tag)
+		}
+	}
+}
+
+func noticeCount(data map[string]interface{}) (float64, bool) {
+	if data == nil {
+		return 0, false
+	}
+	v, ok := data["count"]
+	if !ok || v == nil {
+		return 0, false
+	}
+	switch n := v.(type) {
+	case float64:
+		return n, true
+	case int:
+		return float64(n), true
+	case int64:
+		return float64(n), true
+	case json.Number:
+		f, err := n.Float64()
+		return f, err == nil
+	default:
+		return 0, false
+	}
 }
 
 func (p *Psiphon) PreStart() error {
@@ -100,17 +133,13 @@ func (p *Psiphon) closeDataStore() {
 }
 
 func (p *Psiphon) State() string {
-	if p.controller.Load() == nil || !p.connected {
-		return "connecting..."
+	if p.IsConnected() {
+		return "connected"
 	}
-
-	return "connected"
+	return "connecting..."
 }
 func (p *Psiphon) IsConnected() bool {
-	if p.controller.Load() == nil || !p.connected {
-		return false
-	}
-	return true
+	return p.controller.Load() != nil && p.connected.Load()
 }
 
 // NetworkChanged tells the running controller that the network changed.
@@ -123,7 +152,7 @@ func (p *Psiphon) NetworkChanged() {
 
 func (p *Psiphon) Close() error {
 	p.controller.Store(nil)
-	p.connected = false
+	p.connected.Store(false)
 	psiphon.ResetNoticeWriter()
 	if p.cancel != nil { // nil until Start runs
 		p.cancel()
@@ -140,8 +169,8 @@ func NewPsiphon(ctx context.Context, l logger.ContextLogger, config *psiphon.Con
 	}
 	return &p, nil
 }
-func (p *Psiphon) Start() error {
 
+func (p *Psiphon) Start() error {
 	ctx, cancel := context.WithCancel(p.ctx)
 	p.cancel = cancel
 	// config.Commit must be called before calling config.SetParameters
@@ -150,35 +179,40 @@ func (p *Psiphon) Start() error {
 		return errors.New("config.Commit failed")
 	}
 
-	connected := make(chan struct{}, 1)
+	// Same contract as clientlib.StartTunnel: NoticeTunnels(count>0) means
+	// connected. Handle notices synchronously so readiness flips before Dial
+	// / urltest can observe a live tunnel while DisplayType still says Connecting.
+	connectedSignal := make(chan struct{})
+	var connectedOnce sync.Once
 	errored := make(chan error, 1)
 
-	psiphon.SetNoticeWriter(psiphon.NewNoticeReceiver(func(notice []byte) {
+	if err := psiphon.SetNoticeWriter(psiphon.NewNoticeReceiver(func(notice []byte) {
 		var event NoticeEvent
 		if err := json.Unmarshal(notice, &event); err != nil {
 			return
 		}
-
-		go func(event NoticeEvent) {
-			p.logger.Debug(fmt.Sprint("Notic ", event.Type, " data ", event.Data))
-			switch event.Type {
-			case "EstablishTunnelTimeout":
-				select {
-				case errored <- errors.New("clientlib: tunnel establishment timeout"):
-				default:
-				}
-			case "Tunnels":
-				if event.Data["count"].(float64) > 0 {
-					select {
-					case connected <- struct{}{}:
-						p.connected = true
-						monitoring.Get(p.ctx).TestNow(p.tag)
-					default:
-					}
-				}
+		p.logger.Debug(fmt.Sprint("Notice ", event.Type, " data ", event.Data))
+		switch event.Type {
+		case "EstablishTunnelTimeout":
+			select {
+			case errored <- errors.New("clientlib: tunnel establishment timeout"):
+			default:
 			}
-		}(event)
-	}))
+		case "Tunnels":
+			count, ok := noticeCount(event.Data)
+			if !ok {
+				return
+			}
+			if count > 0 {
+				p.setConnected(true)
+				connectedOnce.Do(func() { close(connectedSignal) })
+			} else {
+				p.setConnected(false)
+			}
+		}
+	})); err != nil {
+		return err
+	}
 
 	if err := psiphon.OpenDataStore(p.config); err != nil {
 		return errors.New("failed to open data store")
@@ -189,7 +223,6 @@ func (p *Psiphon) Start() error {
 	}
 
 	controller, err := psiphon.NewController(p.config)
-
 	if err != nil {
 		return errors.New("psiphon.NewController failed")
 	}
@@ -209,7 +242,7 @@ func (p *Psiphon) Start() error {
 		p.logger.Debug("Context done while waiting for success or failure of tunnel connection")
 		p.Close()
 		return ctx.Err()
-	case <-connected:
+	case <-connectedSignal:
 		p.logger.Debug("Tunnel connection established")
 		return nil
 	case err := <-errored:
