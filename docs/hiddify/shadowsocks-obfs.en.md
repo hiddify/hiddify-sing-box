@@ -87,7 +87,7 @@ A matching client:
 |---|---|---|---|
 | `obfs_mode` | string | `""` | `http` or `tls`: run the simple-obfs server. Empty: no obfs. |
 | `obfs_fallback` | object | — | Decoy server for connections that fail obfs or Shadowsocks authentication: `server` and `server_port`. Needs `obfs_mode`. |
-| `obfs_host` | string | `""` | Accepted, but the server does not check the host the client sends. |
+| `obfs_host` | string | `""` | Hosts the client may use, comma-separated. When set, a client whose HTTP `Host` or TLS server name is not listed is treated as not simple-obfs: it goes to `obfs_fallback`, or is closed. Empty allows any host. Needs `obfs_mode`. |
 
 Errors: an `obfs_mode` other than `http` or `tls`, `obfs_fallback` without `obfs_mode`, or a
 fallback without a valid address and port is a configuration error. Without `obfs_fallback`, a

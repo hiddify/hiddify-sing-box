@@ -84,7 +84,7 @@ simple-obfs قدیمی است و شکل‌های HTTP و TLS آن برای فی�
 |---|---|---|---|
 | `obfs_mode` | string | `""` | `http` یا `tls`: سرور simple-obfs را اجرا می‌کند. خالی: بدون obfs. |
 | `obfs_fallback` | object | — | سرور پوششی برای اتصال‌هایی که در obfs یا احراز هویت Shadowsocks شکست می‌خورند: `server` و `server_port`. به `obfs_mode` نیاز دارد. |
-| `obfs_host` | string | `""` | پذیرفته می‌شود، ولی سرور هاستی را که کلاینت می‌فرستد بررسی نمی‌کند. |
+| `obfs_host` | string | `""` | هاست‌هایی که کلاینت می‌تواند بفرستد، جدا شده با کاما. اگر تنظیم شود، کلاینتی که `Host` در HTTP یا نام سرور در TLS آن در فهرست نباشد simple-obfs حساب نمی‌شود: به `obfs_fallback` فرستاده یا بسته می‌شود. خالی یعنی هر هاستی. به `obfs_mode` نیاز دارد. |
 
 خطاها: `obfs_mode` غیر از `http` یا `tls`، `obfs_fallback` بدون `obfs_mode`، یا fallback بدون نشانی و
 پورت معتبر خطای پیکربندی است. بدون `obfs_fallback`، اتصال ناموفق بسته می‌شود.
