@@ -1188,6 +1188,13 @@ func (r *Router) exchangeLegacy(ctx context.Context, exchangeCtx *dnsExchangeCon
 				}
 			}
 		}
+		if err == nil && rule != nil && rule.BypassIfFailed() && ruleIndex != -1 && isAddressQuery(message) && len(MessageToAddresses(response)) == 0 { //H: as in Lookup, no address is a failure
+			select { //H
+			case <-ctx.Done(): //H
+			default: //H
+				bypass = true //H
+			} //H
+		} //H
 		if responseCheck != nil && rejected {
 			continue
 		}

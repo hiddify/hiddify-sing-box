@@ -447,3 +447,27 @@ func TestH_LookupDoesNotWaitForIPv6(t *testing.T) {
 	addresses, _ = lookup(&hFamilyTransport{ipv4: []netip.Addr{ipv4}, ipv6: []netip.Addr{ipv6}, ipv6Delay: 50 * time.Millisecond}, C.DomainStrategyPreferIPv6)
 	require.Equal(t, []netip.Addr{ipv6, ipv4}, addresses)
 }
+
+// an address query answered with no address moves on, as in Lookup
+func TestH_ExchangeBypassIfFailedOnEmptyAnswer(t *testing.T) {
+	t.Parallel()
+	recorder := &hTagRecorder{}
+	client := &fakeDNSClient{
+		exchange: func(transport adapter.DNSTransport, message *mDNS.Msg) (*mDNS.Msg, error) {
+			recorder.add(transport.Tag())
+			if transport.Tag() == "primary" {
+				return FixedResponse(message.Id, message.Question[0], nil, 60), nil
+			}
+			return FixedResponse(message.Id, message.Question[0], []netip.Addr{netip.MustParseAddr("1.2.3.4")}, 60), nil
+		},
+	}
+	router := newTestRouter(t, []option.DNSRule{
+		hRouteRule("example.com", "primary", true),
+		hRouteRule("example.com", "secondary", false),
+		hLegacyModeRule(),
+	}, hTransportManager("default", "primary", "secondary"), client)
+	response, err := router.Exchange(context.Background(), hQuery("example.com"), adapter.DNSQueryOptions{})
+	require.NoError(t, err)
+	require.Equal(t, []netip.Addr{netip.MustParseAddr("1.2.3.4")}, MessageToAddresses(response))
+	require.Equal(t, []string{"primary", "secondary"}, recorder.get())
+}
