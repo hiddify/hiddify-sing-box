@@ -64,6 +64,7 @@ type Outbound struct {
 	// H: connection state shown in the UI and used by monitoring
 	ready         atomic.Bool
 	connectionErr common.TypedValue[string]
+	tracker       adapter.StatusTracker //H
 	disconnected  chan struct{}
 	done          chan struct{}
 	closeOnce     sync.Once
@@ -275,13 +276,13 @@ func (s *Outbound) keepConnected() {
 	)
 	delay := minRetryDelay
 	for {
-		if !s.holdingConnection() && !s.IsReady() {
+		if !s.holdingConnection() && !s.ready.Load() {
 			if !s.waitSignal(0) {
 				return
 			}
 			continue
 		}
-		if !s.IsReady() {
+		if !s.ready.Load() {
 			if _, err := s.connect(s.ctx); err != nil {
 				s.logger.Debug("connect to ssh server: ", err, ", retry in ", delay)
 				if !s.waitSignal(delay) {
@@ -478,19 +479,20 @@ func (c *chanConnWrapper) SetWriteDeadline(t time.Time) error {
 	return os.ErrInvalid
 }
 
-func (s *Outbound) IsReady() bool {
-	return s.ready.Load()
+// Status is ready while the SSH session is up, reconnecting after it was. //H
+func (s *Outbound) Status() adapter.Status {
+	return s.tracker.Status(s.ready.Load())
 }
 
 // DisplayType is the protocol name, with the last connection error while not connected;
-// adapter.DisplayType adds the connecting mark.
+// adapter.DisplayType adds the status mark.
 func (s *Outbound) DisplayType() string {
 	name := C.ProxyDisplayName(s.Type())
-	if s.IsReady() {
+	if s.ready.Load() {
 		return name
 	}
 	if connectionErr := s.connectionErr.Load(); connectionErr != "" {
-		return name + " ❌ " + connectionErr
+		return name + ": " + connectionErr // the status mark follows
 	}
 	return name
 }

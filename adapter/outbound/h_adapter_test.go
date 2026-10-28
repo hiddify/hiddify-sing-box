@@ -20,6 +20,6 @@ func TestH_AdapterDisplayTypeAndReady(t *testing.T) {
 		adapter := NewAdapter(proxyType, "tag", nil, nil)
 		require.Equal(t, proxyType, adapter.Type())
 		require.Equal(t, expected, adapter.DisplayType())
-		require.True(t, adapter.IsReady())
+		require.Equal(t, "ready", adapter.Status().String())
 	}
 }

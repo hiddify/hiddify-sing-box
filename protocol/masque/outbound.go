@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/netip"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -49,13 +50,15 @@ type Outbound struct {
 	startHandler func()
 	scanner      *masqueScanner //H
 
-	warpConfig *Config     // the device of the warp endpoint, which registered it
-	peer       M.Socksaddr // the endpoint of the warp endpoint's server and server_port
-	profileKey string
-	scanStatus warpscan.Status
-	done       chan struct{}
-	doneOnce   sync.Once
-	closeOnce  sync.Once
+	warpConfig  *Config     // the device of the warp endpoint, which registered it
+	peer        M.Socksaddr // the endpoint of the warp endpoint's server and server_port
+	profileKey  string
+	scanStatus  warpscan.Status
+	done        chan struct{}
+	tracker     adapter.StatusTracker
+	registering atomic.Bool // a device is being registered
+	doneOnce    sync.Once
+	closeOnce   sync.Once
 
 	await chan struct{}
 }
@@ -123,13 +126,15 @@ func (w *Outbound) loadOrRegister() (*Config, bool) {
 	if !w.options.Profile.Recreate && cacheFile != nil && cacheFile.StoreMASQUEConfig() {
 		if savedProfile := cacheFile.LoadBinary(w.profileKey); savedProfile != nil {
 			var appConfig *Config
-			if err := json.Unmarshal(savedProfile.Content, &appConfig); err != nil {
-				w.logger.ErrorContext(w.ctx, err)
-				return nil, false
+			if err := json.Unmarshal(savedProfile.Content, &appConfig); err == nil {
+				return appConfig, true
+			} else {
+				w.logger.ErrorContext(w.ctx, E.Cause(err, "load WARP MASQUE device, registering a new one"))
 			}
-			return appConfig, true
 		}
 	}
+	w.registering.Store(true)
+	defer w.registering.Store(false)
 	backoff := registerRetryMin
 	for {
 		appConfig, err := w.createConfig()
@@ -292,15 +297,29 @@ func (w *Outbound) isClosed() bool {
 	}
 }
 
-// IsReady reports whether the tunnel has a connection to the server, not only whether it is
-// set up. //H
-func (w *Outbound) IsReady() bool {
+// Status is registering while a device is registered; ready while the tunnel has a connection
+// to the server, not once it is set up;
+// searching while the scanner looks for an endpoint; reconnecting after it was ready; failed
+// when the tunnel could not be set up. //H
+func (w *Outbound) Status() adapter.Status {
 	select {
 	case <-w.await:
-		return w.tunnel != nil && w.tunnel.IsConnected()
 	default:
-		return false
+		if w.registering.Load() {
+			return adapter.StatusRegistering
+		}
+		if w.scanStatus.IsScanning() {
+			return adapter.StatusSearching
+		}
+		return adapter.StatusConnecting
 	}
+	if w.tunnel == nil {
+		return adapter.StatusFailed
+	}
+	if !w.tunnel.IsConnected() && w.scanStatus.IsScanning() {
+		return adapter.StatusSearching
+	}
+	return w.tracker.Status(w.tunnel.IsConnected())
 }
 
 // DisplayType names the tunnel and the scanner status. //H

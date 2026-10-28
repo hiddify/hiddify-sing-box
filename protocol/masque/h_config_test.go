@@ -191,11 +191,15 @@ func TestH_OutboundStartHandlerFailureModes(t *testing.T) {
 
 func TestH_OutboundMalformedCache(t *testing.T) {
 	cache := &hMASQUECache{store: map[string]*adapter.SavedBinary{"masque-out": {Content: []byte("{")}}}
-	ctx := service.ContextWith[adapter.CacheFile](context.Background(), cache)
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	ctx = service.ContextWith[adapter.CacheFile](ctx, cache)
 	logger := &hErrorLogger{ContextLogger: log.NewNOPFactory().NewLogger("masque")}
-	out := hNewOutbound(t, ctx, logger, option.MASQUEOutboundOptions{})
+	// a broken saved device is replaced by a new one; the missing detour keeps the test off the network
+	out := hNewOutbound(t, ctx, logger, option.MASQUEOutboundOptions{Profile: option.CloudflareProfile{Detour: "missing"}})
 	out.startHandler()
-	require.Len(t, logger.logged(), 1)
+	require.Contains(t, logger.logged()[0], "registering a new one")
+	require.Equal(t, adapter.StatusFailed, out.Status(), "closed before it registered")
 	_, err := out.ListenPacket(context.Background(), M.ParseSocksaddr("1.1.1.1:53"))
 	require.ErrorContains(t, err, "tunnel not initialized")
 	require.NoError(t, out.Close(), "nothing to close")

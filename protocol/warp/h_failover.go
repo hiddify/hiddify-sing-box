@@ -60,7 +60,7 @@ func (w *WARPEndpoint) scannerEnabled() bool {
 func (w *WARPEndpoint) connect(config *C.WARPConfig) {
 	peerAddr, peerPort, err := warpPeerEndpoint(config, w.options.ServerOptions) //H: a config without peers or ports crashed the process
 	if err != nil {
-		w.logger.ErrorContext(w.ctx, err)
+		w.fail(err)
 		return
 	}
 	var current netip.AddrPort
@@ -250,7 +250,7 @@ func (w *WARPEndpoint) scan(exclude []netip.AddrPort) ([]warpscan.Result, error)
 		}
 	}
 	network := failover.currentNetwork()
-	w.scanStatus.Scanning()
+	w.scanStatus.Begin()
 	results, err := warpscan.Scan(w.ctx, w.logger, warpscan.Request{
 		Options:  w.options.Scanner,
 		Defaults: defaults,

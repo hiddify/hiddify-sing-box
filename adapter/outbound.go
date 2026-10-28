@@ -17,7 +17,7 @@ type Outbound interface {
 	Tag() string
 	Network() []string
 	Dependencies() []string
-	IsReady() bool //H
+	Status() Status //H: the connection state, see h_status.go
 	N.Dialer
 }
 

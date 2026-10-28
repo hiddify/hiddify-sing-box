@@ -83,16 +83,21 @@ do about it. Items marked **Required** break or misbehave until they are handled
 - **Self-hosted MASQUE.** Use upstream's `masque-client` (and `masque-server`). The Hiddify
   `masque` type is WARP only.
 - **Display types.** WARP shows `WARP · WG`, `WARP · AWG` or `WARP · MASQUE`; the `masque`
-  outbound shows `WARP · MASQUE`. After them comes the scanner status, once it has run
-  (` · 🔍 Scanning...`, ` · 🔍 <address:port>`, ` · 🔍 Not found`), then ` ⏳ Connecting...` while
-  not connected. If the app maps display types to icons or labels, match on the prefix.
-- **The connecting mark, for every outbound and endpoint.** ` ⏳ Connecting...` is now added by
-  `adapter.DisplayType(outbound)` to any outbound or endpoint that is not ready, not by each
-  one's own `DisplayType`. The hourglass flips between ⏳ and ⌛ with the second
-  (`C.HourglassFlip`), so a display that refreshes shows it turning; `C.SplitConnecting`
-  separates the mark from the rest. hiddify-core must show `adapter.DisplayType(outbound)` (v2/hcore/proxy_info.go
-  does, uncommitted at the time of writing); calling `DisplayType()` directly loses the mark.
-  Psiphon no longer shows "✔️ Connected".
+  outbound shows `WARP · MASQUE`. After them comes the endpoint the scanner chose
+  (` · 🔍 <address:port>`, or ` · 🔍 Not found`), then the status mark. If the app maps display
+  types to icons or labels, match on the prefix.
+- **Status, for every outbound and endpoint.** `IsReady() bool` is replaced by
+  `Status() adapter.Status`: `StatusReady`, `StatusConnecting`, `StatusReconnecting`,
+  `StatusSearching`, `StatusFailed` and `StatusRegistering`; `adapter.IsReady(o)` is the yes/no.
+  `adapter.DisplayType(o)` adds the mark of the status to any outbound or endpoint:
+  ` ⏳ Connecting...`, ` ⏳ Reconnecting...`, ` 🔍 Searching...`, ` ❌ Failed`,
+  ` 🔑 Registering...`, nothing when ready. The hourglass flips between ⏳ and ⌛ with the second
+  (`adapter.HourglassFlip`), so a display that refreshes shows it turning; `adapter.SplitStatus`
+  separates the mark from the rest. hiddify-core must show `adapter.DisplayType(o)`
+  (v2/hcore/proxy_info.go does, uncommitted at the time of writing); calling `DisplayType()`
+  directly loses the mark. The `OutboundInfo` message still has only `is_ready`; a `status`
+  field would let the app show the state without parsing the label. Psiphon no longer shows
+  "✔️ Connected", and SSH shows its last error as `SSH: <error>` before the mark.
 - **WARP registration fallback.** When registration through `profile.detour` fails, WARP (all
   three tunnels) tries again through every other outbound, direct included. That was already so
   for WireGuard and is kept; it lets a cold detour group not block registration, but it means

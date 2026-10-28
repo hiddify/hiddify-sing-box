@@ -131,7 +131,7 @@ func (h *Outbound) startTestResolver() error {
 				}
 
 				h.addResolver(resolver)
-				if h.IsReady() {
+				if h.isReady() {
 					h.saveHistory(history)
 				}
 

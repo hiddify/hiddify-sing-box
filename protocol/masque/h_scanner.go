@@ -110,7 +110,7 @@ func (s *masqueScanner) Scan(http2 bool, exclude []netip.AddrPort) (net.Addr, er
 	if http2 {
 		defaults.CIDRs = warpscan.MASQUEHTTP2CIDRs
 	}
-	s.status.Scanning()
+	s.status.Begin()
 	results, err := warpscan.Scan(s.ctx, s.logger, warpscan.Request{
 		Options:  s.options.Scanner,
 		Defaults: defaults,

@@ -38,11 +38,14 @@ func (w *WARPEndpoint) connectMASQUE() {
 		}
 	}
 	if config == nil {
-		if !w.retry("register WARP MASQUE device", func() error {
+		w.registering.Store(true)
+		registered := w.retry("register WARP MASQUE device", func() error {
 			var err error
 			config, err = registerMASQUE(w.ctx, &w.options.Profile)
 			return err
-		}) {
+		})
+		w.registering.Store(false)
+		if !registered {
 			return
 		}
 		if store {
@@ -59,11 +62,11 @@ func (w *WARPEndpoint) connectMASQUE() {
 	}
 	inner, err := masque.NewWARPOutbound(w.ctx, w.logger, w.tag, masqueOptions(w.options), config, peer, key)
 	if err != nil {
-		w.logger.ErrorContext(w.ctx, err)
+		w.fail(err)
 		return
 	}
 	if err = adapter.StartLate(w.scope, "outbound/masque["+w.tag+"]", inner); err != nil {
-		w.logger.ErrorContext(w.ctx, E.Cause(err, "start WARP MASQUE tunnel"))
+		w.fail(E.Cause(err, "start WARP MASQUE tunnel"))
 		return
 	}
 	select {

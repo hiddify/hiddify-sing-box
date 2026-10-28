@@ -19,7 +19,12 @@ type hDisplayOutbound struct {
 	display string
 }
 
-func (o *hDisplayOutbound) IsReady() bool { return o.ready }
+func (o *hDisplayOutbound) Status() adapter.Status {
+	if o.ready {
+		return adapter.StatusReady
+	}
+	return adapter.StatusConnecting
+}
 
 type hNamedOutbound struct {
 	hDisplayOutbound
@@ -42,7 +47,7 @@ func TestH_DisplayType(t *testing.T) {
 
 func hRequireConnecting(t *testing.T, base string, display string) {
 	t.Helper()
-	gotBase, mark := C.SplitConnecting(display)
+	gotBase, mark := adapter.SplitStatus(display)
 	require.Equal(t, base, gotBase, display)
 	require.NotEmpty(t, mark, display)
 }
@@ -53,7 +58,12 @@ type hDisplayEndpoint struct {
 	ready bool
 }
 
-func (e *hDisplayEndpoint) IsReady() bool                                  { return e.ready }
+func (e *hDisplayEndpoint) Status() adapter.Status {
+	if e.ready {
+		return adapter.StatusReady
+	}
+	return adapter.StatusConnecting
+}
 func (e *hDisplayEndpoint) Start(adapter.StartStage, *adapter.Scope) error { return nil }
 
 // An endpoint gets the mark the same way.

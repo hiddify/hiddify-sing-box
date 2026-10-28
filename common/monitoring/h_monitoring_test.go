@@ -36,7 +36,7 @@ func (f *fakeOutbound) Type() string           { return "fake" }
 func (f *fakeOutbound) Tag() string            { return f.tag }
 func (f *fakeOutbound) Network() []string      { return []string{N.NetworkTCP, N.NetworkUDP} }
 func (f *fakeOutbound) Dependencies() []string { return f.deps }
-func (f *fakeOutbound) IsReady() bool          { return true }
+func (f *fakeOutbound) Status() adapter.Status { return adapter.StatusReady }
 func (f *fakeOutbound) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
 	if f.dial != nil {
 		return f.dial(ctx, network, destination)

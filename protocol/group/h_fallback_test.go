@@ -28,7 +28,7 @@ func (o *hScriptedOutbound) Type() string           { return "scripted" }
 func (o *hScriptedOutbound) Tag() string            { return o.tag }
 func (o *hScriptedOutbound) Network() []string      { return []string{N.NetworkTCP, N.NetworkUDP} }
 func (o *hScriptedOutbound) Dependencies() []string { return nil }
-func (o *hScriptedOutbound) IsReady() bool          { return true }
+func (o *hScriptedOutbound) Status() adapter.Status { return adapter.StatusReady }
 
 func (o *hScriptedOutbound) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
 	o.dials.Add(1)

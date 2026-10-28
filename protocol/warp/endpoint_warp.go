@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -53,6 +54,9 @@ type WARPEndpoint struct {
 	peerPort      uint16          // H
 	scanStatus    warpscan.Status // H: the WireGuard scanner, for the display type
 	scanStatusOf  func() *warpscan.Status
+	failed        atomic.Bool           // H: see Status
+	tracker       adapter.StatusTracker // H
+	registering   atomic.Bool           // H: a device is being registered
 }
 
 func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.WARPEndpointOptions) (adapter.Endpoint, error) {
@@ -94,10 +98,10 @@ func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.Cont
 		if !options.Profile.Recreate && cacheFile != nil && cacheFile.StoreWARPConfig() {
 			savedProfile := cacheFile.LoadBinary(uniqueId)
 			if savedProfile != nil {
-				if err = json.Unmarshal(savedProfile.Content, &config); err != nil {
-					logger.ErrorContext(ctx, err)
-					return
-				}
+				if err = json.Unmarshal(savedProfile.Content, &config); err != nil { //H: register a new one, as for MASQUE
+					logger.ErrorContext(ctx, E.Cause(err, "load WARP device")) //H
+					config = nil                                               //H
+				} //H
 			}
 		}
 		if config == nil && options.WARPConfig != nil {
@@ -105,10 +109,13 @@ func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.Cont
 		}
 		if config == nil || config.PrivateKey == "" {
 			var profile *cloudflare.CloudflareProfile
-			if !warpEndpoint.retry("register WARP device", func() error { //H: a cold detour fails the first attempts
+			warpEndpoint.registering.Store(true)                                    //H
+			registered := warpEndpoint.retry("register WARP device", func() error { //H: a cold detour fails the first attempts
 				profile, err = GetWarpProfile(ctx, &options.Profile)
 				return err
-			}) {
+			})
+			warpEndpoint.registering.Store(false) //H
+			if !registered {
 				return
 			}
 			config = &profile.Config
@@ -116,14 +123,14 @@ func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.Cont
 			if cacheFile != nil && cacheFile.StoreWARPConfig() {
 				content, err := json.Marshal(config)
 				if err != nil {
-					logger.ErrorContext(ctx, err)
-					return
+					logger.ErrorContext(ctx, err) //H: not saved, but it still connects
+				} else {
+					cacheFile.SaveBinary(uniqueId, &adapter.SavedBinary{
+						LastUpdated: time.Now(),
+						Content:     content,
+						LastEtag:    "",
+					})
 				}
-				cacheFile.SaveBinary(uniqueId, &adapter.SavedBinary{
-					LastUpdated: time.Now(),
-					Content:     content,
-					LastEtag:    "",
-				})
 			}
 		}
 		warpEndpoint.connect(config) //H: pick the endpoint (scanning when enabled) and start it
@@ -213,12 +220,37 @@ const (
 	retryMax = 30 * time.Second
 )
 
-func (w *WARPEndpoint) IsReady() bool {
-	inner := w.currentEndpoint() //H
-	if inner == nil {
-		return false
+// Status is registering while a device is registered; ready only while the peer answers, not
+// once the endpoint exists; searching while the scanner looks for an endpoint; reconnecting
+// after it was ready; failed when the config cannot work. Over MASQUE, once registered, it is the
+// tunnel's status. //H
+func (w *WARPEndpoint) Status() adapter.Status {
+	if w.failed.Load() {
+		return adapter.StatusFailed
 	}
-	return handshakeFresh(inner) //H: connected only while the peer answers, not once the endpoint exists
+	if w.registering.Load() {
+		return adapter.StatusRegistering
+	}
+	inner := w.currentEndpoint()
+	if w.options.MASQUE.IsEnabled() {
+		if inner == nil {
+			return adapter.StatusConnecting
+		}
+		return inner.Status()
+	}
+	if w.scanStatus.IsScanning() {
+		return adapter.StatusSearching
+	}
+	if inner == nil {
+		return adapter.StatusConnecting
+	}
+	return w.tracker.Status(handshakeFresh(inner))
+}
+
+// fail logs err, after which the endpoint shows as failed: it cannot work as configured. //H
+func (w *WARPEndpoint) fail(err error) {
+	w.logger.ErrorContext(w.ctx, err)
+	w.failed.Store(true)
 }
 func (w *WARPEndpoint) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage == adapter.StartStateInitialize {

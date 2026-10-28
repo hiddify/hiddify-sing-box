@@ -40,6 +40,7 @@ type Endpoint struct {
 	logger    log.ContextLogger
 	dnsRouter adapter.DNSRouter
 	started   bool
+	tracker   adapter.StatusTracker //H
 	ctx       context.Context
 }
 
@@ -372,6 +373,6 @@ func (w *Endpoint) deviceReady() bool {
 	return w.Device != nil && w.Device.IsUnderLoad()
 }
 
-func (w *Endpoint) IsReady() bool {
-	return w.started || w.deviceReady()
-}
+func (w *Endpoint) Status() adapter.Status { //H
+	return w.tracker.Status(w.started || w.deviceReady()) //H
+} //H

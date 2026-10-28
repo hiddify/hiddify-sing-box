@@ -99,7 +99,7 @@ func TestH_PsiphonOutboundBeforeStart(t *testing.T) {
 	require.Equal(t, C.TypePsiphon, out.Type())
 	require.Equal(t, []string{N.NetworkTCP}, out.Network())
 	require.Equal(t, 10, *out.psiphon.config.EstablishTunnelTimeoutSeconds)
-	require.False(t, out.IsReady())
+	require.False(t, adapter.IsReady(out))
 	require.Equal(t, "connecting...", out.psiphon.State())
 	require.Contains(t, adapter.DisplayType(out), "Connecting")
 

@@ -30,7 +30,7 @@ func (c *Outbound) addResolver(resolver dnstt.Resolver) {
 		c.mutlitunnel = nil
 	}
 	c.mu.Unlock()
-	if !c.IsReady() {
+	if !c.isReady() {
 		c.started = 1
 		c.logger.InfoContext(c.ctx, "initial resolver ", resolver.ResolverAddr)
 		monitoring.Get(c.ctx).TestNow(c.Tag())

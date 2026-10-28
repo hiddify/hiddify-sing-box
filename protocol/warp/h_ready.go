@@ -19,7 +19,7 @@ var firstHandshakeWait = 10 * time.Second
 // handshake every two minutes while packets flow, and the keepalive keeps them flowing.
 func handshakeFresh(inner adapter.Endpoint) bool {
 	if _, isGetter := inner.(interface{ IpcGet() (string, error) }); !isGetter {
-		return inner.IsReady()
+		return adapter.IsReady(inner)
 	}
 	lastHandshake, _ := peerStatus(inner)
 	return !lastHandshake.IsZero() && time.Since(lastHandshake) < staleHandshake

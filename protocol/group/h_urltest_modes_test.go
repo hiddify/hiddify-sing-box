@@ -39,7 +39,7 @@ func (o *hProbeOutbound) Type() string           { return "probe" }
 func (o *hProbeOutbound) Tag() string            { return o.tag }
 func (o *hProbeOutbound) Network() []string      { return []string{N.NetworkTCP, N.NetworkUDP} }
 func (o *hProbeOutbound) Dependencies() []string { return nil }
-func (o *hProbeOutbound) IsReady() bool          { return true }
+func (o *hProbeOutbound) Status() adapter.Status { return adapter.StatusReady }
 
 func (o *hProbeOutbound) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
 	o.dials.Add(1)

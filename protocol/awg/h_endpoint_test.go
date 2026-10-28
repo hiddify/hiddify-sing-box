@@ -249,10 +249,10 @@ func TestH_EndpointNewPacketConnectionRewritesLocalAddress(t *testing.T) {
 
 func TestH_EndpointReadinessAndDialValidation(t *testing.T) {
 	ep := hTestEndpoint(&hRecordingRouter{})
-	require.False(t, ep.IsReady())
+	require.False(t, adapter.IsReady(ep))
 	hRequireConnecting(t, "Awg", adapter.DisplayType(ep))
 	ep.started = true
-	require.True(t, ep.IsReady())
+	require.True(t, adapter.IsReady(ep))
 	require.Equal(t, "Awg", ep.DisplayType())
 
 	_, err := ep.DialContext(context.Background(), N.NetworkTCP, M.Socksaddr{Port: 80})
@@ -329,7 +329,7 @@ func TestH_GenIpcConfigMasquerade(t *testing.T) {
 
 func hRequireConnecting(t *testing.T, base string, display string, message ...any) {
 	t.Helper()
-	gotBase, mark := C.SplitConnecting(display)
+	gotBase, mark := adapter.SplitStatus(display)
 	require.Equal(t, base, gotBase, message...)
 	require.NotEmpty(t, mark, message...)
 }

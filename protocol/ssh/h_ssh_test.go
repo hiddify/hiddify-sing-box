@@ -323,12 +323,12 @@ func TestH_SSHOutboundToInboundTCP(t *testing.T) {
 	t.Parallel()
 	f := startInbound(t, nil)
 	out := newTestOutbound(t, f, nil)
-	require.False(t, out.IsReady())
+	require.False(t, adapter.IsReady(out))
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	conn, err := out.DialContext(ctx, N.NetworkTCP, M.ParseSocksaddr("198.51.100.7:9000"))
 	require.NoError(t, err)
-	require.True(t, out.IsReady())
+	require.True(t, adapter.IsReady(out))
 	require.Empty(t, out.connectionErr.Load())
 	echoOnce(t, conn, "outbound tcp")
 	conn.Close()
@@ -359,7 +359,7 @@ func TestH_SSHOutboundConnectErrorRecorded(t *testing.T) {
 	_, err := out.DialContext(ctx, N.NetworkTCP, M.ParseSocksaddr("10.0.0.1:80"))
 	require.ErrorContains(t, err, "host key mismatch")
 	require.Contains(t, out.connectionErr.Load(), "host key mismatch")
-	require.False(t, out.IsReady())
+	require.False(t, adapter.IsReady(out))
 }
 
 func TestH_SSHOutboundProxyDisplayName(t *testing.T) {
@@ -446,11 +446,11 @@ func TestH_SSHOutboundConnectsAndReconnectsInBackground(t *testing.T) {
 	f := startInbound(t, nil)
 	out := newTestOutbound(t, f, nil)
 	require.NoError(t, out.PostStart())
-	require.Eventually(t, out.IsReady, 5*time.Second, 20*time.Millisecond, "not connected after start")
+	require.Eventually(t, func() bool { return adapter.IsReady(out) }, 5*time.Second, 20*time.Millisecond, "not connected after start")
 	require.Equal(t, C.ProxyDisplayName(C.TypeSSH), out.DisplayType())
 
 	out.InterfaceUpdated(context.Background()) // drops the connection
-	require.Eventually(t, out.IsReady, 5*time.Second, 20*time.Millisecond, "not reconnected")
+	require.Eventually(t, func() bool { return adapter.IsReady(out) }, 5*time.Second, 20*time.Millisecond, "not reconnected")
 }
 
 // closing an unreferenced session must not connect again: the URL test would open another
@@ -460,12 +460,12 @@ func TestH_SSHOutboundIdleCloseDoesNotReconnect(t *testing.T) {
 	f := startInbound(t, nil)
 	out := newTestOutbound(t, f, nil)
 	require.NoError(t, out.PostStart())
-	require.Eventually(t, out.IsReady, 5*time.Second, 20*time.Millisecond)
+	require.Eventually(t, func() bool { return adapter.IsReady(out) }, 5*time.Second, 20*time.Millisecond)
 	out.SetKeepIdleConnections(false)
-	require.Eventually(t, func() bool { return !out.IsReady() }, 5*time.Second, 20*time.Millisecond)
-	require.Never(t, out.IsReady, 2*time.Second, 50*time.Millisecond, "idle SSH session reconnected")
+	require.Eventually(t, func() bool { return !adapter.IsReady(out) }, 5*time.Second, 20*time.Millisecond)
+	require.Never(t, func() bool { return adapter.IsReady(out) }, 2*time.Second, 50*time.Millisecond, "idle SSH session reconnected")
 	out.SetKeepIdleConnections(true)
-	require.Eventually(t, out.IsReady, 5*time.Second, 20*time.Millisecond, "not connected after it is referenced again")
+	require.Eventually(t, func() bool { return adapter.IsReady(out) }, 5*time.Second, 20*time.Millisecond, "not connected after it is referenced again")
 }
 
 func TestH_SSHOutboundUnreachableServer(t *testing.T) {
@@ -484,9 +484,10 @@ func TestH_SSHOutboundUnreachableServer(t *testing.T) {
 	require.Contains(t, adapter.DisplayType(ssh), "Connecting")
 	require.NoError(t, ssh.PostStart())
 	require.Eventually(t, func() bool {
-		return strings.Contains(ssh.DisplayType(), "❌") && strings.Contains(ssh.DisplayType(), "refused")
-	}, 5*time.Second, 20*time.Millisecond, "the connection error is not shown: %q", ssh.DisplayType())
-	require.False(t, ssh.IsReady())
+		display := adapter.DisplayType(ssh)
+		return strings.Contains(display, "refused") && strings.HasSuffix(display, "Connecting...")
+	}, 5*time.Second, 20*time.Millisecond, "the connection error is not shown: %q", adapter.DisplayType(ssh))
+	require.False(t, adapter.IsReady(ssh))
 	require.NoError(t, htest.Close(ssh)) // stops the background retries
 }
 
@@ -497,10 +498,10 @@ func TestH_SSHOutboundLifecycleConnectsInBackground(t *testing.T) {
 	f := startInbound(t, nil)
 	out := newTestOutbound(t, f, nil)
 	require.NoError(t, htest.StartAll(out))
-	require.Eventually(t, out.IsReady, 5*time.Second, 20*time.Millisecond, "not connected after start")
+	require.Eventually(t, func() bool { return adapter.IsReady(out) }, 5*time.Second, 20*time.Millisecond, "not connected after start")
 	require.NoError(t, htest.Close(out))
-	require.Eventually(t, func() bool { return !out.IsReady() }, 5*time.Second, 20*time.Millisecond)
-	require.Never(t, out.IsReady, time.Second, 50*time.Millisecond, "reconnected after close")
+	require.Eventually(t, func() bool { return !adapter.IsReady(out) }, 5*time.Second, 20*time.Millisecond)
+	require.Never(t, func() bool { return adapter.IsReady(out) }, time.Second, 50*time.Millisecond, "reconnected after close")
 }
 
 // a forward request that cannot be parsed is refused, and the connection keeps serving others

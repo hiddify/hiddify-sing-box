@@ -162,7 +162,7 @@ func TestH_DnsttNewOutboundDefaults(t *testing.T) {
 func TestH_DnsttNotStarted(t *testing.T) {
 	t.Parallel()
 	out := newTestOutbound(t, validOptions())
-	require.False(t, out.IsReady())
+	require.False(t, adapter.IsReady(out))
 	_, err := out.DialContext(context.Background(), N.NetworkTCP, M.ParseSocksaddr("1.1.1.1:80"))
 	require.ErrorContains(t, err, "not started")
 	_, err = out.ListenPacket(context.Background(), M.ParseSocksaddr("1.1.1.1:53"))
@@ -170,10 +170,11 @@ func TestH_DnsttNotStarted(t *testing.T) {
 
 	require.Contains(t, adapter.DisplayType(out), "Connecting")
 	out.started = -1
-	require.Contains(t, out.DisplayType(), "Failed")
+	require.Equal(t, adapter.StatusFailed, out.Status())
+	require.Contains(t, adapter.DisplayType(out), "Failed")
 	out.started = 1
 	out.resolvers = make([]dnstt.Resolver, 3)
-	require.True(t, out.IsReady())
+	require.True(t, adapter.IsReady(out))
 	require.Contains(t, out.DisplayType(), "3 resolvers")
 
 	_, err = out.ListenPacket(context.Background(), M.ParseSocksaddr("1.1.1.1:53"))

@@ -77,12 +77,22 @@ while the last handshake is less than 3 minutes old; through a detour that stops
 shows as connecting again. Over MASQUE, it counts as connected while it has a connection to the
 server.
 
-**Display type.** The type shown for the endpoint names the tunnel and the scanner:
-`WARP · WG`, `WARP · AWG` or `WARP · MASQUE`, then, once the scanner has run,
-` · 🔍 Scanning...`, ` · 🔍 <address:port>` (the endpoint it chose) or ` · 🔍 Not found`, and
-` ⏳ Connecting...` while it is not connected (the hourglass flips between ⏳ and ⌛ each second,
-as for every outbound and endpoint). For example
-`WARP · MASQUE · 🔍 162.159.198.1:443`.
+**Status and display type.** The type shown for the endpoint names the tunnel:
+`WARP · WG`, `WARP · AWG` or `WARP · MASQUE`; then, once the scanner has chosen,
+` · 🔍 <address:port>` or ` · 🔍 Not found`; then the mark of its status, as for every outbound
+and endpoint:
+
+| Status | Mark | When |
+|---|---|---|
+| registering | ` 🔑 Registering...` | A device is being registered. |
+| searching | ` 🔍 Searching...` | The scanner looks for an endpoint that answers. |
+| connecting | ` ⏳ Connecting...` | It has not connected yet. |
+| reconnecting | ` ⏳ Reconnecting...` | It was connected and the peer stopped answering. |
+| failed | ` ❌ Failed` | The config cannot work (a profile without peers, MASQUE not in the build). |
+| ready | | It carries traffic. |
+
+The hourglass flips between ⏳ and ⌛ each second. For example
+`WARP · MASQUE · 🔍 162.159.198.1:443`, or `WARP · WG ⏳ Reconnecting...`.
 
 **Group detour.** When `detour` is a group (a selector, URL test or balancer), WARP follows the
 member it resolves to, through nested groups. When the group moves to another member, WARP

@@ -21,8 +21,8 @@ const (
 	statusNotFound
 )
 
-// Scanning marks a scan in progress.
-func (s *Status) Scanning() {
+// Begin marks a scan in progress.
+func (s *Status) Begin() {
 	s.access.Lock()
 	s.state = statusScanning
 	s.access.Unlock()
@@ -43,7 +43,15 @@ func (s *Status) NotFound() {
 	s.access.Unlock()
 }
 
-// String is the part of the display type for the scanner: empty before the first scan.
+// IsScanning reports whether a scan is in progress; the outbound then shows as searching.
+func (s *Status) IsScanning() bool {
+	s.access.Lock()
+	defer s.access.Unlock()
+	return s.state == statusScanning
+}
+
+// String is the part of the display type for the scanner: the endpoint it chose, or that it
+// found none; empty before the first scan and while scanning, when the status is searching.
 func (s *Status) String() string {
 	if s == nil {
 		return ""
@@ -51,8 +59,6 @@ func (s *Status) String() string {
 	s.access.Lock()
 	defer s.access.Unlock()
 	switch s.state {
-	case statusScanning:
-		return " · 🔍 Scanning..."
 	case statusFound:
 		return " · 🔍 " + s.endpoint.String()
 	case statusNotFound:

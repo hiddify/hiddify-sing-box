@@ -31,7 +31,7 @@ server it knows is blocked and it cannot fetch a new list.
   `data_directory`, and starts the tunnel core in the background. Startup does not wait for the
   tunnel.
 - Until the tunnel is up, the outbound shows "Connecting..." and connections through it fail.
-  When the first tunnel is up, it shows "Connected", and Hiddify's
+  When the first tunnel is up, the mark goes away, and Hiddify's
   [monitoring](../groups/monitoring.en.md) tests it at once.
 - The tunnel core makes its own connections to Psiphon servers. These go through this
   outbound's dial settings (for example `detour`), through a local SOCKS bridge, so they do

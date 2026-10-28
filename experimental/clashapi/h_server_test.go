@@ -37,7 +37,7 @@ func (f *hFakeOutbound) Type() string           { return C.TypeDirect }
 func (f *hFakeOutbound) Tag() string            { return f.tag }
 func (f *hFakeOutbound) Network() []string      { return []string{N.NetworkTCP, N.NetworkUDP} }
 func (f *hFakeOutbound) Dependencies() []string { return nil }
-func (f *hFakeOutbound) IsReady() bool          { return true }
+func (f *hFakeOutbound) Status() adapter.Status { return adapter.StatusReady }
 func (f *hFakeOutbound) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
 	return nil, errors.New("unsupported")
 }

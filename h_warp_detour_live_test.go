@@ -116,7 +116,7 @@ func (b *hWARPBox) warp() adapter.Outbound {
 }
 
 func (b *hWARPBox) ready() bool {
-	return b.warp().IsReady()
+	return adapter.IsReady(b.warp())
 }
 
 func (b *hWARPBox) displayType() string {
@@ -156,7 +156,7 @@ func (b *hWARPBox) requireNeverConnected(t *testing.T, period time.Duration) {
 }
 
 // WARP over WireGuard, AmneziaWG and MASQUE (through the warp endpoint, and the masque outbound),
-// each through SOCKS, Shadowsocks, VLESS and Trojan: traffic goes through WARP, IsReady turns
+// each through SOCKS, Shadowsocks, VLESS and Trojan: traffic goes through WARP, the status turns
 // true once it is connected and the display type names the tunnel. Through a dead detour it never
 // connects nor reports ready; through a group that moves from a dead member to a working one it
 // connects once it moved.

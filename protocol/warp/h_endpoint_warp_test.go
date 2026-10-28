@@ -196,7 +196,7 @@ func TestH_NewWARPEndpointMetadata(t *testing.T) {
 	require.NoError(t, htest.Start(ep, adapter.StartStateStart))
 	require.True(t, ep.mtx.TryLock(), "mtx must stay free so dials during start do not block")
 	ep.mtx.Unlock()
-	require.False(t, ep.IsReady(), "inner endpoint is not installed before PostStart")
+	require.False(t, adapter.IsReady(ep), "inner endpoint is not installed before PostStart")
 }
 
 func TestH_WARPStartFailureLeavesEndpointUninitialized(t *testing.T) {
@@ -205,7 +205,7 @@ func TestH_WARPStartFailureLeavesEndpointUninitialized(t *testing.T) {
 	ep := hNewWARP(t, hShortContext(t), options)
 	ep.startHandler()
 
-	require.False(t, ep.IsReady())
+	require.False(t, adapter.IsReady(ep))
 	hRequireConnecting(t, "WARP · WG", adapter.DisplayType(ep))
 	_, err := ep.DialContext(context.Background(), N.NetworkTCP, M.ParseSocksaddr("1.1.1.1:80"))
 	require.ErrorContains(t, err, "endpoint not initialized")
@@ -220,7 +220,7 @@ func TestH_WARPStartPostStartRunsHandler(t *testing.T) {
 	ep := hNewWARP(t, hTestContext(t), options)
 	require.NoError(t, htest.Start(ep, adapter.StartStatePostStart))
 	done := make(chan bool, 1)
-	go func() { done <- ep.IsReady() }()
+	go func() { done <- adapter.IsReady(ep) }()
 	select {
 	case ready := <-done:
 		require.False(t, ready)
@@ -251,10 +251,13 @@ func TestH_WARPUsesCachedConfig(t *testing.T) {
 
 func TestH_WARPMalformedCachedConfig(t *testing.T) {
 	cache := &hFakeCacheFile{store: map[string]*adapter.SavedBinary{"warp-tag": {Content: []byte("{not json")}}}
-	ctx := service.ContextWith[adapter.CacheFile](hTestContext(t), cache)
-	ep := hNewWARP(t, ctx, option.WARPEndpointOptions{})
+	ctx := service.ContextWith[adapter.CacheFile](hShortContext(t), cache)
+	ctx = service.ContextWith[adapter.OutboundManager](ctx, &hFakeOutboundManager{})
+	// a broken saved profile is replaced by a new one; the detour keeps the test off the network
+	ep := hNewWARP(t, ctx, option.WARPEndpointOptions{Profile: option.WARPProfile{Detour: "missing"}})
 	ep.startHandler()
 	require.Equal(t, []string{"warp-tag"}, cache.loads)
+	require.Equal(t, adapter.StatusConnecting, ep.Status(), "registering ended with the context, not failed")
 	_, err := ep.DialContext(context.Background(), N.NetworkTCP, M.ParseSocksaddr("1.1.1.1:80"))
 	require.ErrorContains(t, err, "endpoint not initialized")
 }
@@ -272,7 +275,7 @@ func TestH_WARPConfigWithoutPeersDoesNotPanic(t *testing.T) {
 	options.Detour = "missing-detour"
 	ep := hNewWARP(t, hTestContext(t), options)
 	require.NotPanics(t, ep.startHandler)
-	require.False(t, ep.IsReady())
+	require.False(t, adapter.IsReady(ep))
 }
 
 func TestH_WARPPeerEndpoint(t *testing.T) {
@@ -360,7 +363,23 @@ func TestH_WARPStopsWithItsScope(t *testing.T) {
 
 func hRequireConnecting(t *testing.T, base string, display string, message ...any) {
 	t.Helper()
-	gotBase, mark := C.SplitConnecting(display)
+	gotBase, mark := adapter.SplitStatus(display)
 	require.Equal(t, base, gotBase, message...)
 	require.NotEmpty(t, mark, message...)
+}
+
+// While the device is registered, WARP shows as registering; a config it cannot use is failed.
+func TestH_WARPStatusRegisteringAndFailed(t *testing.T) {
+	ctx := service.ContextWith[adapter.OutboundManager](hTestContext(t), &hFakeOutboundManager{})
+	ep := hNewWARP(t, ctx, option.WARPEndpointOptions{Profile: option.WARPProfile{Detour: "missing"}})
+	require.Equal(t, adapter.StatusConnecting, ep.Status(), "not started")
+	go ep.startHandler()
+	require.Eventually(t, func() bool { return ep.Status() == adapter.StatusRegistering }, 2*time.Second, 10*time.Millisecond)
+	ep.Close()
+
+	broken := hNewWARP(t, hShortContext(t), option.WARPEndpointOptions{WARPConfig: &C.WARPConfig{PrivateKey: "key"}})
+	broken.startHandler()
+	require.Equal(t, adapter.StatusFailed, broken.Status(), "a config without peers cannot work")
+	_, mark := adapter.SplitStatus(adapter.DisplayType(broken))
+	require.Equal(t, "❌ Failed", mark)
 }

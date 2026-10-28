@@ -28,7 +28,7 @@ func (h *hHangingOutbound) Type() string           { return "hanging" }
 func (h *hHangingOutbound) Tag() string            { return h.tag }
 func (h *hHangingOutbound) Network() []string      { return []string{N.NetworkTCP, N.NetworkUDP} }
 func (h *hHangingOutbound) Dependencies() []string { return nil }
-func (h *hHangingOutbound) IsReady() bool          { return true }
+func (h *hHangingOutbound) Status() adapter.Status { return adapter.StatusReady }
 
 func (h *hHangingOutbound) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
 	<-ctx.Done()

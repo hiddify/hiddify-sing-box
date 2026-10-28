@@ -56,6 +56,7 @@ type Outbound struct {
 	mu          sync.RWMutex
 	reconnectCh chan struct{}
 	psiphon     *Psiphon
+	tracker     adapter.StatusTracker //H
 	proxy       *proxybridge.Bridge
 }
 
@@ -360,9 +361,9 @@ func (h *Outbound) requestReconnect() {
 	default:
 	}
 }
-func (h *Outbound) IsReady() bool {
-	return h.psiphon.IsConnected()
-}
+func (h *Outbound) Status() adapter.Status { //H
+	return h.tracker.Status(h.psiphon.IsConnected()) //H
+} //H
 
 func (h *Outbound) InterfaceUpdated(ctx context.Context) {
 	h.logger.Info("Network Changed... Restarting Psiphon Tunnel")

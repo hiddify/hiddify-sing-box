@@ -610,9 +610,9 @@ func (m *OutboundMonitoring) executeTask(task *testTask) {
 	cycle := task.cycleID
 	state.mu.Unlock()
 
-	if cycle < 10 && (!state.outbound.IsReady() || !m.dependenciesReady(state)) {
+	if cycle < 10 && (!adapter.IsReady(state.outbound) || !m.dependenciesReady(state)) {
 		reason := "not ready"
-		if state.outbound.IsReady() {
+		if adapter.IsReady(state.outbound) {
 			reason = "detour not ready"
 		}
 		m.logger.Info("outbound ", task.outboundTag, " is ", reason, ", skipping test")
@@ -998,7 +998,7 @@ func (m *OutboundMonitoring) publishGroupEvent(groupTag string, since time.Time,
 //	}
 //
 // dependenciesReady reports whether every detour of outbound is usable for a URL test.
-// A plain detour must IsReady(). A group detour is ready when any member has a successful
+// A plain detour must be ready (adapter.IsReady). A group detour is ready when any member has a successful
 // ping, or when every member is connected (IsReady) — so Extra Security WARP waits for the
 // main selector to have a working leaf before it is tested through that path.
 func (m *OutboundMonitoring) dependenciesReady(state *outboundState) bool {
@@ -1021,7 +1021,7 @@ func (m *OutboundMonitoring) detourReady(tag string) bool {
 	}
 	grp, isGroup := reg.groups[tag]
 	if !isGroup {
-		return depState.outbound.IsReady()
+		return adapter.IsReady(depState.outbound)
 	}
 	anyPing := false
 	allReady := true
@@ -1030,7 +1030,7 @@ func (m *OutboundMonitoring) detourReady(tag string) bool {
 		if !ok {
 			continue
 		}
-		if !member.outbound.IsReady() {
+		if !adapter.IsReady(member.outbound) {
 			allReady = false
 		}
 		member.mu.Lock()

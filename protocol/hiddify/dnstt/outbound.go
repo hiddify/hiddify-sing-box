@@ -144,7 +144,7 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 }
 
 func (h *Outbound) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
-	if !h.IsReady() {
+	if !h.isReady() {
 		return nil, E.New("outbound is not started")
 	}
 	if h.options.SingleResolver {
@@ -153,7 +153,7 @@ func (h *Outbound) DialContext(ctx context.Context, network string, destination 
 	return h.OpenStream(ctx)
 }
 func (h *Outbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
-	if !h.IsReady() {
+	if !h.isReady() {
 		return nil, E.New("outbound is not started")
 	}
 	ctx, metadata := adapter.ExtendContext(ctx)
@@ -166,14 +166,23 @@ func (h *Outbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (n
 	return nil, E.New("UoT is not enabled for this outbound")
 }
 
-func (c *Outbound) IsReady() bool {
+func (c *Outbound) isReady() bool {
 	return c.started > 0
 }
+
+// Status is failed once every resolver failed its test. //H
+func (c *Outbound) Status() adapter.Status {
+	switch {
+	case c.started > 0:
+		return adapter.StatusReady
+	case c.started < 0:
+		return adapter.StatusFailed
+	}
+	return adapter.StatusConnecting
+}
 func (w *Outbound) DisplayType() string {
-	str := C.ProxyDisplayName(w.Type()) //H: adapter.DisplayType adds the connecting mark
-	if w.started < 0 {
-		str += " ❌ Failed!"
-	} else if w.started > 0 {
+	str := C.ProxyDisplayName(w.Type()) //H: adapter.DisplayType adds the status mark
+	if w.started > 0 {
 		str += fmt.Sprint(" ✔️ ", len(w.resolvers), " resolvers")
 	}
 	return str

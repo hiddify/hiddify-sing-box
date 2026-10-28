@@ -1,10 +1,5 @@
 package constant
 
-import (
-	"strings"
-	"time"
-)
-
 const (
 	TypeTun                = "tun"
 	TypeRedirect           = "redirect"
@@ -85,32 +80,6 @@ const (
 	DisplayWARPAWG       = "WARP · AWG"
 	DisplayWARPMASQUE    = "WARP · MASQUE"
 )
-
-// HourglassFlip are the frames of the connecting mark: an hourglass that flips each second. //H
-var HourglassFlip = []string{"⏳", "⌛"}
-
-const connectingText = "Connecting..."
-
-// DisplayConnecting is added to a display type while the outbound is not connected; the
-// hourglass flips each second, so a display that refreshes shows it turning. //H
-func DisplayConnecting() string {
-	return connectingMark(HourglassFlip[time.Now().Unix()%int64(len(HourglassFlip))])
-}
-
-func connectingMark(frame string) string {
-	return " " + frame + " " + connectingText
-}
-
-// SplitConnecting separates a display type from its connecting mark, which is always last;
-// mark is empty when it has none. //H
-func SplitConnecting(display string) (base string, mark string) {
-	for _, frame := range HourglassFlip {
-		if suffix := connectingMark(frame); strings.HasSuffix(display, suffix) {
-			return strings.TrimSuffix(display, suffix), strings.TrimSpace(suffix)
-		}
-	}
-	return display, ""
-}
 
 func ProxyDisplayName(proxyType string) string {
 	switch proxyType {

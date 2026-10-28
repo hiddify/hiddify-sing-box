@@ -1,6 +1,7 @@
 package endpoint
 
 import (
+	"github.com/sagernet/sing-box/adapter"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
 )
@@ -45,10 +46,11 @@ func (a *Adapter) Dependencies() []string {
 	return a.dependencies
 }
 
-func (a *Adapter) DisplayType() string {
-	return C.ProxyDisplayName(a.Type())
-}
+func (a *Adapter) DisplayType() string { //H
+	return C.ProxyDisplayName(a.Type()) //H
+} //H
 
-func (a *Adapter) IsReady() bool {
-	return true
-}
+// Status is ready: an outbound without a connection of its own carries traffic at once. //H
+func (a *Adapter) Status() adapter.Status { //H
+	return adapter.StatusReady //H
+} //H

@@ -203,14 +203,27 @@ func (h *Outbound) diagnoseAndMarkReady(runCtx context.Context) {
 	h.logger.ErrorContext(runCtx, "goose-relay: all ", len(keys), " endpoints failed diagnose")
 }
 
-func (h *Outbound) IsReady() bool {
+// Status is failed once no endpoint answered. //H
+func (h *Outbound) Status() adapter.Status {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	switch {
+	case h.started > 0:
+		return adapter.StatusReady
+	case h.started < 0:
+		return adapter.StatusFailed
+	}
+	return adapter.StatusConnecting
+}
+
+func (h *Outbound) isReady() bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return h.started > 0
 }
 
 func (h *Outbound) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
-	if !h.IsReady() {
+	if !h.isReady() {
 		return nil, E.New("outbound is not started")
 	}
 	switch N.NetworkName(network) {
@@ -225,7 +238,7 @@ func (h *Outbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (n
 	if h.uotClient == nil {
 		return nil, E.New("UDP over TCP is not enabled for this outbound")
 	}
-	if !h.IsReady() {
+	if !h.isReady() {
 		return nil, E.New("outbound is not started")
 	}
 	return h.uotClient.ListenPacket(ctx, destination)
@@ -236,14 +249,10 @@ func (h *Outbound) DisplayType() string {
 	h.mu.Lock()
 	state := h.started
 	h.mu.Unlock()
-	switch { // adapter.DisplayType adds the connecting mark
-	case state == 0:
+	if state <= 0 { // adapter.DisplayType adds the status mark
 		return str
-	case state < 0:
-		return str + " ❌ Failed!"
-	default:
-		return fmt.Sprint(str, " ✔️ ", len(h.options.ScriptKeys), " endpoints")
 	}
+	return fmt.Sprint(str, " ✔️ ", len(h.options.ScriptKeys), " endpoints")
 }
 
 func (h *Outbound) Close() error {
