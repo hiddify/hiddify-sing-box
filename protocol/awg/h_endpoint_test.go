@@ -250,7 +250,7 @@ func TestH_EndpointNewPacketConnectionRewritesLocalAddress(t *testing.T) {
 func TestH_EndpointReadinessAndDialValidation(t *testing.T) {
 	ep := hTestEndpoint(&hRecordingRouter{})
 	require.False(t, ep.IsReady())
-	require.Equal(t, "Awg ⚠️ Connecting...", adapter.DisplayType(ep))
+	hRequireConnecting(t, "Awg", adapter.DisplayType(ep))
 	ep.started = true
 	require.True(t, ep.IsReady())
 	require.Equal(t, "Awg", ep.DisplayType())
@@ -325,4 +325,11 @@ func TestH_GenIpcConfigMasquerade(t *testing.T) {
 		_, err := genIpcConfig(option.AwgEndpointOptions{PrivateKey: hKey(t).String(), Awg: invalid}, nil)
 		require.Error(t, err, "%+v", invalid)
 	}
+}
+
+func hRequireConnecting(t *testing.T, base string, display string, message ...any) {
+	t.Helper()
+	gotBase, mark := C.SplitConnecting(display)
+	require.Equal(t, base, gotBase, message...)
+	require.NotEmpty(t, mark, message...)
 }

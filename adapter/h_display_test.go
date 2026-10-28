@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/adapter/endpoint"
 	"github.com/sagernet/sing-box/adapter/outbound"
 	C "github.com/sagernet/sing-box/constant"
 	N "github.com/sagernet/sing/common/network"
@@ -29,12 +30,37 @@ func (o *hNamedOutbound) DisplayType() string { return o.display }
 // Every outbound gets the connecting mark while it is not ready, whatever its own display type.
 func TestH_DisplayType(t *testing.T) {
 	plain := &hDisplayOutbound{Adapter: outbound.NewAdapter(C.TypeSSH, "a", nil, nil)}
-	require.Equal(t, "SSH"+C.DisplayConnecting, adapter.DisplayType(plain))
+	hRequireConnecting(t, "SSH", adapter.DisplayType(plain))
 	plain.ready = true
 	require.Equal(t, "SSH", adapter.DisplayType(plain))
 
 	named := &hNamedOutbound{hDisplayOutbound{Adapter: outbound.NewAdapter(C.TypeWARP, "b", nil, nil), display: "WARP · MASQUE · 🔍 1.1.1.1:443"}}
-	require.Equal(t, "WARP · MASQUE · 🔍 1.1.1.1:443"+C.DisplayConnecting, adapter.DisplayType(named))
+	hRequireConnecting(t, "WARP · MASQUE · 🔍 1.1.1.1:443", adapter.DisplayType(named))
 	named.ready = true
 	require.Equal(t, "WARP · MASQUE · 🔍 1.1.1.1:443", adapter.DisplayType(named))
+}
+
+func hRequireConnecting(t *testing.T, base string, display string) {
+	t.Helper()
+	gotBase, mark := C.SplitConnecting(display)
+	require.Equal(t, base, gotBase, display)
+	require.NotEmpty(t, mark, display)
+}
+
+type hDisplayEndpoint struct {
+	endpoint.Adapter
+	N.Dialer
+	ready bool
+}
+
+func (e *hDisplayEndpoint) IsReady() bool                                  { return e.ready }
+func (e *hDisplayEndpoint) Start(adapter.StartStage, *adapter.Scope) error { return nil }
+
+// An endpoint gets the mark the same way.
+func TestH_DisplayTypeEndpoint(t *testing.T) {
+	ep := &hDisplayEndpoint{Adapter: endpoint.NewAdapter(C.TypeWireGuard, "wg", nil, nil)}
+	var _ adapter.Endpoint = ep
+	hRequireConnecting(t, "WireGuard", adapter.DisplayType(ep))
+	ep.ready = true
+	require.Equal(t, "WireGuard", adapter.DisplayType(ep))
 }

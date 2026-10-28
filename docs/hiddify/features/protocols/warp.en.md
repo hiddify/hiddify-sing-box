@@ -80,7 +80,8 @@ server.
 **Display type.** The type shown for the endpoint names the tunnel and the scanner:
 `WARP · WG`, `WARP · AWG` or `WARP · MASQUE`, then, once the scanner has run,
 ` · 🔍 Scanning...`, ` · 🔍 <address:port>` (the endpoint it chose) or ` · 🔍 Not found`, and
-` ⚠️ Connecting...` while it is not connected. For example
+` ⏳ Connecting...` while it is not connected (the hourglass flips between ⏳ and ⌛ each second,
+as for every outbound and endpoint). For example
 `WARP · MASQUE · 🔍 162.159.198.1:443`.
 
 **Group detour.** When `detour` is a group (a selector, URL test or balancer), WARP follows the
