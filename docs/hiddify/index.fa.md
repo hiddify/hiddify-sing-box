@@ -53,7 +53,7 @@
 
 ## گروه‌ها و پایش
 
-- [متعادل‌کننده](features/groups/balancer.fa.md): اتصال‌ها را با round robin، کمترین تأخیر، consistent hashing یا sticky session میان اعضا پخش می‌کند.
+- [متعادل‌کننده](features/groups/balancer.fa.md): اتصال‌ها را با round robin، کمترین تأخیر، consistent hashing، ‏sticky session یا یک مخزن چسبنده (pool) میان اعضا پخش می‌کند.
 - [جایگزین](features/groups/fallback.fa.md): اعضا را به ترتیب امتحان می‌کند و عضوی را که شکست خورده تا مدتی کنار می‌گذارد.
 - [تست URL: افزوده‌های هیدیفای](features/groups/urltest.fa.md): نشانی‌های تست بیشتر، حالت `failover` و رفتن به عضو دیگر با اولین اتصال ناموفق.
 - [پایش](features/groups/monitoring.fa.md): تست پس‌زمینهٔ همهٔ خروجی‌ها برای تأخیر و IP خروجی، که نتیجه‌اش به گروه‌ها داده می‌شود.

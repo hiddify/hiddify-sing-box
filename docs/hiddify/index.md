@@ -51,7 +51,7 @@ an English and a Persian version.
 
 ## Groups and monitoring
 
-- [Balancer](features/groups/balancer.en.md): spread connections over members by round robin, lowest delay, consistent hashing or sticky sessions.
+- [Balancer](features/groups/balancer.en.md): spread connections over members by round robin, lowest delay, consistent hashing, sticky sessions or a sticky pool.
 - [Fallback](features/groups/fallback.en.md): try members in order and skip one that failed for a while.
 - [URL test: Hiddify additions](features/groups/urltest.en.md): more test URLs, a `failover` mode, and a move to another member on the first failed connection.
 - [Monitoring](features/groups/monitoring.en.md): background tests of every outbound for delay and exit IP, which feed the groups.
