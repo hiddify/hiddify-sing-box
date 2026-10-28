@@ -237,6 +237,7 @@ func (w *WARPEndpoint) Start(stage adapter.StartStage, scope *adapter.Scope) err
 			case <-scope.Context().Done():
 				w.closeOnce.Do(func() { close(w.done) })
 				w.endSession()
+				w.profiles.release()
 			case <-w.done:
 			}
 		}()
@@ -251,6 +252,7 @@ func (w *WARPEndpoint) Start(stage adapter.StartStage, scope *adapter.Scope) err
 func (w *WARPEndpoint) Close() error {
 	w.closeOnce.Do(func() { close(w.done) })              //H: stops the failover checks
 	w.endSession()                                        //H
+	w.profiles.release()                                  //H: its devices go back to the pool
 	if w.scope != nil && w.scope.Context().Err() != nil { //H: the closing scope closes the inner endpoint
 		return nil //H
 	} //H

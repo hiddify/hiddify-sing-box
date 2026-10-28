@@ -254,3 +254,47 @@ func TestH_WARPLiveNoisePresets(t *testing.T) {
 		}
 	}
 }
+
+// Two warp endpoints in one box get a device each, and both connect: on one device they would
+// push each other off Cloudflare. A new box gives each the device it had.
+func TestH_WARPLiveTwoEndpoints(t *testing.T) {
+	if os.Getenv("HIDDIFY_WARP_E2E") == "" {
+		t.Skip("HIDDIFY_WARP_E2E is not set")
+	}
+	cachePath := filepath.Join(t.TempDir(), "cache.db")
+	start := func() *box.Box {
+		ctx := include.Context(context.Background())
+		options, err := json.UnmarshalExtendedContext[option.Options](ctx, []byte(`{
+			"log": {"level": "warn"},
+			"experimental": {"cache_file": {"enabled": true, "path": "`+cachePath+`", "store_warp_config": true}},
+			"endpoints": [
+				{"type": "warp", "tag": "warp-a", "mode": "wg"},
+				{"type": "warp", "tag": "warp-b", "mode": "wg"}
+			],
+			"outbounds": [{"type": "direct", "tag": "direct"}]
+		}`))
+		require.NoError(t, err)
+		instance, err := box.New(box.Options{Context: ctx, Options: options})
+		require.NoError(t, err)
+		require.NoError(t, instance.Start())
+		return instance
+	}
+	devices := func(instance *box.Box) (string, string) {
+		var keys [2]string
+		for i, tag := range []string{"warp-a", "warp-b"} {
+			endpoint, _ := instance.Endpoint().Get(tag)
+			require.Eventually(t, func() bool { return adapter.IsReady(endpoint) }, 60*time.Second, 200*time.Millisecond, tag+" not connected")
+			keys[i] = endpoint.(interface{ DevicePrivateKey() string }).DevicePrivateKey()
+		}
+		require.NotEqual(t, keys[0], keys[1], "the two endpoints share a device")
+		return keys[0], keys[1]
+	}
+	instance := start()
+	a, b := devices(instance)
+	instance.Close()
+	instance = start()
+	defer instance.Close()
+	a2, b2 := devices(instance)
+	require.Equal(t, a, a2, "warp-a takes its device again")
+	require.Equal(t, b, b2, "warp-b takes its device again")
+}

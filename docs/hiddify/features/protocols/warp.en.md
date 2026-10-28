@@ -42,13 +42,16 @@ checks the whole flow can still find it.
 **Devices.** WARP needs a device registered with Cloudflare for each tunnel: a WireGuard one, an
 AmneziaWG one (a WireGuard device of its own) and a MASQUE one (a device given a MASQUE key). In
 `awg` mode alone, a saved WireGuard device is taken when there is no AmneziaWG one, so the device
-of an earlier version keeps working. It keeps every device it
-registered in the cache file, under `unique_identifier` (or the tag) + `/warp-profiles`, when
-`cache_file.store_warp_config` is on, and takes, in order:
+of an earlier version keeps working. Every device registered is kept
+in one pool in the cache file (key `warp-profiles`) when `cache_file.store_warp_config` is on,
+shared by all warp endpoints. Each endpoint leases its own devices: two endpoints on one device
+would push each other off Cloudflare. It takes, in order:
 
 1. A profile written in the config itself (`private_key`, `interface`, `peers`), for WireGuard.
-2. A saved device of the kind that is not retired, unless `profile.recreate` is on (then each
-   start registers a new one).
+2. A device of the kind from the pool that is not retired nor leased by another endpoint: the one
+   this endpoint (by `unique_identifier`, or the tag) used before, else any free one. Not with
+   `profile.recreate` (then each start registers a new one). A closed endpoint gives its devices
+   back.
 3. A new device, registered with Cloudflare's API. With `profile.id` and `profile.auth_token`,
    that device is taken instead, until it is retired. With `profile.license`, the license (for
    example a WARP+ key) is applied to a new WireGuard device. The requests go through

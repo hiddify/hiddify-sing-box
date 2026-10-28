@@ -79,11 +79,12 @@ do about it. Items marked **Required** break or misbehave until they are handled
   one handshake per tunnel and runs the fastest; it needs `with_masque` for the MASQUE leg. The app
   can offer `auto` as the default WARP choice. Its display type is `WARP · Auto` until it chose,
   then the chosen tunnel's.
-- **WARP devices are kept.** Registered devices are kept in the cache file
-  (`<unique_identifier>/warp-profiles`) and used again; a device is only replaced when Cloudflare
-  says it is gone, disabled or out of quota, not when the network blocks it. Keep
-  `store_warp_config` on, and a stable `unique_identifier`, or every start registers again (and
-  Cloudflare limits registrations).
+- **WARP devices are kept, in a pool.** Registered devices are kept in one pool in the cache file
+  (key `warp-profiles`), shared by every warp endpoint; each endpoint leases devices of its own,
+  so several warp endpoints in one config never share one. A device is only replaced when
+  Cloudflare says it is gone, disabled or out of quota, not when the network blocks it. Keep
+  `store_warp_config` on, and a stable `unique_identifier` per endpoint (it takes its own device
+  back first), or every start registers again (and Cloudflare limits registrations).
 - **Status in OutboundInfo.** `OutboundInfo.status` (field 18, enum `Status`: READY, CONNECTING,
   RECONNECTING, SEARCHING, FAILED, REGISTERING) mirrors `adapter.Status`, so the app can show the
   state without parsing the label (in hiddify-core, uncommitted at the time of writing).

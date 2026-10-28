@@ -244,7 +244,7 @@ func TestH_WARPUsesCachedConfig(t *testing.T) {
 	ep := hNewWARP(t, ctx, options)
 	ep.startHandler()
 	require.Contains(t, cache.loads, "unique", "the device saved before is read")
-	require.Equal(t, []string{"unique/warp-profiles"}, cache.saves, "and kept in the device list")
+	require.Equal(t, []string{"warp-profiles"}, cache.saves, "and kept in the device pool")
 	require.Equal(t, hWARPConfig(t, hWARPConfigJSON).PrivateKey, ep.currentProfile().WireGuard.PrivateKey, "no new registration")
 
 	cache = &hFakeCacheFile{store: map[string]*adapter.SavedBinary{"warp-tag": {Content: cached}}}
@@ -548,4 +548,38 @@ func TestH_WARPDevicePerTunnel(t *testing.T) {
 	auto := newEndpoint("auto")
 	require.Nil(t, auto.obtainProfile(auto.session(), kindAWG), "auto mode registers an AmneziaWG device of its own")
 	require.NotNil(t, auto.obtainProfile(auto.session(), kindWireGuard))
+}
+
+// Endpoints share one pool of devices but never one device: each takes the one it used before,
+// else a free one; a closed endpoint gives its devices back.
+func TestH_WARPDevicePool(t *testing.T) {
+	cache := &hFakeCacheFile{store: map[string]*adapter.SavedBinary{}}
+	ctx := service.ContextWith[adapter.CacheFile](hTestContext(t), cache)
+	first := loadWARPProfiles(ctx, hLogger(), "warp-a")
+	second := loadWARPProfiles(ctx, hLogger(), "warp-b")
+	deviceA := &warpProfile{Kind: kindWireGuard, ID: "a", WireGuard: &C.WARPConfig{PrivateKey: "ka"}}
+	first.add(deviceA)
+	require.Nil(t, second.usable(kindWireGuard), "warp-a has the only device: warp-b must register its own")
+	deviceB := &warpProfile{Kind: kindWireGuard, ID: "b", WireGuard: &C.WARPConfig{PrivateKey: "kb"}}
+	second.add(deviceB)
+	require.Same(t, deviceA, first.usable(kindWireGuard))
+	require.Same(t, deviceB, second.usable(kindWireGuard))
+
+	// a new box: the pool is read again, and each endpoint takes the device it had
+	pools = map[adapter.CacheFile]*warpPool{}
+	ctx = service.ContextWith[adapter.CacheFile](hTestContext(t), cache)
+	second = loadWARPProfiles(ctx, hLogger(), "warp-b")
+	first = loadWARPProfiles(ctx, hLogger(), "warp-a")
+	require.Equal(t, "b", second.usable(kindWireGuard).ID, "warp-b takes its own device first")
+	require.Equal(t, "a", first.usable(kindWireGuard).ID)
+
+	third := loadWARPProfiles(ctx, hLogger(), "warp-c")
+	require.Nil(t, third.usable(kindWireGuard), "both devices are leased")
+	first.release()
+	require.Equal(t, "a", third.usable(kindWireGuard).ID, "a released device is free")
+	require.Nil(t, third.usable(kindMASQUE), "kinds are apart")
+
+	second.retire(second.usable(kindWireGuard), "gone")
+	fourth := loadWARPProfiles(ctx, hLogger(), "warp-d")
+	require.Nil(t, fourth.usable(kindWireGuard), "a retired device is not taken")
 }
