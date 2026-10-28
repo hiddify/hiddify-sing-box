@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -67,11 +68,78 @@ type Psiphon struct {
 	tag             string
 }
 
+// Dial opens a connection through the tunnel. The controller only dials while a tunnel is up, so
+// the outcome also tells whether it is connected: the Tunnels notices alone can be missed (see
+// noticeHub).
 func (p *Psiphon) Dial(address string, conn net.Conn) (net.Conn, error) {
-	if ctl := p.controller.Load(); ctl != nil {
-		return ctl.Dial(address, conn)
+	ctl := p.controller.Load()
+	if ctl == nil {
+		return nil, errors.New("controller not initialized")
 	}
-	return nil, errors.New("controller not initialized")
+	tunneled, err := ctl.Dial(address, conn)
+	switch {
+	case err == nil:
+		p.setConnected(true)
+	case strings.Contains(err.Error(), noActiveTunnels):
+		p.setConnected(false)
+	}
+	return tunneled, err
+}
+
+// noActiveTunnels is the controller's dial error while no tunnel is up.
+const noActiveTunnels = "no active tunnels"
+
+// noticeHub is the one notice writer of the process. psiphon-tunnel-core has a single, global
+// notice writer: an instance that set its own and one that reset it on close left the others
+// deaf, so a Psiphon started while another was closing (a reload) never saw its Tunnels notice
+// and showed as connecting with a working tunnel. The hub is installed once, passes every notice
+// to every running instance, and is removed when the last one stops.
+var noticeHub struct {
+	access    sync.Mutex
+	installed bool
+	listeners map[*Psiphon]func(NoticeEvent)
+}
+
+func listenNotices(p *Psiphon, listener func(NoticeEvent)) error {
+	noticeHub.access.Lock()
+	defer noticeHub.access.Unlock()
+	if !noticeHub.installed {
+		err := psiphon.SetNoticeWriter(psiphon.NewNoticeReceiver(func(notice []byte) {
+			var event NoticeEvent
+			if json.Unmarshal(notice, &event) != nil {
+				return
+			}
+			noticeHub.access.Lock()
+			listeners := make([]func(NoticeEvent), 0, len(noticeHub.listeners))
+			for _, listener := range noticeHub.listeners {
+				listeners = append(listeners, listener)
+			}
+			noticeHub.access.Unlock()
+			for _, listener := range listeners {
+				listener(event)
+			}
+		}))
+		if err != nil {
+			return err
+		}
+		noticeHub.installed = true
+		noticeHub.listeners = make(map[*Psiphon]func(NoticeEvent))
+	}
+	noticeHub.listeners[p] = listener
+	return nil
+}
+
+func stopListeningNotices(p *Psiphon) {
+	noticeHub.access.Lock()
+	defer noticeHub.access.Unlock()
+	if _, listening := noticeHub.listeners[p]; !listening {
+		return
+	}
+	delete(noticeHub.listeners, p)
+	if len(noticeHub.listeners) == 0 && noticeHub.installed {
+		psiphon.ResetNoticeWriter()
+		noticeHub.installed = false
+	}
 }
 
 // setConnected updates readiness from NoticeTunnels. On first connect it asks
@@ -153,8 +221,8 @@ func (p *Psiphon) NetworkChanged() {
 func (p *Psiphon) Close() error {
 	p.controller.Store(nil)
 	p.connected.Store(false)
-	psiphon.ResetNoticeWriter()
-	if p.cancel != nil { // nil until Start runs
+	stopListeningNotices(p) // the writer is reset only when no other instance listens
+	if p.cancel != nil {    // nil until Start runs
 		p.cancel()
 	}
 	p.closeDataStore()
@@ -186,11 +254,7 @@ func (p *Psiphon) Start() error {
 	var connectedOnce sync.Once
 	errored := make(chan error, 1)
 
-	if err := psiphon.SetNoticeWriter(psiphon.NewNoticeReceiver(func(notice []byte) {
-		var event NoticeEvent
-		if err := json.Unmarshal(notice, &event); err != nil {
-			return
-		}
+	if err := listenNotices(p, func(event NoticeEvent) {
 		p.logger.Debug(fmt.Sprint("Notice ", event.Type, " data ", event.Data))
 		switch event.Type {
 		case "EstablishTunnelTimeout":
@@ -210,7 +274,7 @@ func (p *Psiphon) Start() error {
 				p.setConnected(false)
 			}
 		}
-	})); err != nil {
+	}); err != nil {
 		return err
 	}
 
