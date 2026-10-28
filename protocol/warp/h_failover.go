@@ -63,7 +63,7 @@ func (w *WARPEndpoint) scannerEnabled() bool {
 
 // connect starts the first inner endpoint. Network work runs without w.mtx, which is taken
 // only to publish the inner endpoint: a dial during the start must not wait for a scan.
-func (w *WARPEndpoint) connect(config *C.WARPConfig) {
+func (w *WARPEndpoint) connect(done <-chan struct{}, config *C.WARPConfig) {
 	peerAddr, peerPort, err := warpPeerEndpoint(config, w.options.ServerOptions) //H: a config without peers or ports crashed the process
 	if err != nil {
 		w.fail(err)
@@ -87,7 +87,7 @@ func (w *WARPEndpoint) connect(config *C.WARPConfig) {
 		}
 	}
 	var inner adapter.Endpoint
-	if !w.retry("WARP", func() error { // AmneziaWG fails its start when the detour does not work yet
+	if !w.retry(done, "WARP", func() error { // AmneziaWG fails its start when the detour does not work yet
 		inner, err = w.newInner(config, peerAddr, peerPort)
 		return err
 	}) {
@@ -106,9 +106,9 @@ func (w *WARPEndpoint) connect(config *C.WARPConfig) {
 		w.failover.connectedAt = time.Now()
 	}
 	w.mtx.Unlock()
-	w.followDetour(config)
+	w.followDetour(done, config)
 	if w.failover != nil {
-		go w.watch()
+		go w.watch(done)
 	} else if w.options.ServerPort == 0 && len(config.Peers[0].Endpoint.Ports) > 1 {
 		ports := make([]uint16, 0, len(config.Peers[0].Endpoint.Ports))
 		current := 0
@@ -118,26 +118,26 @@ func (w *WARPEndpoint) connect(config *C.WARPConfig) {
 				current = i
 			}
 		}
-		go w.rotatePorts(config, peerAddr, ports, current)
+		go w.rotatePorts(done, config, peerAddr, ports, current)
 	}
 }
 
 // replaceInner starts a new inner endpoint for the peer and closes the old one once it is in
 // place, so dials keep working during the switch.
-func (w *WARPEndpoint) replaceInner(config *C.WARPConfig, peerAddr string, peerPort uint16) error {
+func (w *WARPEndpoint) replaceInner(done <-chan struct{}, config *C.WARPConfig, peerAddr string, peerPort uint16) error {
 	w.replaceAccess.Lock()
 	defer w.replaceAccess.Unlock()
 	replacement, err := w.newInner(config, peerAddr, peerPort)
 	if err != nil {
 		select {
-		case <-w.done:
+		case <-done:
 			return nil // closed meanwhile: nothing to replace
 		default:
 		}
 		return E.Cause(err, "WARP: replace endpoint")
 	}
 	select {
-	case <-w.done:
+	case <-done:
 		adapter.CloseLate(w.scope, replacement)
 		return nil
 	default:
@@ -153,7 +153,7 @@ func (w *WARPEndpoint) replaceInner(config *C.WARPConfig, peerAddr string, peerP
 
 // followDetour reconnects when a group detour moves to another member: the WireGuard socket
 // stays on the member it was opened through, which the group may have left because it failed.
-func (w *WARPEndpoint) followDetour(config *C.WARPConfig) {
+func (w *WARPEndpoint) followDetour(done <-chan struct{}, config *C.WARPConfig) {
 	if w.options.Detour == "" {
 		return
 	}
@@ -165,12 +165,12 @@ func (w *WARPEndpoint) followDetour(config *C.WARPConfig) {
 	if !loaded {
 		return
 	}
-	monitoring.FollowDetour(w.ctx, w.done, detour, N.NetworkUDP, func(from string, to string) {
+	monitoring.FollowDetour(w.ctx, done, detour, N.NetworkUDP, func(from string, to string) {
 		w.mtx.Lock()
 		peerAddr, peerPort := w.peerAddr, w.peerPort
 		w.mtx.Unlock()
 		w.logger.InfoContext(w.ctx, "WARP: detour moved from ", from, " to ", to, ", reconnecting")
-		if err := w.replaceInner(config, peerAddr, peerPort); err != nil {
+		if err := w.replaceInner(done, config, peerAddr, peerPort); err != nil {
 			w.logger.ErrorContext(w.ctx, err)
 		}
 	})
@@ -183,7 +183,7 @@ func (w *WARPEndpoint) newInner(config *C.WARPConfig, peerAddr string, peerPort 
 		err   error
 	)
 	options := w.innerOptions() // with the noise the scanner found
-	if options.AWG.IsAvailble() {
+	if w.activeMode() == modeAWG {
 		inner, err = createWARPAwgEndpoint(w.ctx, w.router, w.logger, w.tag, options, config, peerAddr, peerPort, config.Peers[0].PublicKey)
 	} else {
 		inner, err = createWARPWireGuardEndpoint(w.ctx, w.router, w.logger, w.tag, options, config, peerAddr, peerPort, config.Peers[0].PublicKey)
@@ -254,11 +254,14 @@ const noiseSearchCount = 16
 // replaces the noise (WireGuard) or the junk and special packets (AmneziaWG).
 func (w *WARPEndpoint) innerOptions() option.WARPEndpointOptions {
 	options := w.options
+	if w.activeMode() != modeAWG {
+		options.AWG = nil // the WireGuard endpoint refuses an awg block; auto mode has one
+	}
 	if w.failover == nil {
 		return options
 	}
 	if preset, found := warpscan.NoisePresetByName(w.failover.currentNoise()); found {
-		if options.AWG.IsAvailble() {
+		if w.activeMode() == modeAWG {
 			options.AWG = preset.AWG(options.AWG)
 		} else {
 			options.Noise = preset.WireGuard()
@@ -271,7 +274,7 @@ func (w *WARPEndpoint) innerOptions() option.WARPEndpointOptions {
 // configured noise), for the probe: the WireGuard noise, or AmneziaWG's special and junk packets.
 func (w *WARPEndpoint) probeNoise(presetName string) hiddify.NoiseOptions {
 	preset, isPreset := warpscan.NoisePresetByName(presetName)
-	if w.options.AWG.IsAvailble() {
+	if w.activeMode() == modeAWG {
 		awg := w.options.AWG
 		if isPreset {
 			awg = preset.AWG(awg)
@@ -410,28 +413,29 @@ func (w *WARPEndpoint) InterfaceUpdated(ctx context.Context) {
 	if w.failover == nil {
 		return
 	}
+	done := w.session()
 	go func() {
 		select {
 		case <-time.After(networkSettle):
-		case <-w.done:
+		case <-done:
 			return
 		}
 		w.failover.detectNetwork(w.ctx)
-		w.check(true)
+		w.check(done, true)
 	}()
 }
 
-func (w *WARPEndpoint) watch() {
+func (w *WARPEndpoint) watch(done <-chan struct{}) {
 	ticker := time.NewTicker(failoverInterval)
 	defer ticker.Stop()
 	for {
 		select {
-		case <-w.done:
+		case <-done:
 			return
 		case <-w.ctx.Done():
 			return
 		case <-ticker.C:
-			w.check(false)
+			w.check(done, false)
 		}
 	}
 }
@@ -439,7 +443,7 @@ func (w *WARPEndpoint) watch() {
 // check counts the first handshake of the endpoint in use as a success, and replaces the
 // endpoint when it no longer answers: always checked after a network change, otherwise only
 // when traffic goes out without a recent handshake.
-func (w *WARPEndpoint) check(networkChanged bool) {
+func (w *WARPEndpoint) check(done <-chan struct{}, networkChanged bool) {
 	failover := w.failover
 	if !failover.access.TryLock() {
 		return
@@ -492,7 +496,7 @@ func (w *WARPEndpoint) check(networkChanged bool) {
 		return
 	}
 	best := results[0].AddrPort
-	if err = w.replaceInner(failover.config, best.Addr().String(), best.Port()); err != nil {
+	if err = w.replaceInner(done, failover.config, best.Addr().String(), best.Port()); err != nil {
 		w.logger.ErrorContext(w.ctx, err)
 		return
 	}

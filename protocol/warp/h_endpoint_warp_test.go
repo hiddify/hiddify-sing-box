@@ -241,17 +241,20 @@ func TestH_WARPUsesCachedConfig(t *testing.T) {
 	ctx := service.ContextWith[adapter.CacheFile](hShortContext(t), cache)
 	options := option.WARPEndpointOptions{UniqueIdentifier: "unique"}
 	options.Detour = "missing-detour"
-	hNewWARP(t, ctx, options).startHandler()
-	require.Equal(t, []string{"unique"}, cache.loads)
-	require.Empty(t, cache.saves)
+	ep := hNewWARP(t, ctx, options)
+	ep.startHandler()
+	require.Contains(t, cache.loads, "unique", "the device saved before is read")
+	require.Equal(t, []string{"unique/warp-profiles"}, cache.saves, "and kept in the device list")
+	require.Equal(t, hWARPConfig(t, hWARPConfigJSON).PrivateKey, ep.currentProfile().WireGuard.PrivateKey, "no new registration")
 
 	cache = &hFakeCacheFile{store: map[string]*adapter.SavedBinary{"warp-tag": {Content: cached}}}
 	ctx = service.ContextWith[adapter.CacheFile](hShortContext(t), cache)
 	options = option.WARPEndpointOptions{WARPConfig: hWARPConfig(t, hWARPConfigJSON), Profile: option.WARPProfile{Recreate: true}}
 	options.Detour = "missing-detour"
-	hNewWARP(t, ctx, options).startHandler()
-	require.Empty(t, cache.loads, "recreate must bypass the cache")
-	require.Empty(t, cache.saves)
+	ep = hNewWARP(t, ctx, options)
+	ep.startHandler()
+	require.True(t, ep.currentProfile().inline, "the profile in the config is used")
+	require.NotContains(t, cache.saves, "warp-tag", "and not saved")
 }
 
 func TestH_WARPMalformedCachedConfig(t *testing.T) {
@@ -261,7 +264,8 @@ func TestH_WARPMalformedCachedConfig(t *testing.T) {
 	// a broken saved profile is replaced by a new one; the detour keeps the test off the network
 	ep := hNewWARP(t, ctx, option.WARPEndpointOptions{Profile: option.WARPProfile{Detour: "missing"}})
 	ep.startHandler()
-	require.Equal(t, []string{"warp-tag"}, cache.loads)
+	require.Contains(t, cache.loads, "warp-tag")
+	require.Nil(t, ep.profiles.usable(kindWireGuard), "an unreadable device is not taken")
 	require.Equal(t, adapter.StatusConnecting, ep.Status(), "registering ended with the context, not failed")
 	_, err := ep.DialContext(context.Background(), N.NetworkTCP, M.ParseSocksaddr("1.1.1.1:80"))
 	require.ErrorContains(t, err, "endpoint not initialized")
@@ -438,4 +442,110 @@ func TestH_WARPNoisePresetOption(t *testing.T) {
 	options.Noise.FakePacket = hiddify.FakePacketOptions{Enabled: true, Packets: []string{"<x>"}}
 	_, err = NewWARPEndpoint(hTestContext(t), nil, hLogger(), "warp-tag", options)
 	require.ErrorContains(t, err, "unknown tag")
+}
+
+func TestH_WARPMode(t *testing.T) {
+	for _, test := range []struct {
+		options option.WARPEndpointOptions
+		mode    string
+		err     string
+	}{
+		{option.WARPEndpointOptions{}, modeWireGuard, ""},
+		{option.WARPEndpointOptions{Mode: "wg"}, modeWireGuard, ""},
+		{option.WARPEndpointOptions{AWG: &option.AwgOptions{Jc: 4}}, modeAWG, ""},
+		{option.WARPEndpointOptions{MASQUE: &option.WARPMASQUEOptions{Enabled: true}}, modeMASQUE, ""},
+		{option.WARPEndpointOptions{MASQUE: &option.WARPMASQUEOptions{Enabled: true}, AWG: &option.AwgOptions{Jc: 4}}, "", "mode auto"},
+		{option.WARPEndpointOptions{Mode: "auto", MASQUE: &option.WARPMASQUEOptions{Enabled: true}, AWG: &option.AwgOptions{Jc: 4}}, modeAuto, ""},
+		{option.WARPEndpointOptions{Mode: "AWG"}, modeAWG, ""},
+		{option.WARPEndpointOptions{Mode: "masque"}, modeMASQUE, ""},
+		{option.WARPEndpointOptions{Mode: "openvpn"}, "", "unknown mode"},
+	} {
+		options := test.options
+		mode, err := warpMode(&options)
+		if test.err != "" {
+			require.ErrorContains(t, err, test.err, "%+v", test.options)
+			continue
+		}
+		require.NoError(t, err)
+		require.Equal(t, test.mode, mode, "%+v", test.options)
+		if mode == modeAWG || mode == modeAuto {
+			require.True(t, options.AWG.IsAvailble(), "awg and auto without awg settings get the default preset")
+		}
+	}
+}
+
+func TestH_WARPAutoDisplay(t *testing.T) {
+	ep := hNewWARP(t, hTestContext(t), option.WARPEndpointOptions{Mode: "auto"})
+	require.Equal(t, C.DisplayWARPAuto, ep.DisplayType(), "before it chose")
+	ep.selecting.Store(true)
+	require.Equal(t, adapter.StatusSearching, ep.Status(), "while the tunnels race")
+	ep.selecting.Store(false)
+	ep.active.Store(modeMASQUE)
+	require.Equal(t, C.DisplayWARPMASQUE, ep.DisplayType())
+	ep.active.Store(modeAWG)
+	require.Equal(t, C.DisplayWARPAWG, ep.DisplayType())
+	auto := hNewWARP(t, hTestContext(t), option.WARPEndpointOptions{Mode: "auto"})
+	auto.active.Store(modeWireGuard)
+	require.Nil(t, auto.innerOptions().AWG, "a WireGuard inner endpoint gets no awg block")
+	auto.active.Store(modeAWG)
+	require.True(t, auto.innerOptions().AWG.IsAvailble())
+}
+
+// Saved devices are used again; a retired one is skipped, and a retired device given by id and
+// auth_token is not registered again.
+func TestH_WARPProfiles(t *testing.T) {
+	wireGuard, err := json.Marshal(hWARPConfig(t, hWARPConfigJSON))
+	require.NoError(t, err)
+	cache := &hFakeCacheFile{store: map[string]*adapter.SavedBinary{
+		"unique":        {Content: wireGuard},
+		"unique/masque": {Content: []byte(`{"id": "masque-id", "access_token": "masque-token", "private_key": "k"}`)},
+	}}
+	ctx := service.ContextWith[adapter.CacheFile](hShortContext(t), cache)
+	store := loadWARPProfiles(ctx, hLogger(), "unique")
+	require.NotNil(t, store.usable(kindWireGuard), "migrated from the key of before")
+	masqueDevice := store.usable(kindMASQUE)
+	require.NotNil(t, masqueDevice)
+	require.Equal(t, "masque-id", masqueDevice.ID)
+	require.True(t, masqueDevice.checkable())
+
+	store.retire(masqueDevice, "the device is no longer registered")
+	require.Nil(t, store.usable(kindMASQUE))
+	require.True(t, store.isRetired("masque-id"))
+	second := &warpProfile{Kind: kindMASQUE, ID: "second"}
+	store.add(second)
+	require.Same(t, second, store.usable(kindMASQUE), "the next usable one")
+
+	reloaded := loadWARPProfiles(ctx, hLogger(), "unique")
+	require.True(t, reloaded.isRetired("masque-id"), "kept in the cache file")
+	require.Equal(t, "second", reloaded.usable(kindMASQUE).ID)
+
+	inline := &warpProfile{Kind: kindWireGuard, inline: true, ID: "x", Token: "y"}
+	require.False(t, inline.checkable(), "the config's own profile is never retired")
+	store.retire(inline, "no")
+	require.Empty(t, inline.Retired)
+}
+
+// Each tunnel has a device of its own in auto mode; awg mode alone may run on the WireGuard
+// device saved before.
+func TestH_WARPDevicePerTunnel(t *testing.T) {
+	require.Equal(t, kindWireGuard, modeKind(modeWireGuard))
+	require.Equal(t, kindAWG, modeKind(modeAWG))
+	require.Equal(t, kindMASQUE, modeKind(modeMASQUE))
+
+	wireGuard, err := json.Marshal(hWARPConfig(t, hWARPConfigJSON))
+	require.NoError(t, err)
+	newEndpoint := func(mode string) *WARPEndpoint {
+		cache := &hFakeCacheFile{store: map[string]*adapter.SavedBinary{"warp-tag": {Content: wireGuard}}}
+		ctx := service.ContextWith[adapter.CacheFile](hShortContext(t), cache)
+		ctx = service.ContextWith[adapter.OutboundManager](ctx, &hFakeOutboundManager{})
+		return hNewWARP(t, ctx, option.WARPEndpointOptions{Mode: mode, Profile: option.WARPProfile{Detour: "missing"}})
+	}
+	awg := newEndpoint("awg")
+	profile := awg.obtainProfile(awg.session(), kindAWG)
+	require.NotNil(t, profile, "awg mode takes the saved WireGuard device")
+	require.Equal(t, kindWireGuard, profile.Kind)
+
+	auto := newEndpoint("auto")
+	require.Nil(t, auto.obtainProfile(auto.session(), kindAWG), "auto mode registers an AmneziaWG device of its own")
+	require.NotNil(t, auto.obtainProfile(auto.session(), kindWireGuard))
 }

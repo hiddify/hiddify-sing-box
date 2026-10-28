@@ -9,6 +9,10 @@ import (
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/cloudflare"
+	"github.com/sagernet/sing-box/common/dialer"
+	"github.com/sagernet/sing-box/hiddify/warpscan"
+	"github.com/sagernet/sing-box/log"
+	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-box/transport/masque"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
@@ -119,4 +123,34 @@ func (c *Config) Addresses() ([]netip.Prefix, error) {
 		return nil, E.New("WARP MASQUE config has no address")
 	}
 	return addresses, nil
+}
+
+// ProbeWARP times a TLS handshake with the MASQUE endpoint of the device in config (HTTP/3, or
+// HTTP/2 with vhttp h2), through options' dialer, at peer when it is set: whether MASQUE gets
+// through, for the warp endpoint's auto mode.
+func ProbeWARP(ctx context.Context, logger log.ContextLogger, options option.MASQUEOutboundOptions, config *Config, peer M.Socksaddr) (time.Duration, error) {
+	mode, err := tunnelMode(options)
+	if err != nil {
+		return 0, err
+	}
+	http2 := mode == masque.ModeHTTP2
+	tlsConfig, err := warpTLS(ctx, logger, options, config)
+	if err != nil {
+		return 0, err
+	}
+	probeDialer, err := dialer.NewWithOptions(dialer.Options{Context: ctx, Options: options.DialerOptions, ResolverOnDetour: true})
+	if err != nil {
+		return 0, err
+	}
+	var endpoint net.Addr
+	if hasPeer(peer) && peer.Addr.IsValid() {
+		endpoint, err = fixedEndpoint(config, peer, http2, options.UseIPv6)
+	} else {
+		endpoint, err = config.SelectEndpointFromConfig(http2, options.UseIPv6, profilePort)
+	}
+	if err != nil {
+		return 0, err
+	}
+	addrPort, _ := addrPortOf(endpoint)
+	return warpscan.MASQUEProbe(probeDialer, tlsConfig, http2)(ctx, addrPort)
 }

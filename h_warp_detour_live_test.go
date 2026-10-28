@@ -38,6 +38,7 @@ var hWARPVariants = []hWARPVariant{
 	{"masque-h3", `{"type": "warp", "tag": "warp", "detour": "DETOUR", "unique_identifier": "live-masque", "masque": {"vhttp": "h3"}}`, false, "WARP · MASQUE"},
 	{"masque-h2", `{"type": "warp", "tag": "warp", "detour": "DETOUR", "unique_identifier": "live-masque", "masque": {"vhttp": "h2"}}`, false, "WARP · MASQUE"},
 	{"masque-auto", `{"type": "warp", "tag": "warp", "detour": "DETOUR", "unique_identifier": "live-masque", "masque": {"enabled": true}}`, false, "WARP · MASQUE"},
+	{"auto", `{"type": "warp", "tag": "warp", "detour": "DETOUR", "unique_identifier": "live-auto", "mode": "auto"}`, false, "auto"},
 	{"masque-outbound", `{"type": "masque", "tag": "warp", "detour": "DETOUR", "unique_identifier": "live-masque-outbound"}`, true, "WARP · MASQUE"},
 }
 
@@ -141,7 +142,11 @@ func (b *hWARPBox) requireConnected(t *testing.T) {
 	t.Helper()
 	require.Eventually(t, b.traceOK, 120*time.Second, 2*time.Second, "no WARP traffic through the detour")
 	require.Eventually(t, b.ready, 10*time.Second, 200*time.Millisecond, "connected but not ready")
-	require.Equal(t, b.variant.display, b.displayType(), "display type when connected")
+	if b.variant.display == "auto" { // the tunnel that won the race
+		require.Contains(t, []string{"WARP · WG", "WARP · AWG", "WARP · MASQUE"}, b.displayType())
+	} else {
+		require.Equal(t, b.variant.display, b.displayType(), "display type when connected")
+	}
 }
 
 func (b *hWARPBox) requireNeverConnected(t *testing.T, period time.Duration) {
@@ -150,8 +155,9 @@ func (b *hWARPBox) requireNeverConnected(t *testing.T, period time.Duration) {
 	for time.Now().Before(deadline) {
 		require.False(t, b.traceOK(), "traffic got through without the detour")
 		require.False(t, b.ready(), "ready without a working detour")
-		require.True(t, strings.HasPrefix(b.displayType(), b.variant.display), b.displayType())
-		require.True(t, strings.HasSuffix(b.displayType(), "Connecting..."), b.displayType())
+		require.True(t, b.variant.display == "auto" || strings.HasPrefix(b.displayType(), b.variant.display), b.displayType())
+		_, mark := adapter.SplitStatus(b.displayType())
+		require.NotEmpty(t, mark, "a status mark while not connected: %q", b.displayType())
 		time.Sleep(2 * time.Second)
 	}
 }

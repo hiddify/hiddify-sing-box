@@ -28,12 +28,12 @@ func handshakeFresh(inner adapter.Endpoint) bool {
 // rotatePorts runs when the scanner is off and no server_port is set: when an endpoint does
 // not complete a handshake, the next of the profile's ports is tried. A port that does not
 // answer on a network was used forever before.
-func (w *WARPEndpoint) rotatePorts(config *C.WARPConfig, address string, ports []uint16, current int) {
+func (w *WARPEndpoint) rotatePorts(done <-chan struct{}, config *C.WARPConfig, address string, ports []uint16, current int) {
 	connectedAt := time.Now()
 	wait := firstHandshakeWait
 	for {
 		select {
-		case <-w.done:
+		case <-done:
 			return
 		case <-w.ctx.Done():
 			return
@@ -49,7 +49,7 @@ func (w *WARPEndpoint) rotatePorts(config *C.WARPConfig, address string, ports [
 			continue
 		}
 		current = (current + 1) % len(ports)
-		if err := w.replaceInner(config, address, ports[current]); err != nil {
+		if err := w.replaceInner(done, config, address, ports[current]); err != nil {
 			w.logger.ErrorContext(w.ctx, err)
 			return
 		}

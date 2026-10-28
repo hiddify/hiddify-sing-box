@@ -79,6 +79,7 @@ const (
 	DisplayWARPWireGuard = "WARP · WG"
 	DisplayWARPAWG       = "WARP · AWG"
 	DisplayWARPMASQUE    = "WARP · MASQUE"
+	DisplayWARPAuto      = "WARP · Auto" // auto mode, before it chose a tunnel
 )
 
 func ProxyDisplayName(proxyType string) string {

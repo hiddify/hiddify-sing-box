@@ -53,6 +53,9 @@ type WARPEndpointOptions struct { //H
 	ServerOptions
 	Noise hiddify.NoiseOptions `json:"noise,omitempty"`
 	AWG   *AwgOptions          `json:"awg,omitempty"`
+	// Mode is the tunnel: "wg", "awg", "masque", or "auto" (the fastest that answers). Empty
+	// follows the masque and awg blocks.
+	Mode string `json:"mode,omitempty"`
 	// MASQUE makes WARP use MASQUE (HTTP/3 or HTTP/2) instead of WireGuard; not with awg.
 	MASQUE *WARPMASQUEOptions `json:"masque,omitempty"`
 	*C.WARPConfig

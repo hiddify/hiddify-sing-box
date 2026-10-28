@@ -160,32 +160,42 @@ func (w *Outbound) loadOrRegister() (*Config, bool) {
 	}
 }
 
-// startTunnel starts the tunnel to WARP with the device in appConfig.
-func (w *Outbound) startTunnel(appConfig *Config) error {
-	ctx, logger, options := w.ctx, w.logger, w.options
+// warpTLS is the TLS of a tunnel to WARP with the device in appConfig: its MASQUE key as a client
+// certificate, and the endpoint's key pinned.
+func warpTLS(ctx context.Context, logger logger.ContextLogger, options option.MASQUEOutboundOptions, appConfig *Config) (tls.Config, error) {
 	privKey, err := appConfig.GetEcPrivateKey()
 	if err != nil {
-		return E.New("failed to get private key: ", err)
+		return nil, E.New("failed to get private key: ", err)
 	}
 	peerPubKey, err := appConfig.GetEcEndpointPublicKey()
 	if err != nil {
-		return E.New("failed to get public key: ", err)
+		return nil, E.New("failed to get public key: ", err)
 	}
 	cert, err := masque.GenerateCert(privKey, &privKey.PublicKey)
 	if err != nil {
-		return E.New("failed to generate cert: ", err)
+		return nil, E.New("failed to generate cert: ", err)
 	}
 	serverName := options.ServerName //H
 	if serverName == "" {
 		serverName = defaultServerName
 	}
+	tlsConfig, err := tls.NewMASQUEClient(ctx, logger, serverName, cert, privKey, peerPubKey, options.MASQUEOutboundTLSOptions) //H
+	if err != nil {
+		return nil, E.New("failed to prepare TLS config: ", err)
+	}
+	return tlsConfig, nil
+}
+
+// startTunnel starts the tunnel to WARP with the device in appConfig.
+func (w *Outbound) startTunnel(appConfig *Config) error {
+	ctx, logger, options := w.ctx, w.logger, w.options
 	mode, err := tunnelMode(options)
 	if err != nil {
 		return err
 	}
-	tlsConfig, err := tls.NewMASQUEClient(ctx, logger, serverName, cert, privKey, peerPubKey, options.MASQUEOutboundTLSOptions) //H
+	tlsConfig, err := warpTLS(ctx, logger, options, appConfig)
 	if err != nil {
-		return E.New("failed to prepare TLS config: ", err)
+		return err
 	}
 	udpTimeout := C.UDPTimeout
 	if options.UDPTimeout != 0 {

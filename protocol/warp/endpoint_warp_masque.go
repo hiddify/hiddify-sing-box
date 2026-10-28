@@ -15,49 +15,23 @@ import (
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
-	"github.com/sagernet/sing/service"
 )
 
-// masqueKeySuffix keeps the MASQUE device and its scanner scores apart from the WireGuard ones
-// of the same endpoint: enrolling a MASQUE key takes the device off WireGuard.
-const masqueKeySuffix = "/masque"
+// masqueIncluded tells auto mode that MASQUE is in the build.
+const masqueIncluded = true
 
-// connectMASQUE registers the device, or loads the saved one, and runs a MASQUE tunnel to WARP
-// as the inner endpoint. The tunnel looks up endpoints with the scanner and reconnects by itself.
-func (w *WARPEndpoint) connectMASQUE() {
-	key := w.uniqueID + masqueKeySuffix
-	cacheFile := service.FromContext[adapter.CacheFile](w.ctx)
-	store := cacheFile != nil && cacheFile.StoreWARPConfig()
+// connectMASQUE runs a MASQUE tunnel to WARP with the device of profile as the inner endpoint.
+// The tunnel looks up endpoints with the scanner and reconnects by itself.
+func (w *WARPEndpoint) connectMASQUE(done <-chan struct{}, profile *warpProfile) {
+	key := w.uniqueID + legacyMASQUESuffix // the scanner scores, apart from the WireGuard ones
 	var config *masque.Config
-	if !w.options.Profile.Recreate && store {
-		if saved := cacheFile.LoadBinary(key); saved != nil {
-			if err := json.Unmarshal(saved.Content, &config); err != nil {
-				w.logger.ErrorContext(w.ctx, E.Cause(err, "load WARP MASQUE device"))
-				config = nil
-			}
-		}
-	}
-	if config == nil {
-		w.registering.Store(true)
-		registered := w.retry("register WARP MASQUE device", func() error {
-			var err error
-			config, err = registerMASQUE(w.ctx, &w.options.Profile)
-			return err
-		})
-		w.registering.Store(false)
-		if !registered {
-			return
-		}
-		if store {
-			if content, err := json.Marshal(config); err != nil {
-				w.logger.ErrorContext(w.ctx, err)
-			} else {
-				cacheFile.SaveBinary(key, &adapter.SavedBinary{LastUpdated: time.Now(), Content: content})
-			}
-		}
+	if err := json.Unmarshal(profile.MASQUE, &config); err != nil || config == nil {
+		w.profiles.retire(profile, "unreadable MASQUE device")
+		w.restart("the saved MASQUE device is unreadable")
+		return
 	}
 	var peer M.Socksaddr
-	if w.options.Server != "" || w.options.ServerPort != 0 {
+	if w.mode == modeMASQUE && (w.options.Server != "" || w.options.ServerPort != 0) { // in auto mode, server is the WireGuard peer
 		peer = M.ParseSocksaddrHostPort(w.options.Server, w.options.ServerPort)
 	}
 	inner, err := masque.NewWARPOutbound(w.ctx, w.logger, w.tag, masqueOptions(w.options), config, peer, key)
@@ -70,7 +44,7 @@ func (w *WARPEndpoint) connectMASQUE() {
 		return
 	}
 	select {
-	case <-w.done:
+	case <-done:
 		adapter.CloseLate(w.scope, inner)
 		return
 	default:
@@ -79,6 +53,28 @@ func (w *WARPEndpoint) connectMASQUE() {
 	w.endpoint = inner
 	w.scanStatusOf = func() *warpscan.Status { return inner.ScanStatus() }
 	w.mtx.Unlock()
+}
+
+// registerMASQUEProfile registers a WARP device with a MASQUE key.
+func registerMASQUEProfile(ctx context.Context, profile *option.WARPProfile) (*warpProfile, error) {
+	config, err := registerMASQUE(ctx, profile)
+	if err != nil {
+		return nil, err
+	}
+	content, err := json.Marshal(config)
+	if err != nil {
+		return nil, err
+	}
+	return &warpProfile{Kind: kindMASQUE, ID: config.ID, Token: config.AccessToken, MASQUE: content, Created: time.Now()}, nil
+}
+
+// probeMASQUE times a TLS handshake with the MASQUE endpoint of profile, for auto mode.
+func (w *WARPEndpoint) probeMASQUE(ctx context.Context, profile *warpProfile) (time.Duration, error) {
+	var config *masque.Config
+	if err := json.Unmarshal(profile.MASQUE, &config); err != nil || config == nil {
+		return 0, E.New("unreadable MASQUE device")
+	}
+	return masque.ProbeWARP(ctx, w.logger, masqueOptions(w.options), config, M.Socksaddr{})
 }
 
 // registerMASQUE gives the device of profile, or a new one, a MASQUE key, reaching the API as
@@ -104,6 +100,9 @@ func registerMASQUE(ctx context.Context, profile *option.WARPProfile) (*masque.C
 
 // masqueOptions are the settings of the MASQUE tunnel, from the warp endpoint's.
 func masqueOptions(options option.WARPEndpointOptions) option.MASQUEOutboundOptions {
+	if options.MASQUE == nil { // auto mode without a masque block
+		options.MASQUE = &option.WARPMASQUEOptions{}
+	}
 	return option.MASQUEOutboundOptions{
 		DialerOptions:            options.DialerOptions,
 		MASQUEOutboundTLSOptions: options.MASQUE.TLS,
