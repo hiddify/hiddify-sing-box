@@ -223,6 +223,12 @@ func (c *ClientEndpoint) InterfaceUpdated(ctx context.Context) {
 	c.client.RestartSession()
 }
 
+// IsReady reports whether a session with the server is up; on demand, the endpoint connects
+// when it is used, so it is always ready. //H
+func (c *ClientEndpoint) IsReady() bool { //H
+	return c.onDemand || c.client.Ready() //H
+} //H
+
 func (c *ClientEndpoint) OnDemand() bool {
 	return c.onDemand
 }
