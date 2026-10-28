@@ -385,13 +385,41 @@ func (m *OutboundMonitoring) stopTimerWorkers() {
 // to another outbound. Subscribers of every group containing it, or containing an outbound
 // that depends on it (detour chain), get an event; those dependents are re-tested because
 // their path changed. Non-blocking.
+//
+// Selection is published to subscribers immediately. The debounced notifyCh path is for
+// URL-test bursts and must not delay SelectOutbound observers (OutboundsInfo streams).
 func (m *OutboundMonitoring) SignalChange(outboundTag string) error {
 	if m.getState(outboundTag) == nil {
 		return errors.New("outbound not registered")
 	}
 	m.signalChange(outboundTag, make(map[string]bool))
+	m.flushSelectionEvents(outboundTag)
 	m.testParents(outboundTag, true)
 	return nil
+}
+
+// flushSelectionEvents publishes Priority GroupEvents so AllProxiesInfoStream can skip its
+// debounce and other subscribers observe the new Selected tag without waiting for
+// groupNotifierLoop debounce.
+func (m *OutboundMonitoring) flushSelectionEvents(outboundTag string) {
+	seen := make(map[string]bool)
+	flush := func(tag string) {
+		if seen[tag] {
+			return
+		}
+		seen[tag] = true
+		m.emitGroupEventPriority(tag, time.Time{})
+	}
+	if _, isGroup := m.reg().groups[outboundTag]; isGroup {
+		flush(outboundTag)
+	}
+	if state := m.getState(outboundTag); state != nil {
+		for _, tag := range state.groupTags {
+			flush(tag)
+		}
+	}
+	// Catch-all "" group is what AllProxiesInfoStream / MainOutboundsInfo subscribe to.
+	flush("")
 }
 
 func (m *OutboundMonitoring) signalChange(outboundTag string, visited map[string]bool) {
@@ -477,7 +505,9 @@ func (m *OutboundMonitoring) InvalidateTest(outboundTag string) error {
 func (m *OutboundMonitoring) SubscribeGroup(groupTag string) (observer <-chan GroupEvent, err error) {
 
 	if g, ok := m.reg().groups[groupTag]; ok {
-		return g.observer.Subscribe(1), nil
+		// Buffer a few events so a selection flush is not dropped while the subscriber
+		// is coalescing the previous URL-test update.
+		return g.observer.Subscribe(8), nil
 	}
 	return nil, E.New("group not found ", groupTag)
 }
@@ -580,8 +610,12 @@ func (m *OutboundMonitoring) executeTask(task *testTask) {
 	cycle := task.cycleID
 	state.mu.Unlock()
 
-	if cycle < 10 && !state.outbound.IsReady() {
-		m.logger.Info("outbound ", task.outboundTag, " is not ready, skipping test")
+	if cycle < 10 && (!state.outbound.IsReady() || !m.dependenciesReady(state)) {
+		reason := "not ready"
+		if state.outbound.IsReady() {
+			reason = "detour not ready"
+		}
+		m.logger.Info("outbound ", task.outboundTag, " is ", reason, ", skipping test")
 		go func() {
 			select {
 			case <-m.ctx.Done():
@@ -918,7 +952,14 @@ func (m *OutboundMonitoring) emitGroupEvent(groupTags []string) {
 }
 
 func (m *OutboundMonitoring) emitGroupEventThrottled(groupTag string, since time.Time) {
+	m.publishGroupEvent(groupTag, since, false)
+}
 
+func (m *OutboundMonitoring) emitGroupEventPriority(groupTag string, since time.Time) {
+	m.publishGroupEvent(groupTag, since, true)
+}
+
+func (m *OutboundMonitoring) publishGroupEvent(groupTag string, since time.Time, priority bool) {
 	grp, ok := m.reg().groups[groupTag]
 	if !ok || grp.observer == nil {
 		return
@@ -939,6 +980,7 @@ func (m *OutboundMonitoring) emitGroupEventThrottled(groupTag string, since time
 		GroupTag: groupTag,
 		From:     since,
 		To:       time.Now(),
+		Priority: priority,
 		tags:     tags,
 	})
 }
@@ -954,6 +996,55 @@ func (m *OutboundMonitoring) emitGroupEventThrottled(groupTag string, since time
 //		}
 //		return histories
 //	}
+//
+// dependenciesReady reports whether every detour of outbound is usable for a URL test.
+// A plain detour must IsReady(). A group detour is ready when any member has a successful
+// ping, or when every member is connected (IsReady) — so Extra Security WARP waits for the
+// main selector to have a working leaf before it is tested through that path.
+func (m *OutboundMonitoring) dependenciesReady(state *outboundState) bool {
+	if state == nil || len(state.dependencies) == 0 {
+		return true
+	}
+	for _, dep := range state.dependencies {
+		if !m.detourReady(dep) {
+			return false
+		}
+	}
+	return true
+}
+
+func (m *OutboundMonitoring) detourReady(tag string) bool {
+	reg := m.reg()
+	depState, ok := reg.outbounds[tag]
+	if !ok {
+		return true
+	}
+	grp, isGroup := reg.groups[tag]
+	if !isGroup {
+		return depState.outbound.IsReady()
+	}
+	anyPing := false
+	allReady := true
+	for memberTag := range grp.outbounds {
+		member, ok := reg.outbounds[memberTag]
+		if !ok {
+			continue
+		}
+		if !member.outbound.IsReady() {
+			allReady = false
+		}
+		member.mu.Lock()
+		delay := member.history.Delay
+		member.mu.Unlock()
+		if delay != 0 && delay < TimeoutDelay {
+			anyPing = true
+		}
+	}
+	// Group detour is usable when any member has a successful ping, or every member
+	// reports connected (IsReady) — then Extra Security / chained hops may urltest.
+	return anyPing || allReady
+}
+
 func RealTag(detour adapter.Outbound) string {
 	if group, isGroup := detour.(adapter.OutboundGroup); isGroup {
 		if selected := group.Selected(N.NetworkTCP); selected != nil {
@@ -1046,6 +1137,8 @@ type GroupEvent struct {
 	GroupTag string
 	From     time.Time
 	To       time.Time
+	// Priority is set for selection changes so OutboundsInfo can bypass its debounce.
+	Priority bool
 	tags     []string
 }
 
