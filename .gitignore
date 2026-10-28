@@ -24,4 +24,8 @@ _htest/
 /venv/
 CLAUDE.md
 AGENTS.md
-/.claude/
+/.claude/*
+# Hiddify: the agent rules and the hiddify-feature skill are tracked; local agent settings are not
+!/CLAUDE.md
+!/AGENTS.md
+!/.claude/skills/
