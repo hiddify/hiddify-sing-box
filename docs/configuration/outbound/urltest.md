@@ -41,7 +41,7 @@ More URLs to test. A member is up when any of `url` and `urls` answers.
 `failover` keeps the selected outbound until it fails, testing only it each interval, then
 selects the fastest. Empty selects the fastest at every test.
 
-See [URL test in Hiddify](../../hiddify/urltest.en.md) for these fields and for dial penalties.
+See [URL test in Hiddify](../../hiddify/features/groups/urltest.en.md) for these fields and for dial penalties.
 
 #### interval
 
