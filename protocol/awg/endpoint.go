@@ -113,6 +113,7 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 		AllowedIps:       allowedIps.Prefixes(),
 		ExcludedIps:      excludedIps.Prefixes(),
 		MTU:              options.MTU,
+		Peer:             singlePeer(options.Peers), //H: one packet connection to the peer
 	})
 	if err != nil {
 		return nil, err
@@ -376,3 +377,15 @@ func (w *Endpoint) deviceReady() bool {
 func (w *Endpoint) Status() adapter.Status { //H
 	return w.tracker.Status(w.started || w.deviceReady()) //H
 } //H
+
+// singlePeer is the address of the only peer, when there is one with an IP address. //H
+func singlePeer(peers []option.AwgPeerOptions) netip.AddrPort {
+	if len(peers) != 1 {
+		return netip.AddrPort{}
+	}
+	address := M.ParseAddr(peers[0].Address)
+	if !address.IsValid() || peers[0].Port == 0 {
+		return netip.AddrPort{}
+	}
+	return netip.AddrPortFrom(address, peers[0].Port)
+}

@@ -22,12 +22,17 @@ type bind_adapter struct {
 	dialer N.Dialer
 	ctx    context.Context
 	mutex  sync.Mutex
+	// peer, when valid, is the only peer: the bind opens one packet connection to it instead of
+	// two to any address. A proxy whose UDP needs a destination (an HTTP proxy's UDP, for one)
+	// refused the connections to 0.0.0.0, and the endpoint never started.
+	peer netip.AddrPort
 }
 
-func newBind(ctx context.Context, dial N.Dialer) conn.Bind {
+func newBind(ctx context.Context, dial N.Dialer, peer netip.AddrPort) conn.Bind {
 	return &bind_adapter{
 		ctx:    ctx,
 		dialer: dial,
+		peer:   peer,
 	}
 }
 
@@ -59,6 +64,19 @@ func (b *bind_adapter) Open(port uint16) (fns []conn.ReceiveFunc, actualPort uin
 
 	if b.conn4 != nil || b.conn6 != nil {
 		return nil, 0, conn.ErrBindAlreadyOpen
+	}
+
+	if b.peer.IsValid() {
+		peerConn, err := b.connect(b.peer.Addr(), b.peer.Port())
+		if err != nil {
+			return nil, 0, E.Cause(err, "create connection to ", b.peer)
+		}
+		if b.peer.Addr().Is4() || b.peer.Addr().Is4In6() {
+			b.conn4 = peerConn
+		} else {
+			b.conn6 = peerConn
+		}
+		return []conn.ReceiveFunc{b.receive(peerConn)}, port, nil
 	}
 
 	conn4, err := b.connect(netip.IPv4Unspecified(), port)

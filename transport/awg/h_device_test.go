@@ -70,7 +70,7 @@ func hFreeUDPPort(t *testing.T) uint16 {
 
 func TestH_BindOpenSendReceive(t *testing.T) {
 	dialer := &hLoopbackDialer{}
-	b := newBind(context.Background(), dialer)
+	b := newBind(context.Background(), dialer, netip.AddrPort{})
 	fns, port, err := b.Open(0)
 	require.NoError(t, err)
 	require.Equal(t, uint16(0), port)

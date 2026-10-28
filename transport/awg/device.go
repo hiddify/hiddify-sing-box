@@ -25,6 +25,8 @@ type DeviceOpts struct {
 	AllowedIps       []netip.Prefix
 	ExcludedIps      []netip.Prefix
 	MTU              uint32
+	// Peer is the address of the only peer, when it has one: the bind then connects to it.
+	Peer netip.AddrPort
 }
 
 type Device struct {
@@ -64,7 +66,7 @@ func NewDevice(ctx context.Context, logger logger.ContextLogger, dial network.Di
 
 	return &Device{
 		tun:       tun,
-		bind:      newBind(ctx, dial),
+		bind:      newBind(ctx, dial, opts.Peer),
 		logger:    awgLogger,
 		ipcConfig: ipcConfig,
 	}, nil
