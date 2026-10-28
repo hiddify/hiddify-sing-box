@@ -330,4 +330,6 @@ Notes:
 
 ## See also
 
+- [WARP scanner and noise](warp-scanner.en.md): how the scanner, noise, the noise search and auto
+  mode work together
 - [WARP over MASQUE](warp-masque.en.md)

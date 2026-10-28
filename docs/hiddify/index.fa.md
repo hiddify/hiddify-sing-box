@@ -17,6 +17,7 @@
 ## پروتکل‌ها
 
 - [WARP](features/protocols/warp.fa.md): WARP کلادفلر روی WireGuard، AmneziaWG یا MASQUE، با ثبت حساب رایگان، بسته‌های نویز و اسکنری که برای هر شبکه جدا به نشانی دیگری می‌رود.
+- [اسکنر و noise در WARP](features/protocols/warp-scanner.fa.md): اسکنر endpoint، حالت‌ها و پیش‌تنظیم‌های noise (DNS، QUIC، SIP، تصادفی)، جست‌وجوی noise و حالت auto چطور راهی برای عبور پیدا می‌کنند.
 - [WARP روی MASQUE](features/protocols/warp-masque.fa.md): outbound مستقل `masque` برای WARP روی HTTP/3، HTTP/2 یا هر دو؛ برای سرور MASQUE شخصی، از `masque-client` در sing-box اصلی استفاده کنید.
 - [AmneziaWG](features/protocols/amneziawg.fa.md): WireGuard با بسته‌های بی‌معنی، handshakeهای padding‌دار و نوع پیام‌های دلخواه که شناسایی WireGuard را خنثی می‌کنند.
 - [WireGuard: افزوده‌های هیدیفای](features/protocols/wireguard-hiddify.fa.md): بسته‌های نویز پیش از handshake، نام کاربر برای هر peer، بازیابی سوکت و تکه‌تکه کردن UDP که به‌طور پیش‌فرض روشن است.

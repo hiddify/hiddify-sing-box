@@ -25,6 +25,8 @@ its changes small and close to upstream so it can follow every sing-box release.
   WireGuard, AmneziaWG or MASQUE, or `auto` (the fastest that answers); an endpoint scanner with
   per-network scores and failover, noise presets and a noise search, a pool of registered devices
   that is only renewed when Cloudflare refuses one.
+- [WARP scanner and noise](docs/hiddify/features/protocols/warp-scanner.en.md): how the scanner,
+  the noise presets (DNS, QUIC, SIP, random), the noise search and auto mode work together.
 - [WARP over MASQUE](docs/hiddify/features/protocols/warp-masque.en.md): the `masque` outbound for
   WARP over HTTP/3 or HTTP/2.
 - [AmneziaWG](docs/hiddify/features/protocols/amneziawg.en.md): AmneziaWG 3.1, with the QUIC

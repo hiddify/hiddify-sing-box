@@ -231,6 +231,7 @@ probe همان چیزی را می‌فرستد که دستگاه می‌فرست
 
 ## همچنین ببینید
 
+- [اسکنر و noise در WARP](warp-scanner.fa.md)
 - [WARP روی MASQUE](warp-masque.fa.md)
 
 </div>
