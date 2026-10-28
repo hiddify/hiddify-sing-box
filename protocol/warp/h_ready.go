@@ -5,7 +5,6 @@ import (
 
 	"github.com/sagernet/sing-box/adapter"
 	C "github.com/sagernet/sing-box/constant"
-	E "github.com/sagernet/sing/common/exceptions"
 )
 
 // warpKeepalive is the keepalive of the WARP peer, in seconds, as the WARP clients use: it
@@ -50,22 +49,10 @@ func (w *WARPEndpoint) rotatePorts(config *C.WARPConfig, address string, ports [
 			continue
 		}
 		current = (current + 1) % len(ports)
-		replacement, err := w.newInner(config, address, ports[current])
-		if err != nil {
-			w.logger.ErrorContext(w.ctx, E.Cause(err, "WARP: replace endpoint"))
+		if err := w.replaceInner(config, address, ports[current]); err != nil {
+			w.logger.ErrorContext(w.ctx, err)
 			return
 		}
-		select {
-		case <-w.done:
-			adapter.CloseLate(w.scope, replacement)
-			return
-		default:
-		}
-		w.mtx.Lock()
-		old := w.endpoint
-		w.endpoint = replacement
-		w.mtx.Unlock()
-		adapter.CloseLate(w.scope, old)
 		w.logger.InfoContext(w.ctx, "WARP: no handshake, trying port ", ports[current])
 		connectedAt = time.Now()
 		wait = firstHandshakeWait

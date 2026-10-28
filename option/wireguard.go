@@ -53,6 +53,8 @@ type WARPEndpointOptions struct { //H
 	ServerOptions
 	Noise hiddify.NoiseOptions `json:"noise,omitempty"`
 	AWG   *AwgOptions          `json:"awg,omitempty"`
+	// MASQUE makes WARP use MASQUE (HTTP/3 or HTTP/2) instead of WireGuard; not with awg.
+	MASQUE *WARPMASQUEOptions `json:"masque,omitempty"`
 	*C.WARPConfig
 	MTU     uint32              `json:"mtu,omitempty"`
 	Scanner *WARPScannerOptions `json:"scanner,omitempty"`

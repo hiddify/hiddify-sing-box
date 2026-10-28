@@ -11,6 +11,7 @@ import (
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/dialer"
+	"github.com/sagernet/sing-box/common/monitoring"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/hiddify/warpscan"
 	"github.com/sagernet/sing-box/log"
@@ -54,7 +55,8 @@ func (w *WARPEndpoint) scannerEnabled() bool {
 	return w.options.Scanner != nil && w.options.Scanner.Enabled && w.options.Server == ""
 }
 
-// connect starts the first inner endpoint; the caller holds w.mtx.
+// connect starts the first inner endpoint. Network work runs without w.mtx, which is taken
+// only to publish the inner endpoint: a dial during the start must not wait for a scan.
 func (w *WARPEndpoint) connect(config *C.WARPConfig) {
 	peerAddr, peerPort, err := warpPeerEndpoint(config, w.options.ServerOptions) //H: a config without peers or ports crashed the process
 	if err != nil {
@@ -78,12 +80,16 @@ func (w *WARPEndpoint) connect(config *C.WARPConfig) {
 			}
 		}
 	}
-	inner, err := w.newInner(config, peerAddr, peerPort)
-	if err != nil {
-		w.logger.ErrorContext(w.ctx, err)
+	var inner adapter.Endpoint
+	if !w.retry("WARP", func() error { // AmneziaWG fails its start when the detour does not work yet
+		inner, err = w.newInner(config, peerAddr, peerPort)
+		return err
+	}) {
 		return
 	}
+	w.mtx.Lock()
 	w.endpoint = inner
+	w.peerAddr, w.peerPort = peerAddr, peerPort
 	if w.failover != nil {
 		if !current.IsValid() {
 			if address, err := netip.ParseAddr(peerAddr); err == nil {
@@ -92,6 +98,10 @@ func (w *WARPEndpoint) connect(config *C.WARPConfig) {
 		}
 		w.failover.current = current
 		w.failover.connectedAt = time.Now()
+	}
+	w.mtx.Unlock()
+	w.followDetour(config)
+	if w.failover != nil {
 		go w.watch()
 	} else if w.options.ServerPort == 0 && len(config.Peers[0].Endpoint.Ports) > 1 {
 		ports := make([]uint16, 0, len(config.Peers[0].Endpoint.Ports))
@@ -104,6 +114,60 @@ func (w *WARPEndpoint) connect(config *C.WARPConfig) {
 		}
 		go w.rotatePorts(config, peerAddr, ports, current)
 	}
+}
+
+// replaceInner starts a new inner endpoint for the peer and closes the old one once it is in
+// place, so dials keep working during the switch.
+func (w *WARPEndpoint) replaceInner(config *C.WARPConfig, peerAddr string, peerPort uint16) error {
+	w.replaceAccess.Lock()
+	defer w.replaceAccess.Unlock()
+	replacement, err := w.newInner(config, peerAddr, peerPort)
+	if err != nil {
+		select {
+		case <-w.done:
+			return nil // closed meanwhile: nothing to replace
+		default:
+		}
+		return E.Cause(err, "WARP: replace endpoint")
+	}
+	select {
+	case <-w.done:
+		adapter.CloseLate(w.scope, replacement)
+		return nil
+	default:
+	}
+	w.mtx.Lock()
+	old := w.endpoint
+	w.endpoint = replacement
+	w.peerAddr, w.peerPort = peerAddr, peerPort
+	w.mtx.Unlock()
+	adapter.CloseLate(w.scope, old)
+	return nil
+}
+
+// followDetour reconnects when a group detour moves to another member: the WireGuard socket
+// stays on the member it was opened through, which the group may have left because it failed.
+func (w *WARPEndpoint) followDetour(config *C.WARPConfig) {
+	if w.options.Detour == "" {
+		return
+	}
+	outboundManager := service.FromContext[adapter.OutboundManager](w.ctx)
+	if outboundManager == nil {
+		return
+	}
+	detour, loaded := outboundManager.Outbound(w.options.Detour)
+	if !loaded {
+		return
+	}
+	monitoring.FollowDetour(w.ctx, w.done, detour, N.NetworkUDP, func(from string, to string) {
+		w.mtx.Lock()
+		peerAddr, peerPort := w.peerAddr, w.peerPort
+		w.mtx.Unlock()
+		w.logger.InfoContext(w.ctx, "WARP: detour moved from ", from, " to ", to, ", reconnecting")
+		if err := w.replaceInner(config, peerAddr, peerPort); err != nil {
+			w.logger.ErrorContext(w.ctx, err)
+		}
+	})
 }
 
 // newInner creates and starts a WireGuard or AmneziaWG endpoint for the given peer.
@@ -186,6 +250,7 @@ func (w *WARPEndpoint) scan(exclude []netip.AddrPort) ([]warpscan.Result, error)
 		}
 	}
 	network := failover.currentNetwork()
+	w.scanStatus.Scanning()
 	results, err := warpscan.Scan(w.ctx, w.logger, warpscan.Request{
 		Options:  w.options.Scanner,
 		Defaults: defaults,
@@ -197,6 +262,11 @@ func (w *WARPEndpoint) scan(exclude []netip.AddrPort) ([]warpscan.Result, error)
 		Probe:    failover.probe,
 	})
 	w.saveScores()
+	if err != nil {
+		w.scanStatus.NotFound()
+	} else {
+		w.scanStatus.Found(results[0].AddrPort)
+	}
 	return results, err
 }
 
@@ -295,22 +365,10 @@ func (w *WARPEndpoint) check(networkChanged bool) {
 		return
 	}
 	best := results[0].AddrPort
-	replacement, err := w.newInner(failover.config, best.Addr().String(), best.Port())
-	if err != nil {
-		w.logger.ErrorContext(w.ctx, E.Cause(err, "WARP: replace endpoint"))
+	if err = w.replaceInner(failover.config, best.Addr().String(), best.Port()); err != nil {
+		w.logger.ErrorContext(w.ctx, err)
 		return
 	}
-	select {
-	case <-w.done:
-		adapter.CloseLate(w.scope, replacement)
-		return
-	default:
-	}
-	w.mtx.Lock()
-	old := w.endpoint
-	w.endpoint = replacement
-	w.mtx.Unlock()
-	adapter.CloseLate(w.scope, old)
 	failover.current = best
 	failover.connectedAt = time.Now()
 	failover.recorded = true // the scan counted its answer

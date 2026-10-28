@@ -107,6 +107,13 @@ func hTestContext(t *testing.T) context.Context {
 	return ctx
 }
 
+// hShortContext ends the retries of a start that cannot work soon.
+func hShortContext(t *testing.T) context.Context {
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	t.Cleanup(cancel)
+	return ctx
+}
+
 func hLogger() log.ContextLogger {
 	return log.NewNOPFactory().NewLogger("warp-test")
 }
@@ -187,17 +194,19 @@ func TestH_NewWARPEndpointMetadata(t *testing.T) {
 	require.Equal(t, []string{N.NetworkTCP, N.NetworkUDP}, ep.Network())
 	require.Equal(t, []string{"wg-out", "profile-out"}, ep.Dependencies())
 	require.NoError(t, htest.Start(ep, adapter.StartStateStart))
-	require.False(t, ep.mtx.TryLock(), "endpoint stays locked until the start handler runs")
+	require.True(t, ep.mtx.TryLock(), "mtx must stay free so dials during start do not block")
+	ep.mtx.Unlock()
+	require.False(t, ep.IsReady(), "inner endpoint is not installed before PostStart")
 }
 
 func TestH_WARPStartFailureLeavesEndpointUninitialized(t *testing.T) {
 	options := option.WARPEndpointOptions{WARPConfig: hWARPConfig(t, hWARPConfigJSON)}
 	options.Detour = "missing-detour"
-	ep := hNewWARP(t, hTestContext(t), options)
+	ep := hNewWARP(t, hShortContext(t), options)
 	ep.startHandler()
 
 	require.False(t, ep.IsReady())
-	require.Equal(t, "WARP ⚠️ Connecting...", ep.DisplayType())
+	require.Equal(t, "WARP · WG ⚠️ Connecting...", ep.DisplayType())
 	_, err := ep.DialContext(context.Background(), N.NetworkTCP, M.ParseSocksaddr("1.1.1.1:80"))
 	require.ErrorContains(t, err, "endpoint not initialized")
 	_, err = ep.ListenPacket(context.Background(), M.ParseSocksaddr("1.1.1.1:53"))
@@ -224,7 +233,7 @@ func TestH_WARPUsesCachedConfig(t *testing.T) {
 	cached, err := json.Marshal(hWARPConfig(t, hWARPConfigJSON))
 	require.NoError(t, err)
 	cache := &hFakeCacheFile{store: map[string]*adapter.SavedBinary{"unique": {Content: cached}}}
-	ctx := service.ContextWith[adapter.CacheFile](hTestContext(t), cache)
+	ctx := service.ContextWith[adapter.CacheFile](hShortContext(t), cache)
 	options := option.WARPEndpointOptions{UniqueIdentifier: "unique"}
 	options.Detour = "missing-detour"
 	hNewWARP(t, ctx, options).startHandler()
@@ -232,7 +241,7 @@ func TestH_WARPUsesCachedConfig(t *testing.T) {
 	require.Empty(t, cache.saves)
 
 	cache = &hFakeCacheFile{store: map[string]*adapter.SavedBinary{"warp-tag": {Content: cached}}}
-	ctx = service.ContextWith[adapter.CacheFile](hTestContext(t), cache)
+	ctx = service.ContextWith[adapter.CacheFile](hShortContext(t), cache)
 	options = option.WARPEndpointOptions{WARPConfig: hWARPConfig(t, hWARPConfigJSON), Profile: option.WARPProfile{Recreate: true}}
 	options.Detour = "missing-detour"
 	hNewWARP(t, ctx, options).startHandler()
@@ -254,7 +263,7 @@ func TestH_WARPConfigWithoutPortsDoesNotPanic(t *testing.T) {
 	options := option.WARPEndpointOptions{WARPConfig: hWARPConfig(t, `{"private_key":"x","peers":[{"endpoint":{"host":"h:1"}}]}`)}
 	options.Detour = "missing-detour"
 	options.ServerPort = 2408
-	ep := hNewWARP(t, hTestContext(t), options)
+	ep := hNewWARP(t, hShortContext(t), options)
 	require.NotPanics(t, ep.startHandler)
 }
 
@@ -312,4 +321,39 @@ func TestH_WarpPeerEndpointProfileAddress(t *testing.T) {
 	address, _, err = warpPeerEndpoint(config, option.ServerOptions{Server: "engage.cloudflareclient.com"})
 	require.NoError(t, err)
 	require.Equal(t, "engage.cloudflareclient.com", address, "a server set in the config is kept")
+}
+
+func TestH_WARPMASQUEAndAWGConflict(t *testing.T) {
+	_, err := NewWARPEndpoint(hTestContext(t), nil, hLogger(), "warp-tag", option.WARPEndpointOptions{
+		MASQUE: &option.WARPMASQUEOptions{Enabled: true},
+		AWG:    &option.AwgOptions{Jc: 4},
+	})
+	require.ErrorContains(t, err, "masque and awg")
+}
+
+func TestH_WARPDisplayTypeByTunnel(t *testing.T) {
+	require.Equal(t, "WARP · WG ⚠️ Connecting...", hNewWARP(t, hTestContext(t), option.WARPEndpointOptions{}).DisplayType())
+	require.Equal(t, "WARP · AWG ⚠️ Connecting...", hNewWARP(t, hTestContext(t), option.WARPEndpointOptions{AWG: &option.AwgOptions{Jc: 4}}).DisplayType())
+	require.Equal(t, "WARP · MASQUE ⚠️ Connecting...", hNewWARP(t, hTestContext(t), option.WARPEndpointOptions{MASQUE: &option.WARPMASQUEOptions{Enabled: true}}).DisplayType())
+	require.Equal(t, "WARP · MASQUE ⚠️ Connecting...", hNewWARP(t, hTestContext(t), option.WARPEndpointOptions{MASQUE: &option.WARPMASQUEOptions{VHTTP: "h2"}}).DisplayType(), "any setting turns it on")
+	require.Equal(t, "WARP · WG ⚠️ Connecting...", hNewWARP(t, hTestContext(t), option.WARPEndpointOptions{MASQUE: &option.WARPMASQUEOptions{}}).DisplayType(), "an empty block is not MASQUE")
+}
+
+// The box closes the endpoint's scope, not the endpoint: its background work (port rotation,
+// failover, following the detour) must stop with the scope, or it outlives the box.
+func TestH_WARPStopsWithItsScope(t *testing.T) {
+	ep := hNewWARP(t, hTestContext(t), option.WARPEndpointOptions{})
+	scope := adapter.NewScope(context.Background(), hLogger())
+	require.NoError(t, ep.Start(adapter.StartStateInitialize, scope))
+	select {
+	case <-ep.done:
+		t.Fatal("stopped before the scope closed")
+	default:
+	}
+	require.NoError(t, scope.Close())
+	select {
+	case <-ep.done:
+	case <-time.After(time.Second):
+		t.Fatal("background work outlives the closed scope")
+	}
 }

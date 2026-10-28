@@ -15,6 +15,7 @@ import (
 	"github.com/sagernet/sing-box/adapter/endpoint"
 	"github.com/sagernet/sing-box/common/cloudflare"
 	C "github.com/sagernet/sing-box/constant"
+	"github.com/sagernet/sing-box/hiddify/warpscan"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -46,6 +47,12 @@ type WARPEndpoint struct {
 	failover  *warpFailover
 	done      chan struct{}
 	closeOnce sync.Once
+
+	replaceAccess sync.Mutex      // H: one replacement of the inner endpoint at a time
+	peerAddr      string          // H: the peer of the inner endpoint, guarded by mtx
+	peerPort      uint16          // H
+	scanStatus    warpscan.Status // H: the WireGuard scanner, for the display type
+	scanStatusOf  func() *warpscan.Status
 }
 
 func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.WARPEndpointOptions) (adapter.Endpoint, error) {
@@ -60,6 +67,9 @@ func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.Cont
 	if uniqueId == "" {
 		uniqueId = tag
 	}
+	if options.MASQUE.IsEnabled() && options.AWG.IsAvailble() { //H
+		return nil, E.New("warp: masque and awg are two tunnels, set one") //H
+	} //H
 	warpEndpoint := &WARPEndpoint{
 		Adapter:  endpoint.NewAdapter(C.TypeWARP, tag, []string{N.NetworkTCP, N.NetworkUDP}, dependencies),
 		ctx:      ctx,                 //H
@@ -70,9 +80,14 @@ func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.Cont
 		options:  options,             //H
 		done:     make(chan struct{}), //H
 	}
-	warpEndpoint.mtx.Lock()
+	// Do not hold mtx across registration/scan/handshake: Final/dns may dial this
+	// endpoint while it starts (extra security), and a held lock deadlocks or stalls
+	// urltest. IsReady/Dial see nil until connect installs the inner endpoint.
 	warpEndpoint.startHandler = func() {
-		defer warpEndpoint.mtx.Unlock()
+		if options.MASQUE.IsEnabled() { //H: the device gets a MASQUE key instead
+			warpEndpoint.connectMASQUE()
+			return
+		}
 		cacheFile := service.FromContext[adapter.CacheFile](ctx)
 		var config *C.WARPConfig
 		var err error
@@ -89,9 +104,11 @@ func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.Cont
 			config = options.WARPConfig
 		}
 		if config == nil || config.PrivateKey == "" {
-			profile, err := GetWarpProfile(ctx, &options.Profile)
-			if err != nil {
-				logger.ErrorContext(ctx, err)
+			var profile *cloudflare.CloudflareProfile
+			if !warpEndpoint.retry("register WARP device", func() error { //H: a cold detour fails the first attempts
+				profile, err = GetWarpProfile(ctx, &options.Profile)
+				return err
+			}) {
 				return
 			}
 			config = &profile.Config
@@ -114,36 +131,50 @@ func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.Cont
 	return warpEndpoint, nil
 }
 func GetWarpProfile(ctx context.Context, profile *option.WARPProfile) (*cloudflare.CloudflareProfile, error) {
+	var result *cloudflare.CloudflareProfile
+	err := withWARPAPI(ctx, profile, func(dialer N.Dialer) error { //H: the same order for every tunnel
+		cf, err := GetWarpProfileDialer(ctx, dialer, profile)
+		result = cf
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// withWARPAPI calls register with the dialer to reach the WARP API through: profile.detour (a
+// direct connection when unset), then every outbound until one works. //H
+func withWARPAPI(ctx context.Context, profile *option.WARPProfile, register func(dialer N.Dialer) error) error {
 	var dialer N.Dialer
 	outmanager := service.FromContext[adapter.OutboundManager](ctx)
 	if profile.Detour != "" && outmanager != nil {
 		var ok bool
 		dialer, ok = outmanager.Outbound(profile.Detour)
 		if !ok {
-			return nil, E.New("outbound detour not found: ", profile.Detour)
+			return E.New("outbound detour not found: ", profile.Detour)
 		}
 
 	}
-	cf, err := GetWarpProfileDialer(ctx, dialer, profile)
+	err := register(dialer)
 	if err == nil {
-		return cf, nil
+		return nil
 	}
 	if outmanager == nil { //H: returning (nil, nil) here made the caller dereference a nil profile
-		return nil, err //H
+		return err //H
 	} //H
 
 	for _, dialer := range outmanager.Outbounds() {
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return ctx.Err()
 		default:
 		}
-		if cf, err := GetWarpProfileDialer(ctx, dialer, profile); err == nil {
-			return cf, nil
+		if register(dialer) == nil {
+			return nil
 		}
 	}
-	return nil, err
-
+	return err
 }
 func GetWarpProfileDialer(ctx context.Context, dialer N.Dialer, profile *option.WARPProfile) (*cloudflare.CloudflareProfile, error) {
 	api := cloudflare.NewCloudflareApiDetour(dialer)
@@ -154,6 +185,34 @@ func GetWarpProfileDialer(ctx context.Context, dialer N.Dialer, profile *option.
 		return api.CreateProfileLicense(ctx, profile.PrivateKey, profile.License)
 	}
 }
+
+// retry runs attempt until it succeeds, with a backoff between failures, and reports false when
+// the endpoint closes first. //H
+func (w *WARPEndpoint) retry(what string, attempt func() error) bool {
+	backoff := retryMin
+	for {
+		err := attempt()
+		if err == nil {
+			return true
+		}
+		w.logger.ErrorContext(w.ctx, E.Cause(err, what))
+		select {
+		case <-w.ctx.Done():
+			return false
+		case <-w.done:
+			return false
+		case <-time.After(backoff):
+		}
+		backoff = min(backoff*2, retryMax)
+	}
+}
+
+// The registration of a device is retried with a backoff between these. //H
+const (
+	retryMin = time.Second
+	retryMax = 30 * time.Second
+)
+
 func (w *WARPEndpoint) IsReady() bool {
 	inner := w.currentEndpoint() //H
 	if inner == nil {
@@ -164,6 +223,13 @@ func (w *WARPEndpoint) IsReady() bool {
 func (w *WARPEndpoint) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage == adapter.StartStateInitialize {
 		w.scope = scope
+		go func() { //H: the box closes the scope, not the endpoint; stop the background work with it
+			select {
+			case <-scope.Context().Done():
+				w.closeOnce.Do(func() { close(w.done) })
+			case <-w.done:
+			}
+		}()
 	}
 	if stage != adapter.StartStatePostStart {
 		return nil
@@ -173,10 +239,13 @@ func (w *WARPEndpoint) Start(stage adapter.StartStage, scope *adapter.Scope) err
 }
 
 func (w *WARPEndpoint) Close() error {
-	w.closeOnce.Do(func() { close(w.done) }) //H: stops the failover checks
-	w.mtx.Lock()                             //H
-	inner := w.endpoint                      //H
-	w.mtx.Unlock()                           //H
+	w.closeOnce.Do(func() { close(w.done) })              //H: stops the failover checks
+	if w.scope != nil && w.scope.Context().Err() != nil { //H: the closing scope closes the inner endpoint
+		return nil //H
+	} //H
+	w.mtx.Lock()        //H
+	inner := w.endpoint //H
+	w.mtx.Unlock()      //H
 	return adapter.CloseLate(w.scope, inner)
 }
 
@@ -203,12 +272,24 @@ func (w *WARPEndpoint) currentEndpoint() adapter.Endpoint {
 	return w.endpoint
 }
 
+// DisplayType names the tunnel WARP uses, the scanner status and whether it is connected. //H
 func (w *WARPEndpoint) DisplayType() string {
-	str := C.ProxyDisplayName(w.Type())
-	if !w.IsReady() {
-		str += " ⚠️ Connecting..."
+	name := C.DisplayWARPWireGuard
+	status := &w.scanStatus
+	switch {
+	case w.options.MASQUE.IsEnabled():
+		name = C.DisplayWARPMASQUE
+		w.mtx.Lock()
+		statusOf := w.scanStatusOf
+		w.mtx.Unlock()
+		status = nil
+		if statusOf != nil {
+			status = statusOf()
+		}
+	case w.options.AWG.IsAvailble():
+		name = C.DisplayWARPAWG
 	}
-	return str
+	return warpscan.DisplayType(name, status, w.IsReady(), C.DisplayConnecting)
 }
 
 // warpPeerEndpoint picks the address and port of the WARP peer: the configured server and

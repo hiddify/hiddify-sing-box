@@ -1,6 +1,8 @@
 package option
 
 import (
+	"reflect"
+
 	"github.com/sagernet/sing/common/json/badoption"
 )
 
@@ -38,4 +40,25 @@ type MASQUEOutboundOptions struct { //H
 	VHTTP string `json:"vhttp,omitempty"`
 	// ServerName is the TLS server name; consumer-masque.cloudflareclient.com when empty.
 	ServerName string `json:"server_name,omitempty"`
+}
+
+// WARPMASQUEOptions makes a warp endpoint use MASQUE instead of WireGuard: the endpoint
+// registers the device and looks up the endpoint, then runs a MASQUE tunnel to it. Any setting
+// turns it on; enabled does with every default, since an empty object is dropped. //H
+type WARPMASQUEOptions struct {
+	Enabled              bool                     `json:"enabled,omitempty"`
+	TLS                  MASQUEOutboundTLSOptions `json:"tls,omitempty"`
+	UseIPv6              bool                     `json:"use_ipv6,omitempty"`
+	UDPKeepalivePeriod   badoption.Duration       `json:"udp_keepalive_period,omitempty"`
+	UDPInitialPacketSize uint16                   `json:"udp_initial_packet_size,omitempty"`
+	ReconnectDelay       badoption.Duration       `json:"reconnect_delay,omitempty"`
+	// VHTTP is "h3", "h2" or "auto" (the default).
+	VHTTP string `json:"vhttp,omitempty"`
+	// ServerName is the TLS server name; consumer-masque.cloudflareclient.com when empty.
+	ServerName string `json:"server_name,omitempty"`
+}
+
+// IsEnabled reports whether the warp endpoint uses MASQUE. //H
+func (o *WARPMASQUEOptions) IsEnabled() bool {
+	return o != nil && (o.Enabled || !reflect.ValueOf(*o).IsZero())
 }
