@@ -1201,6 +1201,7 @@ func (m *OutboundMonitoring) loadHistory() *History {
 			if his.Delay >= TimeoutDelay {
 				his.Delay = 0
 			}
+			his.IpInfo = nil //H: the exit IP can change between runs (WARP, Psiphon), so it is looked up again
 			state.mu.Lock()
 			state.history = *his
 			state.from_cache = true

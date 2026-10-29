@@ -291,7 +291,7 @@ func TestH_MonitoringSaveLoadHistory(t *testing.T) {
 	ha := m2.getUrlTest("a")
 	require.Equal(t, uint16(77), ha.Delay)
 	require.True(t, ha.IsFromCache)
-	require.Equal(t, "US", ha.IpInfo.CountryCode)
+	require.Nil(t, ha.IpInfo, "the IP of an earlier run is not loaded")
 	require.Equal(t, uint16(0), m2.getUrlTest("b").Delay, "cached timeouts are reset to untested")
 
 	cache.data["outbound_monitoring_history"] = &adapter.SavedBinary{Content: []byte("{garbage")}
@@ -473,4 +473,65 @@ func TestH_MonitoringRetestsEverythingAfterNetworkChange(t *testing.T) {
 	time.Sleep(networkRetestDelay + 500*time.Millisecond)
 	// a test can dial more than once (the url test, then the IP lookup), so count cycles
 	require.EqualValues(t, cyclesBefore+1, atomic.LoadUint64(&m.cycleSeq), "a burst of changes is one retest")
+}
+
+// The IP saved by an earlier run is never reported: the exit IP of WARP or Psiphon can differ
+// between runs. Until a lookup of this run works, each successful test looks the IP up again,
+// also after a first test or lookup that failed.
+func TestH_MonitoringReportsOnlyIpOfThisRun(t *testing.T) {
+	var lookupWorks, reachable atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/ip" {
+			if !lookupWorks.Load() {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			w.Write([]byte(`{"ip":"2.2.2.2","country_code":"US"}`))
+			return
+		}
+		time.Sleep(3 * time.Millisecond) // a 0 ms delay would read as "not measured"
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+	serverAddr := M.ParseSocksaddr(server.Listener.Addr().String())
+	var dialer net.Dialer
+	a := &fakeOutbound{tag: "a", dial: func(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
+		if !reachable.Load() || destination != serverAddr {
+			return nil, errors.New("unreachable")
+		}
+		return dialer.DialContext(ctx, network, destination.String())
+	}}
+	options := option.MonitoringOptions{
+		URLs:           []string{server.URL + "/generate_204"},
+		IpInfoURL:      server.URL + "/ip",
+		URLTestTimeout: badoption.Duration(2 * time.Second),
+	}
+	cache := &fakeCache{data: map[string]*adapter.SavedBinary{}}
+	earlier := newTestMonitor(t, cache, options, a)
+	require.NoError(t, htest.Start(earlier, adapter.StartStateInitialize))
+	setHistory(earlier, "a", 80, false, &ipinfo.IpInfo{IP: "1.1.1.1", CountryCode: "DE"})
+	require.NoError(t, earlier.saveHistory())
+
+	m := newTestMonitor(t, cache, options, a)
+	require.NoError(t, htest.Start(m, adapter.StartStateInitialize))
+	var reported []string
+	report := func() {
+		if his := m.getUrlTest("a"); his.IpInfo != nil {
+			reported = append(reported, his.IpInfo.IP)
+		} else {
+			reported = append(reported, "none")
+		}
+	}
+	test := func() { m.executeTask(&testTask{outboundTag: "a"}) }
+
+	report() // loaded from the cache
+	test()   // the test fails
+	report()
+	reachable.Store(true)
+	test() // the test works, the IP lookup fails
+	report()
+	lookupWorks.Store(true)
+	test() // both work
+	report()
+	require.Equal(t, []string{"none", "none", "none", "2.2.2.2"}, reported)
 }
