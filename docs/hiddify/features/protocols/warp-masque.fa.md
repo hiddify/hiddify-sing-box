@@ -96,6 +96,7 @@ WARP روی MASQUE شما را با MASQUE، پروتکلی که اپ‌های �
 | فیلد | نوع | پیش‌فرض | معنا |
 |---|---|---|---|
 | `profile` | object | | روش گرفتن حساب WARP. پایین‌تر را ببینید. |
+| `device` | object | | دستگاهی که از قبل برای MASQUE ثبت شده و به‌جای `profile` همان‌طور استفاده می‌شود: بدون تماس با API کلادفلر. پایین‌تر را ببینید. |
 | `vhttp` | string | `auto` | `h3`، `h2` یا `auto`. خالی یعنی `auto`، یا `h2` وقتی `use_http2` روشن است. |
 | `use_http2` | bool | `false` | روش قدیمی‌تر انتخاب HTTP/2. ‏`vhttp` اولویت دارد. |
 | `server_name` | string | `consumer-masque.cloudflareclient.com` | نام سرور TLS. |
@@ -119,6 +120,21 @@ WARP روی MASQUE شما را با MASQUE، پروتکلی که اپ‌های �
 | `auth_token` | string | | توکن دسترسی همان دستگاه. |
 | `detour` | string | مستقیم | tag آن outbound که برای رسیدن به API کلادفلر به کار می‌رود. |
 | `recreate` | bool | `false` | پروفایل ذخیره‌شده را نادیده بگیر و پروفایل تازه بگیر. |
+
+### `device`
+
+دستگاهی که جای دیگری ثبت شده، به همان شکلی که لینک‌های `masque://` آن را دارند. به API کلادفلر وصل نمی‌شود، پس جایی که API مسدود است هم کار می‌کند؛ کلیدها باید مال دستگاهی باشند که کلادفلر برای MASQUE ثبت کرده است.
+
+| فیلد | نوع | پیش‌فرض | معنی |
+|---|---|---|---|
+| `private_key` | string | | کلید ECDSA دستگاه: base64 (استاندارد یا URL) از DER به شکل SEC 1 یا PKCS #8. |
+| `endpoint_public_key` | string | | کلید endpoint: PEM، یا base64 از DER به شکل PKIX. |
+| `ipv4`، `ipv6` | string | | آدرس‌های تونل. دست‌کم یکی. |
+| `endpoint_v4`، `endpoint_v6` | string | | endpointهای HTTP/3، یک IP یا `ip:port` (پورت 443 استفاده می‌شود). دست‌کم یکی. |
+| `endpoint_h2_v4`، `endpoint_h2_v6` | string | پیش‌فرض کلادفلر | endpointهای HTTP/2. |
+| `id`، `license` | string | | شناسه و لایسنس دستگاه، برای اطلاع. |
+
+دستگاهی که نمی‌تواند کار کند (کلیدی که خوانده نمی‌شود، بدون آدرس، بدون endpoint) کانفیگ را خطادار می‌کند.
 
 ### پیش‌فرض‌های `scanner` برای MASQUE
 

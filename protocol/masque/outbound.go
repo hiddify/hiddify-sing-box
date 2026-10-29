@@ -97,6 +97,12 @@ func newWARPOutbound(ctx context.Context, logger log.ContextLogger, tag string, 
 	if profileKey == "" {
 		profileKey = tag
 	}
+	if config == nil && options.Device != nil { //H: an enrolled device, without the API
+		var err error                                               //H
+		if config, err = deviceConfig(options.Device); err != nil { //H
+			return nil, err //H
+		} //H
+	} //H
 	outbound := &Outbound{
 		Adapter:    outbound.NewAdapterWithDialerOptions(C.TypeMASQUE, tag, []string{N.NetworkTCP, N.NetworkUDP, N.NetworkICMP}, options.DialerOptions),
 		ctx:        ctx,

@@ -139,6 +139,7 @@ tunnel never connected through Shadowsocks, VLESS or Trojan.
 | Field | Type | Default | Meaning |
 |---|---|---|---|
 | `profile` | object | | How to get the WARP account. See below. |
+| `device` | object | | A device already enrolled for MASQUE, used as is instead of `profile`: no call to Cloudflare's API. See below. |
 | `vhttp` | string | `auto` | `h3`, `h2` or `auto`. Empty means `auto`, or `h2` when `use_http2` is on. |
 | `use_http2` | bool | `false` | Older way to choose HTTP/2. `vhttp` takes priority. |
 | `server_name` | string | `consumer-masque.cloudflareclient.com` | TLS server name. |
@@ -163,6 +164,21 @@ and the network name check.
 | `auth_token` | string | | Access token of that device. |
 | `detour` | string | direct | Outbound tag used to reach Cloudflare's API. |
 | `recreate` | bool | `false` | Ignore the saved profile and get a new one. |
+
+### `device`
+
+A device enrolled elsewhere, as `masque://` share links carry it. Cloudflare's API is not reached, so it works where the API is blocked; the keys must belong to a device that Cloudflare enrolled for MASQUE.
+
+| Field | Type | Default | Meaning |
+|---|---|---|---|
+| `private_key` | string | | The device's ECDSA key: base64 (standard or URL) of SEC 1 or PKCS #8 DER. |
+| `endpoint_public_key` | string | | The endpoint's key: PEM, or base64 of PKIX DER. |
+| `ipv4`, `ipv6` | string | | Tunnel addresses. At least one. |
+| `endpoint_v4`, `endpoint_v6` | string | | HTTP/3 endpoints, an IP or `ip:port` (port 443 is used). At least one. |
+| `endpoint_h2_v4`, `endpoint_h2_v6` | string | Cloudflare's | HTTP/2 endpoints. |
+| `id`, `license` | string | | The device's ID and license, for information. |
+
+A device that cannot work (a key that does not parse, no address, no endpoint) fails the config.
 
 ### `scanner` defaults for MASQUE
 

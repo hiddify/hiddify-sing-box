@@ -22,6 +22,7 @@ type MASQUEOutboundTLSOptions struct { //H
 type MASQUEOutboundOptions struct { //H
 	DialerOptions
 	Profile                  CloudflareProfile        `json:"profile,omitempty"`
+	Device                   *MASQUEDeviceOptions     `json:"device,omitempty"` // an enrolled device, used instead of profile
 	MASQUEOutboundTLSOptions MASQUEOutboundTLSOptions `json:"tls,omitempty"`
 	UseHTTP2                 bool                     `json:"use_http2,omitempty"`
 	UseIPv6                  bool                     `json:"use_ipv6,omitempty"`
