@@ -95,6 +95,7 @@ func newStackDevice(options DeviceOptions) (*stackDevice, error) {
 }
 
 func (w *stackDevice) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
+	destination = destination.Unwrap() //H: an IPv4-mapped address is IPv4, not IPv6
 	addr := tcpip.FullAddress{
 		NIC:  tun.DefaultNIC,
 		Port: destination.Port,
@@ -140,6 +141,7 @@ func (w *stackDevice) DialContext(ctx context.Context, network string, destinati
 }
 
 func (w *stackDevice) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
+	destination = destination.Unwrap() //H
 	bind := tcpip.FullAddress{
 		NIC: tun.DefaultNIC,
 	}

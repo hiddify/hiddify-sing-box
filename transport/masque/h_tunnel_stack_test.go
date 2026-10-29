@@ -145,6 +145,21 @@ func TestH_TunnelMissingAddressFamily(t *testing.T) {
 	require.ErrorContains(t, err, "missing IPv6 local address")
 }
 
+// MASQUE in MASQUE: the inner tunnel dials the endpoint as an IPv4-mapped address
+// ([::ffff:162.159.198.2]:443), which an IPv4-only outer tunnel refused as IPv6.
+func TestH_TunnelIPv4MappedDestination(t *testing.T) {
+	tunnel, err := NewTunnel(context.Background(), log.NewNOPFactory().NewLogger("masque"), TunnelOptions{
+		Address: []netip.Prefix{netip.MustParsePrefix("172.16.0.2/32")},
+	})
+	require.NoError(t, err)
+	defer tunnel.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	_, err = tunnel.DialContext(ctx, N.NetworkTCP, M.ParseSocksaddr("[::ffff:162.159.198.2]:443"))
+	require.Error(t, err, "nothing answers")
+	require.NotContains(t, err.Error(), "missing IPv6 local address")
+}
+
 // the tunnel's device takes the configured MTU, within the IPv6 minimum and 9000
 func TestH_TunnelMTU(t *testing.T) {
 	newTunnel := func(mtu uint32) (*Tunnel, error) {
