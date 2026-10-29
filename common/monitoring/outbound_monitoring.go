@@ -214,18 +214,18 @@ func (m *OutboundMonitoring) getMinGroupOutboundHistory(groupTag string) *adapte
 				minHis = his
 			} else if his.Delay < minHis.Delay {
 				minHis.Delay = his.Delay
-				minHis.IpInfo = his.IpInfo
+				minHis.IpInfo, minHis.IpInfoFromCache = his.IpInfo, his.IpInfoFromCache //H
 			} else if minHis.IpInfo == nil {
-				minHis.IpInfo = his.IpInfo
+				minHis.IpInfo, minHis.IpInfoFromCache = his.IpInfo, his.IpInfoFromCache //H
 			}
 		} else {
 			if minHisFromCache == nil {
 				minHisFromCache = his
 			} else if his.Delay < minHisFromCache.Delay {
 				minHisFromCache.Delay = his.Delay
-				minHisFromCache.IpInfo = his.IpInfo
+				minHisFromCache.IpInfo, minHisFromCache.IpInfoFromCache = his.IpInfo, his.IpInfoFromCache //H
 			} else if minHisFromCache.IpInfo == nil {
-				minHisFromCache.IpInfo = his.IpInfo
+				minHisFromCache.IpInfo, minHisFromCache.IpInfoFromCache = his.IpInfo, his.IpInfoFromCache //H
 			}
 		}
 	}
@@ -234,7 +234,7 @@ func (m *OutboundMonitoring) getMinGroupOutboundHistory(groupTag string) *adapte
 	if minHis == nil || minHis.Delay >= TimeoutDelay {
 		final = minHisFromCache
 	} else if minHisFromCache != nil && minHis.IpInfo == nil {
-		final.IpInfo = minHisFromCache.IpInfo
+		final.IpInfo, final.IpInfoFromCache = minHisFromCache.IpInfo, minHisFromCache.IpInfoFromCache //H
 	}
 
 	return final
@@ -699,7 +699,7 @@ func (m *OutboundMonitoring) tester(parent context.Context, tag string) (adapter
 		return his, parent.Err()
 	default:
 	}
-	if out.history.IpInfo == nil || out.from_cache {
+	if out.history.IpInfo == nil || out.history.IpInfoFromCache { //H: until looked up in this run
 
 		ctx, cancel2 := context.WithTimeout(parent, m.urlTestTimeout)
 		defer cancel2()
@@ -872,6 +872,7 @@ func (m *OutboundMonitoring) applyResult(outcome testOutcome) *adapter.URLTestHi
 	state.from_cache = false
 	if outcome.history.IpInfo != nil {
 		state.history.IpInfo = outcome.history.IpInfo
+		state.history.IpInfoFromCache = false //H
 	}
 	m.history.StoreURLTestHistory(outcome.outboundTag, &state.history)
 
@@ -1204,6 +1205,7 @@ func (m *OutboundMonitoring) loadHistory() *History {
 			}
 			state.mu.Lock()
 			state.history = *his
+			state.history.IpInfoFromCache = his.IpInfo != nil //H
 			state.from_cache = true
 			state.mu.Unlock()
 		}
