@@ -49,6 +49,13 @@ const networkResetWait = time.Second
 // H: how long after the last network change every outbound is tested again
 const networkRetestDelay = 2 * time.Second
 
+// H: a test whose outbound or detour is not ready is tried again after dependencyWait, at most
+// dependencyWaits times; then it runs anyway, so a detour that never gets a result cannot hold it
+const (
+	dependencyWait  = 3 * time.Second
+	dependencyWaits = 10
+)
+
 // func RegisterService(registry *boxService.Registry) {
 // 	boxService.Register[option.MonitoringOptions](registry, C.TypeOutboundMonitor, func(ctx context.Context, logger log.ContextLogger, tag string, options option.MonitoringOptions) (adapter.Service, error) {
 // 		return NewOutboundMonitoring(ctx, logger, tag, options)
@@ -606,11 +613,7 @@ func (m *OutboundMonitoring) executeTask(task *testTask) {
 		state.testing = false
 		state.mu.Unlock()
 	}()
-	state.mu.Lock()
-	cycle := task.cycleID
-	state.mu.Unlock()
-
-	if cycle < 10 && (!adapter.IsReady(state.outbound) || !m.dependenciesReady(state)) {
+	if task.waits < dependencyWaits && (!adapter.IsReady(state.outbound) || !m.dependenciesReady(state)) { //H
 		reason := "not ready"
 		if adapter.IsReady(state.outbound) {
 			reason = "detour not ready"
@@ -620,9 +623,10 @@ func (m *OutboundMonitoring) executeTask(task *testTask) {
 			select {
 			case <-m.ctx.Done():
 				return
-			case <-time.After(3 * time.Second):
+			case <-time.After(dependencyWait): //H
 			}
 			state.mu.Lock()
+			task.waits++ //H
 			task.cycleID++
 			state.priorityQueued = false // H: the retry queues it again; left set, every URL test of it was dropped
 			state.mu.Unlock()
@@ -654,7 +658,13 @@ func (m *OutboundMonitoring) executeTask(task *testTask) {
 			priority:    task.priority,
 		}
 
+		state.mu.Lock()
+		worked := !state.from_cache && state.history.Delay != 0 && state.history.Delay < TimeoutDelay //H
+		state.mu.Unlock()
 		m.applyResult(outcome)
+		if err == nil && !worked { //H: it works now; what was measured through it did not
+			m.retestDependents(task.outboundTag, make(map[string]bool))
+		}
 		if task.resultCh != nil {
 			select {
 			case task.resultCh <- outcome:
@@ -999,52 +1009,81 @@ func (m *OutboundMonitoring) publishGroupEvent(groupTag string, since time.Time,
 //		return histories
 //	}
 //
-// dependenciesReady reports whether every detour of outbound is usable for a URL test.
-// A plain detour must be ready (adapter.IsReady). A group detour is ready when any member has a successful
-// ping, or when every member is connected (IsReady) — so Extra Security WARP waits for the
-// main selector to have a working leaf before it is tested through that path.
+// dependenciesReady reports whether every detour of outbound is usable for a URL test. //H
 func (m *OutboundMonitoring) dependenciesReady(state *outboundState) bool {
 	if state == nil || len(state.dependencies) == 0 {
 		return true
 	}
 	for _, dep := range state.dependencies {
-		if !m.detourReady(dep) {
+		if !m.detourReady(state.outbound.Tag(), dep) {
 			return false
 		}
 	}
 	return true
 }
 
-func (m *OutboundMonitoring) detourReady(tag string) bool {
+// detourReady reports whether a test of self through the detour tag measures something: the
+// outbound the detour leads to (the selected member, for a group) is connected, has a result of
+// this run and is not being tested again. Before that, a test of self fails, or measures the path
+// that is about to change, and so does its IP information. //H
+func (m *OutboundMonitoring) detourReady(self, tag string) bool {
 	reg := m.reg()
-	depState, ok := reg.outbounds[tag]
-	if !ok {
-		return true
+	for range 8 { // a group leads to its selected member, which may be a group too
+		state, ok := reg.outbounds[tag]
+		if !ok || tag == self {
+			return true
+		}
+		grp, isGroup := reg.groups[tag]
+		if !isGroup {
+			return adapter.IsReady(state.outbound) && state.tested()
+		}
+		next := RealTag(state.outbound)
+		if next == "" || next == tag {
+			// nothing selected yet: any member that was tested
+			for member := range grp.outbounds {
+				if memberState, ok := reg.outbounds[member]; ok && memberState.tested() {
+					return true
+				}
+			}
+			return false
+		}
+		tag = next
 	}
-	grp, isGroup := reg.groups[tag]
-	if !isGroup {
-		return adapter.IsReady(depState.outbound)
+	return true
+}
+
+// tested reports whether the outbound has a result of this run, and is not being tested again. //H
+func (s *outboundState) tested() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return !s.from_cache && s.history.Delay != 0 && !s.testing && !s.queued && !s.priorityQueued
+}
+
+// retestDependents tests again the outbounds that dial through tag, also through a group, and
+// were tested while tag did not work: their result and IP were measured through a detour that did
+// not work. Those not tested yet are tested anyway, once tag has a result. //H
+func (m *OutboundMonitoring) retestDependents(tag string, visited map[string]bool) {
+	state := m.getState(tag)
+	if state == nil || visited[tag] {
+		return
 	}
-	anyPing := false
-	allReady := true
-	for memberTag := range grp.outbounds {
-		member, ok := reg.outbounds[memberTag]
-		if !ok {
+	visited[tag] = true
+	for _, dependent := range state.dependenciesInverse {
+		if _, isGroup := m.reg().groups[dependent]; isGroup {
+			m.retestDependents(dependent, visited)
 			continue
 		}
-		if !adapter.IsReady(member.outbound) {
-			allReady = false
+		dependentState := m.getState(dependent)
+		if dependentState == nil {
+			continue
 		}
-		member.mu.Lock()
-		delay := member.history.Delay
-		member.mu.Unlock()
-		if delay != 0 && delay < TimeoutDelay {
-			anyPing = true
+		dependentState.mu.Lock()
+		tested := !dependentState.from_cache && dependentState.history.Delay != 0
+		dependentState.mu.Unlock()
+		if tested {
+			m.testNow(dependent, true)
 		}
 	}
-	// Group detour is usable when any member has a successful ping, or every member
-	// reports connected (IsReady) — then Extra Security / chained hops may urltest.
-	return anyPing || allReady
 }
 
 func RealTag(detour adapter.Outbound) string {
@@ -1105,6 +1144,7 @@ type testTask struct {
 	cycleID     uint64
 	priority    bool
 	resultCh    chan<- testOutcome
+	waits       int // H: times it waited for the outbound or its detour to be ready
 }
 
 type testOutcome struct {
