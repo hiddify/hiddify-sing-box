@@ -70,7 +70,9 @@ func (o tunnelOwner) SignalTunnelFailure(*psiphon.Tunnel) {
 }
 
 func NewOutbound(ctx context.Context, _ adapter.Router, logger log.ContextLogger, tag string, options option.PsiphonOutboundOptions) (adapter.Outbound, error) {
-	outboundDialer, err := dialer.New(ctx, options.DialerOptions, false)
+	// Psiphon's own connections (its server list, its servers) name domains: resolved here, or
+	// by the detour. With false they all failed with "domain not resolved".
+	outboundDialer, err := dialer.New(ctx, options.DialerOptions, true)
 	if err != nil {
 		return nil, err
 	}

@@ -8,13 +8,16 @@ import (
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/common/dialer"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/hiddify/secret"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
+	"github.com/sagernet/sing/common/control"
 	"github.com/sagernet/sing/common/json/badoption"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
+	"github.com/sagernet/sing/service"
 	"github.com/stretchr/testify/require"
 )
 
@@ -87,8 +90,28 @@ func TestH_PsiphonDurationToSeconds(t *testing.T) {
 	require.Equal(t, 300, *durationToSecondsPtr(5 * time.Minute))
 }
 
+// The services a dialer that resolves domains reads when it is built.
+type hNetworkManager struct{ adapter.NetworkManager }
+
+func (hNetworkManager) DefaultOptions() adapter.NetworkOptions   { return adapter.NetworkOptions{} }
+func (hNetworkManager) AutoDetectInterface() bool                { return false }
+func (hNetworkManager) AutoRedirectOutputMarkFunc() control.Func { return nil }
+func (hNetworkManager) InterfaceFinder() control.InterfaceFinder {
+	return control.NewDefaultInterfaceFinder()
+}
+
+type hDNSTransportManager struct{ adapter.DNSTransportManager }
+
+func (hDNSTransportManager) Transports() []adapter.DNSTransport { return nil }
+func (hDNSTransportManager) Default() adapter.DNSTransport      { return nil }
+
+func hTestContext() context.Context {
+	ctx := service.ContextWith[adapter.NetworkManager](context.Background(), hNetworkManager{})
+	return service.ContextWith[adapter.DNSTransportManager](ctx, hDNSTransportManager{})
+}
+
 func newTestOutbound(t *testing.T, options option.PsiphonOutboundOptions) *Outbound {
-	out, err := NewOutbound(context.Background(), nil, log.NewNOPFactory().Logger(), "psiphon-out", options)
+	out, err := NewOutbound(hTestContext(), nil, log.NewNOPFactory().Logger(), "psiphon-out", options)
 	require.NoError(t, err)
 	return out.(*Outbound)
 }
@@ -133,6 +156,16 @@ func TestH_PsiphonInterfaceUpdatedBeforeStart(t *testing.T) {
 	t.Parallel()
 	out := newTestOutbound(t, option.PsiphonOutboundOptions{})
 	require.NotPanics(t, func() { out.InterfaceUpdated(context.Background()) })
+}
+
+// Psiphon fetches its server list from a domain (s3.amazonaws.com) through the outbound's
+// dialer: a dialer that does not resolve domains failed it with "domain not resolved", and
+// Psiphon never found a server.
+func TestH_PsiphonDialerResolvesDomains(t *testing.T) {
+	t.Parallel()
+	out := newTestOutbound(t, option.PsiphonOutboundOptions{})
+	_, resolves := out.dialer.(dialer.ResolveDialer)
+	require.True(t, resolves)
 }
 
 // an example config
