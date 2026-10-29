@@ -31,6 +31,10 @@ It does not. It finds out which outbounds work, so groups can avoid the blocked 
   for the exit IP address, country, region, city and network. It does this when the outbound
   has no IP information yet, or only information loaded from the cache. If that request is
   faster than the URL test, its time becomes the delay.
+- An outbound that dials through a detour is tested, for its delay and its IP, only once the
+  outbound the detour leads to (for a group, its selected member) has a result of this run and
+  is not being tested again. Before that, its test would fail or measure a path that is about to
+  change.
 
 ### When tests run
 
@@ -39,8 +43,10 @@ It does not. It finds out which outbounds work, so groups can avoid the blocked 
   time.
 - When no connection has gone through sing-box for `idle_timeout`, testing stops. The next
   connection starts it again.
-- An outbound that is not ready yet, for example Psiphon still connecting, is skipped and tried
-  again 3 seconds later.
+- An outbound that is not ready yet, for example Psiphon still connecting, or whose detour has no
+  result yet, is skipped and tried again 3 seconds later. After 10 tries it is tested anyway.
+- When an outbound works after failing, the outbounds already tested through it are tested
+  again.
 - Some events test at once: a connection that fails through a balancer member, a selector that
   switches to another outbound (the outbounds that depend on it are tested again), or an
   outbound that finished connecting, such as Psiphon or DNSTT.
@@ -58,6 +64,11 @@ used from then on.
 Results are saved in the cache file and loaded at the next start. A loaded result is marked as
 "from cache" until the outbound is tested again. The balancer adds 20,000 ms to such results,
 so a fresh test wins.
+
+The IP information is loaded too, so the app can show the last run's exit IP and country before
+any test. It stays marked as from the cache (`IpInfoFromCache`) until an IP lookup of this run
+succeeds; a failed test does not change it. The exit IP of WARP, Psiphon or a rotating proxy can
+change between runs, so the app should show such an IP as not confirmed yet.
 
 Groups that subscribe to monitoring get one update for a burst of results, after
 `debounce_window`.

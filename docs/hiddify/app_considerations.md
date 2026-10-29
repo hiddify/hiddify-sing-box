@@ -88,6 +88,11 @@ do about it. Items marked **Required** break or misbehave until they are handled
 - **Status in OutboundInfo.** `OutboundInfo.status` (field 18, enum `Status`: READY, CONNECTING,
   RECONNECTING, SEARCHING, FAILED, REGISTERING) mirrors `adapter.Status`, so the app can show the
   state without parsing the label (in hiddify-core, uncommitted at the time of writing).
+- **IP information from the cache.** At start every outbound shows the exit IP and country of
+  the last run, from the cache, until a working test of this run looks them up again (a failed
+  test leaves them as they are). The exit IP of WARP, Psiphon or a rotating proxy can change
+  between runs, so `URLTestHistory.IpInfoFromCache` says which they are, and hiddify-core sends it
+  as `IpInfo.from_cache`. Show such an IP as not confirmed yet (dimmed, or with a mark).
 - **WARP over MASQUE in the warp endpoint.** A `warp` endpoint can now run MASQUE instead of
   WireGuard: `"masque": {"enabled": true}`, or any MASQUE setting (`vhttp`, `server_name`,
   `use_ipv6`, `tls`, …). Prefer this to a separate `masque` outbound: one endpoint handles
