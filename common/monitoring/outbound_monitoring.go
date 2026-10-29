@@ -624,6 +624,7 @@ func (m *OutboundMonitoring) executeTask(task *testTask) {
 			}
 			state.mu.Lock()
 			task.cycleID++
+			state.priorityQueued = false // H: the retry queues it again; left set, every URL test of it was dropped
 			state.mu.Unlock()
 			m.enqueueTask(task)
 		}()
