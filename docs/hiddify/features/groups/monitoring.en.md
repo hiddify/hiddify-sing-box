@@ -29,8 +29,8 @@ It does not. It finds out which outbounds work, so groups can avoid the blocked 
   result among its members.
 - After a successful test, monitoring asks an IP information service, through the same outbound,
   for the exit IP address, country, region, city and network. It does this when the outbound
-  has no IP information yet, or only information loaded from the cache. If that request is
-  faster than the URL test, its time becomes the delay.
+  has no IP information yet. If that request is faster than the URL test, its time becomes the
+  delay.
 
 ### When tests run
 
@@ -57,7 +57,8 @@ used from then on.
 
 Results are saved in the cache file and loaded at the next start. A loaded result is marked as
 "from cache" until the outbound is tested again. The balancer adds 20,000 ms to such results,
-so a fresh test wins.
+so a fresh test wins. The IP information is not loaded: the exit IP can change between starts,
+for example with WARP or Psiphon, so an outbound has none until it is looked up again.
 
 Groups that subscribe to monitoring get one update for a burst of results, after
 `debounce_window`.

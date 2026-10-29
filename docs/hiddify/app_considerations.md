@@ -158,6 +158,10 @@ do about it. Items marked **Required** break or misbehave until they are handled
   `failover` keeps a member until it fails. A URL test or balancer that moves now signals
   monitoring at once, as a selector does, so the proxy list stream updates without waiting for
   the next test.
+- **IP information.** An outbound's IP information (`OutboundInfo.ipinfo`) now comes only from a
+  lookup of this run: the one saved by the previous run is no longer loaded, since the exit IP of
+  WARP or Psiphon can change. It is empty right after start and until a lookup works, so the app
+  can show a loading state; untested outbounds have no country until their first good test.
 - **WARP behind a group.** WARP (and the `masque` outbound) moves at once when the user changes a
   selector in its detour, but follows a URL test or balancer at most every 30 seconds, through a
   new tunnel that replaces the old one only once it connects. hiddify-core's chain mode
