@@ -96,6 +96,10 @@ do about it. Items marked **Required** break or misbehave until they are handled
   `awg` and `masque` together fail the config. MASQUE needs the `with_masque` tag. The MASQUE
   device is saved apart from the WireGuard one (`<unique_identifier>/masque`), so switching an
   endpoint between the two does not break either.
+- **Enrolled MASQUE devices (`device`).** A `masque` outbound can use a device enrolled
+  elsewhere, as `masque://` share links carry it, instead of registering one through Cloudflare's
+  API (often blocked). ray2sing writes `masque://` links to this option, and their `inner=` link as
+  a second outbound whose detour is the first.
 - **Self-hosted MASQUE.** Use upstream's `masque-client` (and `masque-server`). The Hiddify
   `masque` type is WARP only.
 - **Display types.** WARP shows `WARP · WG`, `WARP · AWG` or `WARP · MASQUE`; the `masque`

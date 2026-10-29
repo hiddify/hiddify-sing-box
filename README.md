@@ -28,7 +28,7 @@ its changes small and close to upstream so it can follow every sing-box release.
 - [WARP scanner and noise](docs/hiddify/features/protocols/warp-scanner.en.md): how the scanner,
   the noise presets (DNS, QUIC, SIP, random), the noise search and auto mode work together.
 - [WARP over MASQUE](docs/hiddify/features/protocols/warp-masque.en.md): the `masque` outbound for
-  WARP over HTTP/3 or HTTP/2.
+  WARP over HTTP/3 or HTTP/2, with a new device or one already enrolled (`device`, no API).
 - [AmneziaWG](docs/hiddify/features/protocols/amneziawg.en.md): AmneziaWG 3.1, with the QUIC
   masquerade.
 - [WireGuard additions](docs/hiddify/features/protocols/wireguard-hiddify.en.md): noise before
