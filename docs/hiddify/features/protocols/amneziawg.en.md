@@ -92,6 +92,8 @@ blocked or throttled. The encryption is the same as in WireGuard.
 | `useIntegratedTun` | bool | `false` | Create a real system TUN interface for the tunnel instead of the built-in user-space network stack. |
 | `awg` | object | none | Obfuscation values. See below. |
 | `peers` | list | none | The peers. See below. |
+| `mtu_discovery` | bool | `true` | Find the MTU that gets through the network and the `detour`, as the [WireGuard endpoint](wireguard-hiddify.en.md) does: ICMP echo requests of every size through the tunnel, the largest answered becomes the MTU. `false` keeps `mtu`. Not with `useIntegratedTun`. |
+| `fallback_address` | list of IPs | none | Other addresses of the only peer, on its port, tried in turn when the one in use gets no handshake, as in the WireGuard endpoint. Needs a single peer given by an IP address. |
 | Dialer fields | | | The usual outbound dialer fields, such as `detour` and `bind_interface`. |
 
 ### Obfuscation fields (`awg`)

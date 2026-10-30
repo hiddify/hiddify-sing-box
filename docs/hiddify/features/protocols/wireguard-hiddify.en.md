@@ -78,6 +78,16 @@ The endpoint runs on Hiddify's copy of wireguard-go (`replace/wireguard-go`), wh
   retried, so a hung detour does not block the tunnel. TCP connections through the tunnel give up
   after 15 seconds instead of about a minute.
 
+### Fallback addresses
+
+A peer can often be reached at more than one address (WARP at IPv4 and IPv6 ones), and the path
+may carry only some of them: a network or proxy without IPv6, or a tunnel too small for IPv6's
+larger packets. With `fallback_address`, when packets went out but no handshake came back in 15
+seconds, the endpoint sends to the next address, and so on in turn; an idle endpoint is left
+alone. When the path changes (the detour's connection is made again, the network changes), it
+starts again from the peer's own address, the preferred one. It works with or without a
+`detour`. hiddify-core puts an IPv6 WARP exit hop on an IPv4 address and keeps the IPv6 one here.
+
 ### UDP fragmentation
 
 The endpoint now lets the system fragment its UDP packets, as official WireGuard does. Before, the
@@ -86,12 +96,13 @@ another tunnel) was dropped. Set `"udp_fragment": false` to get the old behavior
 
 ### MTU discovery
 
-An endpoint with a `detour` (WARP in WARP, or WireGuard through a proxy) works only when every layer
-under it carries its packets. A packet too large for one of them is lost without a word, and
+An endpoint works only when every layer under it carries its packets: the network, and the
+`detour` when there is one (WARP in WARP, or WireGuard through a proxy). A packet too large for one of them is lost without a word, and
 connections stall on their first full-size packet.
 
-- When the endpoint starts, and whenever its connection through the detour is made again (the
-  detour's selector switched, the network changed, or the socket was recovered), it sends ICMP
+- When the endpoint starts, and whenever its path may have changed (the network changed, or its
+  connection through the detour was made again because the detour's selector switched or the
+  socket was recovered), it sends ICMP
   echo requests through the tunnel to `1.1.1.1` (`2606:4700:4700::1111` without an IPv4 address):
   one of each size from 576 (1280 for IPv6) to `mtu`, in steps of 16, all at once. Each goes out
   as one tunnel packet of that size. The largest size answered becomes the tunnel's MTU, usually
@@ -106,7 +117,8 @@ connections stall on their first full-size packet.
 - When even the smallest request has no answer (a server that drops ICMP, or no route to the
   target), the MTU stays as configured. Discovery never raises the MTU above `mtu`, so set `mtu`
   to the largest value the first layer can carry.
-- It is off for an endpoint without a `detour`, and with `"system": true`.
+- It is on by default, with or without a `detour`; `"mtu_discovery": false` turns it off. It does
+  not run with `"system": true`.
 
 ## Configuration
 
@@ -174,7 +186,8 @@ A range is written as a number (`3`), a string (`"2-4"` or `"3"`), or an object
 
 | Field | Type | Default | Meaning |
 |---|---|---|---|
-| `mtu_discovery` | bool | `true` with a `detour` | Find the MTU that gets through the layers under the tunnel (see MTU discovery). `false` keeps `mtu`. |
+| `mtu_discovery` | bool | `true` | Find the MTU that gets through the layers under the tunnel (see MTU discovery). `false` keeps `mtu`. |
+| `fallback_address` | list of IPs | none | Other addresses of the only peer, on its port, tried in turn when the address in use gets no handshake (see Fallback addresses). Needs a single peer given by an IP address. |
 
 ### Notes
 

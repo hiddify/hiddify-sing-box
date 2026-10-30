@@ -93,6 +93,8 @@ DPI ترافیک WireGuard را از بستهٔ اولش می‌شناسد: یک
 | `useIntegratedTun` | bool | `false` | به‌جای پشتهٔ شبکهٔ داخلی، یک رابط TUN واقعی در سیستم برای تونل می‌سازد. |
 | `awg` | object | ندارد | مقادیر پنهان‌سازی. پایین‌تر را ببینید. |
 | `peers` | فهرست | ندارد | peerها. پایین‌تر را ببینید. |
+| `mtu_discovery` | bool | `true` | MTUی را پیدا می‌کند که از شبکه و `detour` می‌گذرد، مثل [endpoint ‏WireGuard](wireguard-hiddify.fa.md): درخواست‌های ICMP echo از هر اندازه از درون تونل، و بزرگ‌ترین پاسخ‌گرفته MTU می‌شود. `false` همان `mtu` را نگه می‌دارد. با `useIntegratedTun` نه. |
+| `fallback_address` | فهرست IP | ندارد | نشانی‌های دیگر تنها peer، روی پورت خودش، که وقتی نشانی در حال استفاده دست‌دادنی نگیرد به نوبت امتحان می‌شوند، مثل endpoint ‏WireGuard. یک peer که با نشانی IP داده شده لازم دارد. |
 | فیلدهای dialer | | | فیلدهای معمول dialer خروجی، مثل `detour` و `bind_interface`. |
 
 ### فیلدهای پنهان‌سازی (`awg`)
