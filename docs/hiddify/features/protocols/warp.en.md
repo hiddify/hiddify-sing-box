@@ -94,7 +94,12 @@ registration.
 **Peer.** The tunnel uses the profile's IPv4 peer address (its IPv6 one when there is no IPv4
 one) and one of its ports, chosen at random. `server` and `server_port` replace them. Without the
 scanner and without `server_port`, a port that completes no handshake within 10 seconds is
-replaced by the profile's next port.
+replaced by the profile's next port; `"rotate_ports": false` turns this off. `fallback_address`
+lists other WARP addresses to try, on the same port, when the one in use gets no handshake in 15
+seconds (the WireGuard [`fallback_address`](wireguard-hiddify.en.md)). For every warp endpoint
+behind a detour (the extra security hop, WARP in WARP) hiddify-core turns the rotation off and
+gives an IPv6 WARP address here, so it tries only the profile's IPv4 address, which needs smaller
+packets and works through proxies without IPv6, and then that IPv6 address.
 
 **Connected state.** The peer gets a keepalive every 25 seconds, as in the WARP apps, so the
 handshake stays fresh while the path works. WARP counts as connected (no "Connecting...") only
@@ -235,6 +240,9 @@ keeps the current endpoint. The first handshake of each endpoint also counts as 
 | `masque` | object | | MASQUE settings. When any is set, or `enabled`, the tunnel uses MASQUE instead of WireGuard. See below. Needs the `with_masque` build tag. |
 | `scanner` | object | off | Endpoint scanner and failover. See below. |
 | `mtu` | number | WireGuard default | Tunnel MTU. |
+| `mtu_discovery` | bool | `true` | [MTU discovery](wireguard-hiddify.en.md) of the WireGuard or AmneziaWG tunnel. `false` keeps `mtu`. |
+| `rotate_ports` | bool | `true` | Without the scanner and `server_port`, try the profile's next port when the one in use gets no handshake. |
+| `fallback_address` | list of IPs | none | Other WARP addresses, tried in turn on the same port when the one in use gets no handshake (WireGuard and AmneziaWG). |
 | `system` | bool | `false` | Use a system interface, as in the `wireguard` endpoint. |
 | `name` | string | | Interface name when `system` is on. |
 | `listen_port` | number | random | Local UDP port. |

@@ -79,6 +79,12 @@ do about it. Items marked **Required** break or misbehave until they are handled
   one handshake per tunnel and runs the fastest; it needs `with_masque` for the MASQUE leg. The app
   can offer `auto` as the default WARP choice. Its display type is `WARP · Auto` until it chose,
   then the chosen tunnel's.
+- **WARP behind a detour.** Searching for a way in through a detour only measures the detour, so
+  for every `warp` endpoint with a `detour` (the extra security hop, WARP in WARP) hiddify-core
+  sets `rotate_ports: false`, turns the scanner off and gives an IPv6 WARP address as
+  `fallback_address`: the endpoint tries the profile's IPv4 address, then that IPv6 one. It also
+  turns off the scanner of a `masque` outbound with a `detour`. MTU discovery is on for every
+  WireGuard and AmneziaWG tunnel; a config can turn it off with `"mtu_discovery": false`.
 - **WARP devices are kept, in a pool.** Registered devices are kept in one pool in the cache file
   (key `warp-profiles`), shared by every warp endpoint; each endpoint leases devices of its own,
   so several warp endpoints in one config never share one. A device is only replaced when
