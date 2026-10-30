@@ -27,8 +27,9 @@ type bind_adapter struct {
 	// refused the connections to 0.0.0.0, and the endpoint never started.
 	peer     netip.AddrPort
 	reserved *Reserved
-	opens    int    //H: see h_path.go
-	onReopen func() //H
+	opens    int           //H: see h_path.go
+	onReopen func()        //H
+	later    chan struct{} //H: see h_bind_later.go
 }
 
 func newBind(ctx context.Context, dial N.Dialer, peer netip.AddrPort, reserved *Reserved) conn.Bind {
@@ -75,7 +76,7 @@ func (b *bind_adapter) Open(port uint16) (fns []conn.ReceiveFunc, actualPort uin
 	if b.peer.IsValid() {
 		peerConn, err := b.connect(b.peer.Addr(), b.peer.Port())
 		if err != nil {
-			return nil, 0, E.Cause(err, "create connection to ", b.peer)
+			return b.openLater(port) //H: dial again once the detour is ready
 		}
 		if b.peer.Addr().Is4() || b.peer.Addr().Is4In6() {
 			b.conn4 = peerConn
@@ -112,6 +113,7 @@ func (b *bind_adapter) Close() error {
 	defer b.mutex.Unlock()
 
 	var err4, err6 error
+	b.closeLater() //H
 
 	if b.conn4 != nil {
 		err4 = b.conn4.Close()
@@ -143,12 +145,7 @@ func (b *bind_adapter) SetMark(mark uint32) error {
 }
 
 func (b *bind_adapter) Send(bufs [][]byte, ep conn.Endpoint) error {
-	var conn net.PacketConn
-	if ep.DstIP().Is6() {
-		conn = b.conn6
-	} else {
-		conn = b.conn4
-	}
+	conn := b.sendConn(ep) //H: set late by openLater
 
 	if conn == nil {
 		return errors.ErrUnsupported
