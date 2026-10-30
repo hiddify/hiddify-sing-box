@@ -176,6 +176,7 @@ The server needs no change: it ignores the decoy, as it ignores every `i` packet
 | `allowed_ips` | list of prefixes | none | Addresses routed to this peer, and accepted from it. |
 | `persistent_keepalive_interval` | number | `0` | Seconds between keepalive packets. `0` turns them off. |
 | `name` | string | none | User name for connections from this peer. Stats and `auth_user` rules see this name. |
+| `reserved` | 3 bytes | none | Written into bytes 1–3 of each message, where WireGuard has them; Cloudflare WARP reads them as the client id. Write it as `[124, 245, 25]` or base64. It needs `s1`–`s4` at `0`, no `header_protection_key`, `h1`–`h4` from `1` to `255`, and one peer. Received messages have the bytes cleared. |
 
 ### Notes
 
