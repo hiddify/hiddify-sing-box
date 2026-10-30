@@ -48,6 +48,8 @@ func createWARPAwgEndpoint(
 				},
 			},
 		},
-		DialerOptions: options.DialerOptions,
+		DialerOptions:   options.DialerOptions,   //H
+		MTUDiscovery:    options.MTUDiscovery,    //H
+		FallbackAddress: options.FallbackAddress, //H
 	})
 }

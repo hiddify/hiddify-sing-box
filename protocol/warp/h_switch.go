@@ -188,7 +188,7 @@ func (w *WARPEndpoint) runChecks(done <-chan struct{}) {
 	case w.activeMode() == modeMASQUE: // the MASQUE tunnel checks itself
 	case failover != nil:
 		go w.watch(done)
-	case profile != nil && profile.WireGuard != nil && w.options.ServerPort == 0 && len(profile.WireGuard.Peers) > 0 && len(profile.WireGuard.Peers[0].Endpoint.Ports) > 1:
+	case (w.options.RotatePorts == nil || *w.options.RotatePorts) && profile != nil && profile.WireGuard != nil && w.options.ServerPort == 0 && len(profile.WireGuard.Peers) > 0 && len(profile.WireGuard.Peers[0].Endpoint.Ports) > 1:
 		config := profile.WireGuard
 		ports := make([]uint16, 0, len(config.Peers[0].Endpoint.Ports))
 		current := 0

@@ -66,6 +66,14 @@ type WARPEndpointOptions struct { //H
 	*C.WARPConfig
 	MTU     uint32              `json:"mtu,omitempty"`
 	Scanner *WARPScannerOptions `json:"scanner,omitempty"`
+	// RotatePorts tries the profile's next port when the one in use gets no handshake (without the
+	// scanner and server_port); on unless false.
+	RotatePorts *bool `json:"rotate_ports,omitempty"`
+	// MTUDiscovery is the tunnel's mtu_discovery (WireGuard or AmneziaWG); on unless false.
+	MTUDiscovery *bool `json:"mtu_discovery,omitempty"`
+	// FallbackAddress is the tunnel's fallback_address (WireGuard or AmneziaWG): other WARP
+	// addresses, tried on the same port when the one in use gets no handshake.
+	FallbackAddress badoption.Listable[netip.Addr] `json:"fallback_address,omitempty"`
 }
 
 type WARPProfile struct { //H

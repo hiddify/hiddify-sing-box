@@ -49,6 +49,8 @@ func createWARPWireGuardEndpoint(
 				},
 			},
 		},
-		MTU: options.MTU,
+		MTU:             options.MTU,             //H
+		FallbackAddress: options.FallbackAddress, //H
+		MTUDiscovery:    options.MTUDiscovery,    //H
 	})
 }
