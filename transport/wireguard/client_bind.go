@@ -37,6 +37,8 @@ type ClientBind struct {
 	isConnect           bool
 	connectAddr         netip.AddrPort
 	reserved            [3]uint8
+	connected           bool   //H
+	onReconnect         func() //H: the connection through the dialer was made again
 }
 
 func NewClientBind(ctx context.Context, logger logger.Logger, dialer N.Dialer, isConnect bool, connectAddr netip.AddrPort, reserved [3]uint8) *ClientBind {
@@ -108,6 +110,10 @@ func (c *ClientBind) connect() (*wireConn, error) {
 			cancel:     cancelDial, //H
 		}) //H
 	}
+	if c.connected && c.onReconnect != nil { //H
+		go c.onReconnect() //H
+	} //H
+	c.connected = true        //H
 	return c.conn.Load(), nil //H
 }
 

@@ -26,6 +26,8 @@ type WireGuardEndpointOptions struct {
 
 	Noise hiddify.NoiseOptions `json:"noise,omitempty"` //H
 	AWG   *AwgOptions          `json:"awg,omitempty"`   //H
+	// MTUDiscovery lowers the MTU to what gets through the tunnel; on unless false. //H
+	MTUDiscovery *bool `json:"mtu_discovery,omitempty"` //H
 }
 
 type WireGuardPeer struct {

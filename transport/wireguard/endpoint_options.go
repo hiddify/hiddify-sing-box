@@ -38,6 +38,8 @@ type EndpointOptions struct {
 	ResolvePeer       func(domain string) ([]netip.Addr, error)
 	Peers             []PeerOptions
 	Workers           int
+
+	DisableMTUDiscovery bool //H: keep the configured MTU (see h_mtu_discovery.go)
 }
 
 type PeerOptions struct {

@@ -145,6 +145,8 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 		}),
 		Workers: options.Workers,
 		Noise:   options.Noise,
+		// H: discovery is for a tunnel through a detour, where the layers under it limit the MTU
+		DisableMTUDiscovery: options.Detour == "" || options.MTUDiscovery != nil && !*options.MTUDiscovery, //H
 	})
 	if err != nil {
 		return nil, err

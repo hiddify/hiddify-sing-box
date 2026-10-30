@@ -43,6 +43,7 @@ type Endpoint struct {
 	stateAccess    sync.Mutex
 	suspended      atomic.Bool
 	networkPaused  bool
+	mtuProbe       *mtuProber //H
 }
 
 func NewEndpoint(options EndpointOptions) (*Endpoint, error) {
@@ -196,7 +197,9 @@ func (e *Endpoint) Start(postStart bool) error {
 				connectAddr = e.peers[0].endpoint
 			}
 		}
-		bind = NewClientBind(e.options.Context, e.options.Logger, e.options.Dialer, isConnect, connectAddr, reserved)
+		clientBind := NewClientBind(e.options.Context, e.options.Logger, e.options.Dialer, isConnect, connectAddr, reserved) //H
+		clientBind.onReconnect = func() { e.mtuProbe.pathChanged() }                                                         //H: MTU discovery
+		bind = clientBind                                                                                                    //H
 	}
 	if isUDPListener || len(e.peers) > 1 {
 		for _, peer := range e.peers {
@@ -217,6 +220,7 @@ func (e *Endpoint) Start(postStart bool) error {
 			e.options.Logger.Error(fmt.Sprintf(strings.ToLower(format), args...))
 		},
 	}
+	e.setupMTUDiscovery() //H
 	wgDevice := device.NewDevice(e.options.Context, e.returnDevice, bind, logger, e.options.Workers)
 	wgDevice.HNoise = e.options.Noise //H
 	domainPeers := make(map[device.NoisePublicKey]*peerConfig)
@@ -274,6 +278,7 @@ func (e *Endpoint) Start(postStart bool) error {
 		e.pauseCallback = e.pause.RegisterCallback(e.onPauseUpdated)
 	}
 	e.allowedIPs = wgDevice.AllowedIPs()
+	e.mtuProbe.start() //H
 	return nil
 }
 
@@ -282,7 +287,8 @@ func (e *Endpoint) DialContext(ctx context.Context, network string, destination 
 		return nil, E.Cause(os.ErrInvalid, "invalid non-IP destination")
 	}
 	e.resume()
-	return e.tunDevice.DialContext(ctx, network, destination)
+	conn, err := e.tunDevice.DialContext(ctx, network, destination) //H
+	return e.mtuProbe.track(network, conn, err)                     //H: closed when discovery lowers the MTU
 }
 
 func (e *Endpoint) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
@@ -343,6 +349,7 @@ func (e *Endpoint) Close() error {
 		e.egressPool.Close()
 		e.egressPool = nil
 	}
+	e.mtuProbe.stop() //H
 	e.stateAccess.Lock()
 	wgDevice := e.device.Swap(nil)
 	if wgDevice != nil {
@@ -368,6 +375,7 @@ func (e *Endpoint) BindUpdate() error {
 	if wgDevice == nil {
 		return nil
 	}
+	e.mtuProbe.pathChanged() //H: the path may differ on the new network
 	return wgDevice.BindUpdate()
 }
 

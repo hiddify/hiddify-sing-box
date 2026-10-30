@@ -15,7 +15,7 @@ func (e *Endpoint) PortAddresses() (netip.Addr, netip.Addr) {
 }
 
 func (e *Endpoint) PortMTU() uint32 {
-	return e.options.MTU
+	return e.discoveredMTU() //H
 }
 
 func (e *Endpoint) UpstreamPort() any {
@@ -126,10 +126,14 @@ type returnPathState struct {
 
 type returnDeviceWrapper struct {
 	Device
-	state atomic.Pointer[returnPathState]
+	state  atomic.Pointer[returnPathState] //H
+	prober *mtuProber                      //H
 }
 
 func (d *returnDeviceWrapper) Write(bufs [][]byte, offset int) (int, error) {
+	if bufs = d.prober.filter(bufs, offset); len(bufs) == 0 { //H: MTU discovery replies
+		return 0, nil //H
+	} //H
 	state := d.state.Load()
 	if state == nil || len(bufs) == 0 {
 		return d.Device.Write(bufs, offset)
