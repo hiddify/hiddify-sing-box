@@ -39,7 +39,8 @@ type EndpointOptions struct {
 	Peers             []PeerOptions
 	Workers           int
 
-	DisableMTUDiscovery bool //H: keep the configured MTU (see h_mtu_discovery.go)
+	DisableMTUDiscovery bool             //H: keep the configured MTU (see h_mtu_discovery.go)
+	PeerFallback        []netip.AddrPort //H: the only peer's other addresses (see h_peer_fallback.go)
 }
 
 type PeerOptions struct {

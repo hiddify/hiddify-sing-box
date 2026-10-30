@@ -11,39 +11,31 @@ import (
 	"time"
 
 	"github.com/sagernet/sing-box/common/interrupt"
+	"github.com/sagernet/sing-box/hiddify/mtusearch"
 	"github.com/sagernet/sing-tun"
 	"github.com/sagernet/sing-tun/gtcpip/header"
 	N "github.com/sagernet/sing/common/network"
 )
 
-// MTU discovery, for an endpoint that dials through a detour. Its MTU works only when every layer
-// under it carries the tunnel's UDP packets: the detour (another tunnel, as in WARP in WARP, or a
-// proxy) and the network. A packet too large for one of them is lost without a word, and
-// connections stall on their first full-size packet. So when the endpoint starts, and whenever
-// its connection through the detour is made again (the detour's selection changed, the network
-// changed, or the connection was recovered), it sends ICMP echo requests of every size from the
-// smallest MTU to the configured one, all at once, through the tunnel to 1.1.1.1
-// (2606:4700:4700::1111 without an IPv4 address). Each request goes out as one tunnel UDP packet of
-// that size plus the WireGuard headers. The stack's MTU becomes the largest size answered, within
-// about a second. When nothing is answered (a server that drops ICMP, or no route to the target),
-// the MTU stays as configured.
+// MTU discovery. An endpoint's MTU works only when every layer under it carries the tunnel's UDP
+// packets: the network, and the detour when there is one (another tunnel, as in WARP in WARP, or a
+// proxy). A packet too large for one of them is lost without a word, and connections stall on
+// their first full-size packet. So when the endpoint starts, and whenever its path may have changed
+// (the network changed, or its connection through the detour was made again because the detour's
+// selection changed or the connection was recovered), it sends ICMP echo requests of every size
+// from the smallest MTU to the configured one through the tunnel to 1.1.1.1 (2606:4700:4700::1111
+// without an IPv4 address), as package mtusearch says. Each request goes out as one tunnel UDP
+// packet of that size plus the WireGuard headers. The stack's MTU becomes the largest size
+// answered, within about a second. When nothing is answered (a server that drops ICMP, or no route
+// to the target), the MTU stays as configured.
 //
 // A WARP server keeps sending to the old path until the next handshake, which WireGuard starts only
 // after hearing nothing for 15 seconds. So when the path changes, the endpoint drops its session
-// keys and starts a handshake at once, as WireGuard does when a peer's endpoint changes. A TCP connection that began before the MTU was lowered keeps the larger segment size it
-// agreed on: its own larger packets are answered with "packet too big", as a router on the path
-// does, but the server's are lost in the tunnel, and nothing tells the server. So when the MTU is
-// lowered, the TCP connections made through the endpoint before are closed, and apps reconnect.
-
-const (
-	mtuProbeMinIPv4      = 576  // the smallest MTU of IPv4
-	mtuProbeMinIPv6      = 1280 // and of IPv6
-	mtuProbeStep         = 16   // WireGuard pads packets to this, so sizes are tested as sent
-	mtuProbeFirstTimeout = 15 * time.Second
-	mtuProbeTimeout      = time.Second            // for the smallest request, and the most for the others
-	mtuProbeMinTimeout   = 300 * time.Millisecond // the least for the others: 4 round trips of the first answer
-	mtuProbeRounds       = 2
-)
+// keys and starts a handshake at once, as WireGuard does when a peer's endpoint changes. A TCP
+// connection that began before the MTU was lowered keeps the larger segment size it agreed on: its
+// own larger packets are answered with "packet too big", as a router on the path does, but the
+// server's are lost in the tunnel, and nothing tells the server. So when the MTU is lowered, the
+// TCP connections made through the endpoint before are closed, and apps reconnect.
 
 var (
 	mtuProbeTargetIPv4 = netip.MustParseAddr("1.1.1.1")
@@ -220,49 +212,25 @@ func (p *mtuProber) discover(ctx context.Context, handshake bool) {
 	e := p.endpoint
 	stack := e.tunDevice.(*stackDevice)
 	configured := int(e.options.MTU)
-	source, target, smallest := stack.Inet4Address(), mtuProbeTargetIPv4, mtuProbeMinIPv4
+	source, target, smallest := stack.Inet4Address(), mtuProbeTargetIPv4, mtusearch.MinIPv4
 	if !source.IsValid() {
-		source, target, smallest = stack.Inet6Address(), mtuProbeTargetIPv6, mtuProbeMinIPv6
+		source, target, smallest = stack.Inet6Address(), mtuProbeTargetIPv6, mtusearch.MinIPv6
 	}
-	if !source.IsValid() || configured <= smallest {
+	if !source.IsValid() {
 		return
 	}
-	// the smallest request, again each second until it is answered: the first ones may go before
-	// the device is up or the handshake is done
-	answered := 0
-	timeout := mtuProbeTimeout
-	for deadline, renew := time.Now().Add(mtuProbeFirstTimeout), true; answered == 0 && time.Now().Before(deadline) && ctx.Err() == nil; renew = false {
+	working := mtusearch.Search(ctx, smallest, configured, func(first bool) {
 		if handshake {
-			p.startHandshake(renew)
+			p.startHandshake(first)
 		}
-		sent := time.Now()
-		answered = p.round(ctx, source, target, []int{smallest}, mtuProbeTimeout)
-		timeout = min(mtuProbeTimeout, max(mtuProbeMinTimeout, 4*time.Since(sent)))
-	}
-	if answered == 0 {
-		if ctx.Err() == nil {
-			e.options.Logger.Debug("MTU discovery: no answer from ", target, " through the tunnel; the MTU stays ", configured)
-		}
+	}, func(ctx context.Context, sizes []int, timeout time.Duration) int {
+		return p.round(ctx, source, target, sizes, timeout)
+	})
+	if ctx.Err() != nil {
 		return
 	}
-	working := smallest
-	for range mtuProbeRounds {
-		var sizes []int
-		for size := (working/mtuProbeStep + 1) * mtuProbeStep; size < configured; size += mtuProbeStep {
-			sizes = append(sizes, size)
-		}
-		if working < configured {
-			sizes = append(sizes, configured)
-		}
-		if len(sizes) == 0 {
-			break
-		}
-		working = max(working, p.round(ctx, source, target, sizes, timeout))
-		if working == configured || ctx.Err() != nil {
-			break
-		}
-	}
-	if ctx.Err() != nil {
+	if working == 0 {
+		e.options.Logger.Debug("MTU discovery: no answer from ", target, " through the tunnel; the MTU stays ", configured)
 		return
 	}
 	lowered := working < stack.router.memoryTun.MTU()

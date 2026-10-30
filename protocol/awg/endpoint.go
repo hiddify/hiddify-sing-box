@@ -54,6 +54,10 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 	if err != nil {                           //H
 		return nil, err //H
 	} //H
+	fallback, err := peerFallback(options) //H
+	if err != nil {                        //H
+		return nil, err //H
+	} //H
 	// Check if any peer has a domain address
 	remoteIsDomain := common.Any(options.Peers, func(peer option.AwgPeerOptions) bool {
 		return !M.ParseAddr(peer.Address).IsValid()
@@ -117,8 +121,10 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 		AllowedIps:       allowedIps.Prefixes(),
 		ExcludedIps:      excludedIps.Prefixes(),
 		MTU:              options.MTU,
-		Peer:             singlePeer(options.Peers), //H: one packet connection to the peer
-		Reserved:         reserved,                  //H
+		Peer:             singlePeer(options.Peers),                            //H: one packet connection to the peer
+		Reserved:         reserved,                                             //H
+		MTUDiscovery:     options.MTUDiscovery == nil || *options.MTUDiscovery, //H
+		Fallback:         fallback,                                             //H
 	})
 	if err != nil {
 		return nil, err

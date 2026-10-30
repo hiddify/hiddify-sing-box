@@ -20,6 +20,10 @@ type AwgEndpointOptions struct {
 	Awg              AwgOptions                       `json:"awg,omitempty"`
 	Peers            []AwgPeerOptions                 `json:"peers,omitempty"`
 	DialerOptions
+
+	// MTUDiscovery and FallbackAddress are those of the wireguard endpoint. //H
+	MTUDiscovery    *bool                          `json:"mtu_discovery,omitempty"`    //H: on unless false
+	FallbackAddress badoption.Listable[netip.Addr] `json:"fallback_address,omitempty"` //H
 }
 
 type AwgOptions struct {

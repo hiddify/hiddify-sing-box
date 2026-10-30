@@ -29,6 +29,9 @@ type DeviceOpts struct {
 	Peer netip.AddrPort
 	// Reserved, when set, are the peer's reserved bytes (WARP).
 	Reserved *Reserved
+	// MTUDiscovery and Fallback, the peer's other addresses: see h_path.go. //H
+	MTUDiscovery bool             //H
+	Fallback     []netip.AddrPort //H
 }
 
 type Device struct {
@@ -37,6 +40,7 @@ type Device struct {
 	bind      conn.Bind
 	logger    *device.Logger
 	ipcConfig string
+	path      *devicePath //H: MTU discovery and fallback addresses
 }
 
 func NewDevice(ctx context.Context, logger logger.ContextLogger, dial network.Dialer, ipcConfig string, opts DeviceOpts) (*Device, error) {
@@ -71,6 +75,7 @@ func NewDevice(ctx context.Context, logger logger.ContextLogger, dial network.Di
 		bind:      newBind(ctx, dial, opts.Peer, opts.Reserved),
 		logger:    awgLogger,
 		ipcConfig: ipcConfig,
+		path:      newDevicePath(ctx, logger, tun, opts), //H
 	}, nil
 }
 
@@ -88,7 +93,11 @@ func (d *Device) Start(stage adapter.StartStage) error {
 		return E.Cause(err, "tun start")
 	}
 
-	return d.awgDevice.Up()
+	if err := d.awgDevice.Up(); err != nil { //H
+		return err //H
+	} //H
+	d.path.start(d) //H
+	return nil      //H
 }
 
 func (d *Device) IsUnderLoad() bool {
@@ -99,6 +108,7 @@ func (d *Device) IsUnderLoad() bool {
 }
 
 func (d *Device) Close() error {
+	d.path.close() //H
 	if d.awgDevice != nil {
 		// H: close the detour's connections first: a send stuck on a stalled detour holds the
 		// device's network lock, which device.Close needs to close the bind //H
@@ -111,7 +121,8 @@ func (d *Device) Close() error {
 }
 
 func (d *Device) DialContext(ctx context.Context, network string, destination metadata.Socksaddr) (net.Conn, error) {
-	return d.tun.DialContext(ctx, network, destination)
+	conn, err := d.tun.DialContext(ctx, network, destination) //H
+	return d.path.track(network, conn, err)                   //H: closed when discovery lowers the MTU
 }
 
 func (d *Device) ListenPacket(ctx context.Context, destination metadata.Socksaddr) (net.PacketConn, error) {

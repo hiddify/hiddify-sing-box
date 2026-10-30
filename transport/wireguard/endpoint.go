@@ -43,7 +43,8 @@ type Endpoint struct {
 	stateAccess    sync.Mutex
 	suspended      atomic.Bool
 	networkPaused  bool
-	mtuProbe       *mtuProber //H
+	mtuProbe       *mtuProber    //H
+	fallback       *peerFallback //H
 }
 
 func NewEndpoint(options EndpointOptions) (*Endpoint, error) {
@@ -198,7 +199,7 @@ func (e *Endpoint) Start(postStart bool) error {
 			}
 		}
 		clientBind := NewClientBind(e.options.Context, e.options.Logger, e.options.Dialer, isConnect, connectAddr, reserved) //H
-		clientBind.onReconnect = func() { e.mtuProbe.pathChanged() }                                                         //H: MTU discovery
+		clientBind.onReconnect = e.pathChanged                                                                               //H: MTU discovery, fallback
 		bind = clientBind                                                                                                    //H
 	}
 	if isUDPListener || len(e.peers) > 1 {
@@ -220,7 +221,8 @@ func (e *Endpoint) Start(postStart bool) error {
 			e.options.Logger.Error(fmt.Sprintf(strings.ToLower(format), args...))
 		},
 	}
-	e.setupMTUDiscovery() //H
+	e.setupMTUDiscovery()                 //H
+	e.fallback = newPeerFallback(e, bind) //H
 	wgDevice := device.NewDevice(e.options.Context, e.returnDevice, bind, logger, e.options.Workers)
 	wgDevice.HNoise = e.options.Noise //H
 	domainPeers := make(map[device.NoisePublicKey]*peerConfig)
@@ -278,7 +280,8 @@ func (e *Endpoint) Start(postStart bool) error {
 		e.pauseCallback = e.pause.RegisterCallback(e.onPauseUpdated)
 	}
 	e.allowedIPs = wgDevice.AllowedIPs()
-	e.mtuProbe.start() //H
+	e.mtuProbe.start()                  //H
+	e.fallback.Start(e.options.Context) //H
 	return nil
 }
 
@@ -349,7 +352,8 @@ func (e *Endpoint) Close() error {
 		e.egressPool.Close()
 		e.egressPool = nil
 	}
-	e.mtuProbe.stop() //H
+	e.mtuProbe.stop()  //H
+	e.fallback.Close() //H
 	e.stateAccess.Lock()
 	wgDevice := e.device.Swap(nil)
 	if wgDevice != nil {
@@ -375,7 +379,7 @@ func (e *Endpoint) BindUpdate() error {
 	if wgDevice == nil {
 		return nil
 	}
-	e.mtuProbe.pathChanged() //H: the path may differ on the new network
+	e.pathChanged() //H: the path may differ on the new network
 	return wgDevice.BindUpdate()
 }
 

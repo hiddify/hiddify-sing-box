@@ -27,6 +27,8 @@ type bind_adapter struct {
 	// refused the connections to 0.0.0.0, and the endpoint never started.
 	peer     netip.AddrPort
 	reserved *Reserved
+	opens    int    //H: see h_path.go
+	onReopen func() //H
 }
 
 func newBind(ctx context.Context, dial N.Dialer, peer netip.AddrPort, reserved *Reserved) conn.Bind {
@@ -68,6 +70,7 @@ func (b *bind_adapter) Open(port uint16) (fns []conn.ReceiveFunc, actualPort uin
 	if b.conn4 != nil || b.conn6 != nil {
 		return nil, 0, conn.ErrBindAlreadyOpen
 	}
+	b.noteOpen() //H: a path change, after the first
 
 	if b.peer.IsValid() {
 		peerConn, err := b.connect(b.peer.Addr(), b.peer.Port())

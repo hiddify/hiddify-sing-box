@@ -28,6 +28,9 @@ type WireGuardEndpointOptions struct {
 	AWG   *AwgOptions          `json:"awg,omitempty"`   //H
 	// MTUDiscovery lowers the MTU to what gets through the tunnel; on unless false. //H
 	MTUDiscovery *bool `json:"mtu_discovery,omitempty"` //H
+	// FallbackAddress are tried in turn, on the peer's port, when the only peer's address gets no //H
+	// handshake. //H
+	FallbackAddress badoption.Listable[netip.Addr] `json:"fallback_address,omitempty"` //H
 }
 
 type WireGuardPeer struct {

@@ -96,6 +96,10 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 	} else {
 		udpTimeout = C.UDPTimeout
 	}
+	fallback, err := peerFallback(options) //H
+	if err != nil {                        //H
+		return nil, err //H
+	} //H
 	networkManager := service.FromContext[adapter.NetworkManager](ctx)
 	wgEndpoint, err := wireguard.NewEndpoint(wireguard.EndpointOptions{
 		Context:         ctx,
@@ -145,8 +149,9 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 		}),
 		Workers: options.Workers,
 		Noise:   options.Noise,
-		// H: discovery is for a tunnel through a detour, where the layers under it limit the MTU
-		DisableMTUDiscovery: options.Detour == "" || options.MTUDiscovery != nil && !*options.MTUDiscovery, //H
+		// H: MTU discovery and the peer's fallback addresses, see transport/wireguard
+		DisableMTUDiscovery: options.MTUDiscovery != nil && !*options.MTUDiscovery, //H: on unless false
+		PeerFallback:        fallback,                                              //H
 	})
 	if err != nil {
 		return nil, err
