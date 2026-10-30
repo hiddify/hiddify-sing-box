@@ -46,8 +46,8 @@ accepts.
 **Account.** At start, the outbound needs a profile: a MASQUE key pair, the tunnel addresses and
 Cloudflare's endpoints. It takes the first one it finds:
 
-1. The saved profile in the cache file, when `cache_file.store_masque_config` is on and
-   `profile.recreate` is off. It is saved under `unique_identifier`, or under the tag when that
+1. The saved profile in the cache file, unless `cache_file.store_masque_config` is `false` (it is
+   on by default), and when `profile.recreate` is off. It is saved under `unique_identifier`, or under the tag when that
    is empty.
 2. A new one: it registers a free WARP device, or uses the device given by `profile.id` and
    `profile.auth_token`, and enrolls a new MASQUE key on it. The requests go through
@@ -55,7 +55,7 @@ Cloudflare's endpoints. It takes the first one it finds:
    1 s, then after twice as long each time, up to every 30 s, until it works or the outbound
    closes.
 
-A new profile is saved in the cache file when `store_masque_config` is on, so later starts don't
+A new profile is saved in the cache file unless `store_masque_config` is `false`, so later starts don't
 register again.
 
 **HTTP version.** `vhttp` chooses how the tunnel connects:

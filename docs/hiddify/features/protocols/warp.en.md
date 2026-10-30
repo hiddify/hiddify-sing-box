@@ -43,7 +43,7 @@ checks the whole flow can still find it.
 AmneziaWG one (a WireGuard device of its own) and a MASQUE one (a device given a MASQUE key). In
 `awg` mode alone, a saved WireGuard device is taken when there is no AmneziaWG one, so the device
 of an earlier version keeps working. Every device registered is kept
-in one pool in the cache file (key `warp-profiles`) when `cache_file.store_warp_config` is on,
+in one pool in the cache file (key `warp-profiles`) unless `cache_file.store_warp_config` is `false` (it is on by default),
 shared by all warp endpoints. Each endpoint leases its own devices: two endpoints on one device
 would push each other off Cloudflare. It takes, in order:
 
