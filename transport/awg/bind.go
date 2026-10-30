@@ -25,14 +25,16 @@ type bind_adapter struct {
 	// peer, when valid, is the only peer: the bind opens one packet connection to it instead of
 	// two to any address. A proxy whose UDP needs a destination (an HTTP proxy's UDP, for one)
 	// refused the connections to 0.0.0.0, and the endpoint never started.
-	peer netip.AddrPort
+	peer     netip.AddrPort
+	reserved *Reserved
 }
 
-func newBind(ctx context.Context, dial N.Dialer, peer netip.AddrPort) conn.Bind {
+func newBind(ctx context.Context, dial N.Dialer, peer netip.AddrPort, reserved *Reserved) conn.Bind {
 	return &bind_adapter{
-		ctx:    ctx,
-		dialer: dial,
-		peer:   peer,
+		ctx:      ctx,
+		dialer:   dial,
+		peer:     peer,
+		reserved: reserved,
 	}
 }
 
@@ -52,6 +54,7 @@ func (b *bind_adapter) receive(c net.PacketConn) conn.ReceiveFunc {
 			return 0, E.Cause(err, "parse endpoint")
 		}
 
+		b.reserved.clear(packets[0][:n])
 		sizes[0] = n
 		eps[0] = bindEp
 		return 1, nil
@@ -159,6 +162,7 @@ func (b *bind_adapter) Send(bufs [][]byte, ep conn.Endpoint) error {
 	}
 
 	for _, buf := range bufs {
+		b.reserved.write(buf)
 		if _, err := conn.WriteTo(buf, udpAddr); err != nil {
 			return err
 		}

@@ -94,6 +94,9 @@ type AwgPeerOptions struct {
 	PresharedKey                string                           `json:"preshared_key,omitempty"`
 	AllowedIPs                  badoption.Listable[netip.Prefix] `json:"allowed_ips,omitempty"`
 	PersistentKeepaliveInterval uint16                           `json:"persistent_keepalive_interval,omitempty"`
+	// Reserved are the 3 bytes written into bytes 1–3 of each message, as WARP needs (see
+	// AwgOptions.ReservedMessageTypes).
+	Reserved []uint8 `json:"reserved,omitempty"`
 }
 
 func (r AwgRange) DescribeSchema(builder schema.Builder) (*schema.Node, error) {

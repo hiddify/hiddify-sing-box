@@ -27,6 +27,8 @@ type DeviceOpts struct {
 	MTU              uint32
 	// Peer is the address of the only peer, when it has one: the bind then connects to it.
 	Peer netip.AddrPort
+	// Reserved, when set, are the peer's reserved bytes (WARP).
+	Reserved *Reserved
 }
 
 type Device struct {
@@ -66,7 +68,7 @@ func NewDevice(ctx context.Context, logger logger.ContextLogger, dial network.Di
 
 	return &Device{
 		tun:       tun,
-		bind:      newBind(ctx, dial, opts.Peer),
+		bind:      newBind(ctx, dial, opts.Peer, opts.Reserved),
 		logger:    awgLogger,
 		ipcConfig: ipcConfig,
 	}, nil
