@@ -84,6 +84,30 @@ The endpoint now lets the system fragment its UDP packets, as official WireGuard
 "don't fragment" flag was set, so a packet larger than the path MTU (for example WireGuard inside
 another tunnel) was dropped. Set `"udp_fragment": false` to get the old behavior.
 
+### MTU discovery
+
+An endpoint with a `detour` (WARP in WARP, or WireGuard through a proxy) works only when every layer
+under it carries its packets. A packet too large for one of them is lost without a word, and
+connections stall on their first full-size packet.
+
+- When the endpoint starts, and whenever its connection through the detour is made again (the
+  detour's selector switched, the network changed, or the socket was recovered), it sends ICMP
+  echo requests through the tunnel to `1.1.1.1` (`2606:4700:4700::1111` without an IPv4 address):
+  one of each size from 576 (1280 for IPv6) to `mtu`, in steps of 16, all at once. Each goes out
+  as one tunnel packet of that size. The largest size answered becomes the tunnel's MTU, usually
+  within a second.
+- On a new path it first drops its session keys and starts a handshake, as WireGuard does when a
+  peer's endpoint changes. Otherwise the server keeps sending to the old path for about 15
+  seconds.
+- When the MTU is lowered, the TCP connections made through the endpoint before are closed, so apps
+  reconnect with packets that fit: the server side of such a connection would keep sending
+  packets that are lost. A packet larger than the MTU is answered with ICMP "packet too big", as
+  a router on the path does.
+- When even the smallest request has no answer (a server that drops ICMP, or no route to the
+  target), the MTU stays as configured. Discovery never raises the MTU above `mtu`, so set `mtu`
+  to the largest value the first layer can carry.
+- It is off for an endpoint without a `detour`, and with `"system": true`.
+
 ## Configuration
 
 ```json
@@ -145,6 +169,12 @@ A range is written as a number (`3`), a string (`"2-4"` or `"3"`), or an object
 | Field | Type | Default | Meaning |
 |---|---|---|---|
 | `udp_fragment` | bool | `true` | Let the system fragment WireGuard UDP packets. Upstream's default for this endpoint is `false`. |
+
+### Endpoint field
+
+| Field | Type | Default | Meaning |
+|---|---|---|---|
+| `mtu_discovery` | bool | `true` with a `detour` | Find the MTU that gets through the layers under the tunnel (see MTU discovery). `false` keeps `mtu`. |
 
 ### Notes
 
