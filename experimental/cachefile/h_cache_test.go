@@ -23,16 +23,17 @@ func openTestCache(t *testing.T, options option.CacheFileOptions) *CacheFile {
 func TestH_CacheFileWARPMASQUEFlags(t *testing.T) {
 	dir := t.TempDir()
 	c := New(context.Background(), log.NewNOPFactory().NewLogger("cache"), option.CacheFileOptions{Path: filepath.Join(dir, "a.db")})
-	require.False(t, c.StoreWARPConfig())
-	require.False(t, c.StoreMASQUEConfig())
+	require.True(t, c.StoreWARPConfig(), "stored unless turned off")
+	require.True(t, c.StoreMASQUEConfig(), "stored unless turned off")
 
+	off := false
 	c = New(context.Background(), log.NewNOPFactory().NewLogger("cache"), option.CacheFileOptions{
 		Path:              filepath.Join(dir, "b.db"),
-		StoreWARPConfig:   true,
-		StoreMASQUEConfig: true,
+		StoreWARPConfig:   &off,
+		StoreMASQUEConfig: &off,
 	})
-	require.True(t, c.StoreWARPConfig())
-	require.True(t, c.StoreMASQUEConfig())
+	require.False(t, c.StoreWARPConfig())
+	require.False(t, c.StoreMASQUEConfig())
 
 	var _ adapter.CacheFile = c
 }

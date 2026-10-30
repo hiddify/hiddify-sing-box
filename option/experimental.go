@@ -25,8 +25,8 @@ type CacheFileOptions struct {
 	CacheID           string                   `json:"cache_id,omitempty"`
 	StoreFakeIP       bool                     `json:"store_fakeip,omitempty"`
 	StoreDNS          bool                     `json:"store_dns,omitempty"`
-	StoreWARPConfig   bool                     `json:"store_warp_config,omitempty"`   //H
-	StoreMASQUEConfig bool                     `json:"store_masque_config,omitempty"` //H
+	StoreWARPConfig   *bool                    `json:"store_warp_config,omitempty"`   //H: on unless false
+	StoreMASQUEConfig *bool                    `json:"store_masque_config,omitempty"` //H: on unless false
 	BufferSize        *byteformats.MemoryBytes `json:"buffer_size,omitempty"`
 	FlushInterval     badoption.Duration       `json:"flush_interval,omitempty"`
 

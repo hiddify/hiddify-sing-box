@@ -117,8 +117,8 @@ func New(ctx context.Context, logger logger.Logger, options option.CacheFileOpti
 		cacheIDText:       options.CacheID,
 		storeFakeIP:       options.StoreFakeIP,
 		storeRDRC:         storeRDRC,
-		storeWARPConfig:   options.StoreWARPConfig,
-		storeMASQUEConfig: options.StoreMASQUEConfig,
+		storeWARPConfig:   storedUnlessOff(options.StoreWARPConfig),   //H
+		storeMASQUEConfig: storedUnlessOff(options.StoreMASQUEConfig), //H
 		storeDNS:          options.StoreDNS,
 		rdrcTimeout:       rdrcTimeout,
 		bufferSize:        bufferSize,

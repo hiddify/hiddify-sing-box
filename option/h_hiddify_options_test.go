@@ -78,13 +78,15 @@ func TestH_TunnelEndpointUsers(t *testing.T) {
 func TestH_CacheFileAndExperimental(t *testing.T) {
 	t.Parallel()
 	experimental := hRoundTrip[ExperimentalOptions](t, `{
-		"cache_file":{"enabled":true,"store_warp_config":true,"store_masque_config":true},
+		"cache_file":{"enabled":true,"store_warp_config":false,"store_masque_config":true},
 		"unified_delay":{"enabled":true},
 		"monitoring":{"interval":"30s","urls":["https://a.example/generate_204"],"workers":3,"url_test_timeout":"5s"}
 	}`)
 	require.NotNil(t, experimental.CacheFile)
-	require.True(t, experimental.CacheFile.StoreWARPConfig)
-	require.True(t, experimental.CacheFile.StoreMASQUEConfig)
+	require.NotNil(t, experimental.CacheFile.StoreWARPConfig)
+	require.False(t, *experimental.CacheFile.StoreWARPConfig)
+	require.NotNil(t, experimental.CacheFile.StoreMASQUEConfig)
+	require.True(t, *experimental.CacheFile.StoreMASQUEConfig)
 	require.NotNil(t, experimental.UnifiedDelay)
 	require.True(t, experimental.UnifiedDelay.Enabled)
 	require.NotNil(t, experimental.Monitoring)
