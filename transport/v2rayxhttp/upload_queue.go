@@ -27,13 +27,16 @@ type uploadQueue struct {
 	writeCloseMutex sync.Mutex
 	heap            uploadHeap
 	nextSeq         uint64
-	closed          atomic.Bool // read by Read without writeCloseMutex
+	closed          atomic.Bool   // read by Read without writeCloseMutex
+	closing         chan struct{} // closed by Close before it waits for writeCloseMutex
+	closeOnce       sync.Once
 	maxPackets      int
 }
 
 func NewUploadQueue(maxPackets int) *uploadQueue {
 	return &uploadQueue{
 		pushedPackets: make(chan Packet, maxPackets),
+		closing:       make(chan struct{}),
 		heap:          uploadHeap{},
 		nextSeq:       0,
 		maxPackets:    maxPackets,
@@ -49,14 +52,20 @@ func (h *uploadQueue) Push(p Packet) error {
 	if h.nomore {
 		return E.New("h.reader already exists")
 	}
+	// a full queue that nobody reads would hold writeCloseMutex here, and Close with it, forever
+	select {
+	case h.pushedPackets <- p:
+	case <-h.closing:
+		return E.New("packet queue closed")
+	}
 	if p.Reader != nil {
 		h.nomore = true
 	}
-	h.pushedPackets <- p
 	return nil
 }
 
 func (h *uploadQueue) Close() error {
+	h.closeOnce.Do(func() { close(h.closing) }) // a blocked Push gives up the mutex
 	h.writeCloseMutex.Lock()
 	defer h.writeCloseMutex.Unlock()
 	if !h.closed.Load() {

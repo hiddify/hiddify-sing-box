@@ -331,6 +331,17 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		if sessionId != "" { // if not stream-one
 			conn.reader = currentSession.uploadQueue
 		}
+		// the handler reads the request header before it returns, from the upload queue, which
+		// only closing the connection ends: close it as soon as the client goes away, or a client
+		// that never uploads keeps this handler and its connection forever (the session reaper is
+		// off once the GET came)
+		go func() {
+			select {
+			case <-request.Context().Done():
+			case <-httpSC.Wait():
+			}
+			conn.Close()
+		}()
 		s.handler.NewConnectionEx(request.Context(), &conn, sHttp.SourceAddress(request), M.Socksaddr{}, func(it error) {})
 		// "A ResponseWriter may not be used after [Handler.ServeHTTP] has returned."
 		select {
