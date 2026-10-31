@@ -18,6 +18,30 @@ const settleWindow = 30 * time.Second
 // group: a member must be faster by more than this many milliseconds to take the selection.
 const defaultTolerance uint16 = 50
 
+// defaultToleranceRatio is the lowest-delay tolerance_ratio when unset: a member must also be
+// faster by more than this share of the selected member's delay, so a slow server is not left
+// for a few milliseconds and a fast one is not left for a jitter of a tenth.
+const defaultToleranceRatio = 0.1
+
+// measuredDelay is a member's delay as measured, without the cache penalty, for the relative
+// tolerance; a member without a result counts as timed out.
+func measuredDelay(his *adapter.URLTestHistory) uint16 {
+	if his == nil || his.Delay == 0 {
+		return monitoring.TimeoutDelay
+	}
+	return his.Delay
+}
+
+// switchThreshold is how much faster another member must be than the selected one, with the
+// measured delay currentDelay, to take the selection: the larger of the two tolerances.
+func switchThreshold(currentDelay uint16, tolerance uint16, ratio float64) uint32 {
+	relative := uint32(float64(currentDelay) * ratio)
+	if relative > uint32(tolerance) {
+		return relative
+	}
+	return uint32(tolerance)
+}
+
 // memberDead says whether a member's last test failed. A member that has no result yet is
 // not dead: its connections may be fine, and it is tested soon.
 func memberDead(his *adapter.URLTestHistory) bool {

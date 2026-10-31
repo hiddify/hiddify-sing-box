@@ -13,7 +13,8 @@ type LowestDelay struct {
 	outbounds        map[string][]adapter.Outbound
 	udpOutbounds     []adapter.Outbound
 	selectedOutbound map[string]adapter.Outbound
-	tolerance        uint16 // a member takes the selection when faster by more than this
+	tolerance        uint16  // a member takes the selection when faster by more than this ...
+	toleranceRatio   float64 // ... and than this share of the selected member's delay
 
 	mu sync.Mutex
 }
@@ -24,13 +25,18 @@ func NewLowestDelay(outbounds []adapter.Outbound, options option.BalancerOutboun
 	if tolerance == 0 {
 		tolerance = defaultTolerance
 	}
+	ratio := options.ToleranceRatio
+	if ratio <= 0 {
+		ratio = defaultToleranceRatio
+	}
 	return &LowestDelay{
 		outbounds: couts,
 		selectedOutbound: map[string]adapter.Outbound{
 			N.NetworkUDP: couts[N.NetworkUDP][0],
 			N.NetworkTCP: couts[N.NetworkTCP][0],
 		},
-		tolerance: tolerance,
+		tolerance:      tolerance,
+		toleranceRatio: ratio,
 	}
 }
 
@@ -44,7 +50,7 @@ func (s *LowestDelay) Now() string {
 }
 
 // UpdateOutboundsInfo keeps the selected member while it answers, unless another one is faster
-// by more than the tolerance. A selected member that failed its test is left for the fastest
+// by more than the tolerance and than tolerance_ratio of the selected member's delay. A selected member that failed its test is left for the fastest
 // live one; when no member is live, the selection stays.
 func (s *LowestDelay) UpdateOutboundsInfo(history map[string]*adapter.URLTestHistory) bool {
 	min, delays := getMinDelay(s.outbounds, history)
@@ -57,7 +63,8 @@ func (s *LowestDelay) UpdateOutboundsInfo(history map[string]*adapter.URLTestHis
 			continue
 		}
 		currentDelay := getTagDelay(current.Tag(), history)
-		if currentDelay < monitoring.TimeoutDelay && uint32(delays[net])+uint32(s.tolerance) >= uint32(currentDelay) {
+		threshold := switchThreshold(measuredDelay(history[current.Tag()]), s.tolerance, s.toleranceRatio)
+		if currentDelay < monitoring.TimeoutDelay && uint32(delays[net])+threshold >= uint32(currentDelay) {
 			continue
 		}
 		s.selectedOutbound[net] = best

@@ -60,6 +60,29 @@ func TestH_BalancerLowestDelayTolerance(t *testing.T) {
 	require.Equal(t, "a", s.Now())
 }
 
+// The relative tolerance: a member must also be faster by more than tolerance_ratio of the
+// selected member's delay (a tenth when unset), so a slow server is not left for a few
+// milliseconds of jitter.
+func TestH_BalancerLowestDelayToleranceRatio(t *testing.T) {
+	require.Equal(t, uint32(50), switchThreshold(100, 50, 0.1), "the fixed tolerance when it is larger")
+	require.Equal(t, uint32(100), switchThreshold(1000, 50, 0.1), "the share when it is larger")
+	require.Equal(t, uint32(300), switchThreshold(1000, 50, 0.3))
+
+	s := NewLowestDelay(outs(newFake("a"), newFake("b")), option.BalancerOutboundOptions{Tolerance: 50})
+	s.UpdateOutboundsInfo(map[string]*adapter.URLTestHistory{"a": his(1000), "b": his(2000)})
+	require.Equal(t, "a", s.Now())
+	require.False(t, s.UpdateOutboundsInfo(map[string]*adapter.URLTestHistory{"a": his(1000), "b": his(920)}), "80 ms is more than the tolerance but less than a tenth")
+	require.Equal(t, "a", s.Now())
+	require.False(t, s.UpdateOutboundsInfo(map[string]*adapter.URLTestHistory{"a": his(1000), "b": his(900)}), "exactly a tenth is not enough")
+	require.True(t, s.UpdateOutboundsInfo(map[string]*adapter.URLTestHistory{"a": his(1000), "b": his(899)}))
+	require.Equal(t, "b", s.Now())
+
+	s = NewLowestDelay(outs(newFake("a"), newFake("b")), option.BalancerOutboundOptions{Tolerance: 50, ToleranceRatio: 0.3})
+	s.UpdateOutboundsInfo(map[string]*adapter.URLTestHistory{"a": his(1000), "b": his(2000)})
+	require.False(t, s.UpdateOutboundsInfo(map[string]*adapter.URLTestHistory{"a": his(1000), "b": his(750)}), "the option's share")
+	require.True(t, s.UpdateOutboundsInfo(map[string]*adapter.URLTestHistory{"a": his(1000), "b": his(699)}))
+}
+
 type fakeCache struct {
 	adapter.CacheFile
 	access sync.Mutex

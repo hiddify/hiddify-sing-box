@@ -4,7 +4,8 @@ import "github.com/sagernet/sing/common/json/badoption"
 
 type BalancerOutboundOptions struct {
 	Outbounds                 []string           `json:"outbounds"`
-	Tolerance                 uint16             `json:"tolerance,omitempty"` // accepted, not used: delay_acceptable_ratio sets what is close enough
+	Tolerance                 uint16             `json:"tolerance,omitempty"`       // lowest-delay: a member takes the selection when faster by more than this many ms (0 is 50) ...
+	ToleranceRatio            float64            `json:"tolerance_ratio,omitempty"` // ... and by more than this share of the selected member's delay (0 is 0.1), whichever is larger
 	InterruptExistConnections bool               `json:"interrupt_exist_connections,omitempty"`
 	Strategy                  string             `json:"strategy,omitempty"`
 	DelayAcceptableRatio      float64            `json:"delay_acceptable_ratio,omitempty"` // members within this times the fastest delay are used; 0 is 2
