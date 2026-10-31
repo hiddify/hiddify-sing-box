@@ -74,10 +74,15 @@ noise در endpointهای `wireguard` و `warp` (`noise.fake_packet`) پیش ا�
 | `dns-www-cloudflare` | ۲ پرس‌وجوی DNS برای `www.cloudflare.com` (A، AAAA)، سپس ۶ بستهٔ junk ۴۳ تا ۱۰۹ بایتی | ترافیک DNS به کلادفلر |
 | `quic-mimic` | یک Initial ضبط‌شده در QUIC (۱۲۱۰ بایت: ۲۷۶ ضبط‌شده، ۹۳۴ تصادفی) و یک بسته با سرآیند کوتاه، سپس ۴ بستهٔ junk ۶۰ تا ۱۹۹ بایتی | یک اتصال QUIC |
 | `sip` | یک `INVITE` در SIP و پاسخ `100 Trying` آن، سپس ۱۰ بستهٔ junk ۴۲ تا ۲۲۴ بایتی | برقراری یک تماس VoIP |
+| `stun` | ۲ درخواست Binding در STUN، هر کدام با شناسهٔ تراکنش تصادفی، سپس ۴ بستهٔ junk ۴۰ تا ۱۲۰ بایتی | کلاینت تماس تصویری یا WebRTC که آدرسش را بررسی می‌کند |
 
 به‌عنوان تنظیم‌های AmneziaWG، قالب‌های یک پیش‌تنظیم به `i1`، `i2`، … و junk آن به `jc`، `jmin`، `jmax`
 تبدیل می‌شوند؛ `quic` به بسته‌های `<qi www.google.com>` تبدیل می‌شود. حالت `awg` بدون تنظیم‌های `awg` از
 `dns-google` استفاده می‌کند.
+
+این پیش‌تنظیم‌ها فقط برای WARP نیستند: هر endpoint از نوع [WireGuard](wireguard-hiddify.fa.md) یکی از آن‌ها را
+به‌عنوان `mode` نویز می‌گیرد (`"mode": "sip"`) و هر endpoint از نوع [AmneziaWG](amneziawg.fa.md) به‌عنوان `ip`
+(`"ip": "sip"`). `dns` و `random` نام کوتاه `dns-google` و `xray-random` هستند.
 
 ### اسکنر endpoint
 

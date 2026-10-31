@@ -329,6 +329,7 @@ from WARP configs that work:
 | `dns-www-cloudflare` | DNS queries for `www.cloudflare.com` (A, AAAA), then 6 junk packets of 43 to 109 bytes |
 | `quic-mimic` | a QUIC Initial and a short-header packet, then 4 junk packets of 60 to 199 bytes |
 | `sip` | a SIP `INVITE` and its `100 Trying`, then 10 junk packets of 42 to 224 bytes |
+| `stun` | 2 STUN Binding Requests, then 4 junk packets of 40 to 120 bytes |
 
 The probe sends what the device sends: the configured noise, or with `awg` its junk and special
 packets.

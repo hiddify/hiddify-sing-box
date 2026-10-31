@@ -160,9 +160,13 @@ never sees the same blob twice.
 
 | Field | Type | Default | Meaning |
 |---|---|---|---|
-| `ip` | string | `""` | The protocol to look like. Only `quic` is supported. |
-| `id` | string | `""` | The domain in the decoy. Required with `quic`. |
+| `ip` | string | `""` | The protocol to look like: `quic`, or the name of a [noise preset](warp-scanner.en.md#noise-presets) such as `sip`, `dns`, `stun`, `random` or `quic-mimic`. |
+| `id` | string | `""` | The domain in the decoy. Required with `quic`; a preset has its own. |
 | `ib` | string | `""` | The client profile: `chrome`, `firefox` or `curl`, accepted for configs written for sing-box-lx. This build sends one browser-like ClientHello for all of them. |
+
+Any other `ip` names a noise preset: its packets fill `i1`, `i2`, … and its junk fills `jc`,
+`jmin` and `jmax` when they are not set, so `"awg": { "ip": "sip" }` alone looks like a VoIP
+call setup.
 
 `ip`, `id` and `ib` replace `i1`: a config with both fails to start. `i2`–`i5` still apply.
 The server needs no change: it ignores the decoy, as it ignores every `i` packet.

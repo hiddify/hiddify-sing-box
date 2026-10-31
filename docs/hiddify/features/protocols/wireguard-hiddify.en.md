@@ -50,6 +50,10 @@ Noise also does not help when UDP is blocked.
 - `packets` are sent first, as they are: templates in the AmneziaWG `i1`–`i5` syntax, such as a
   DNS query (`<r 2><b 0x0100…>`) or a SIP `INVITE`, so the special packets of AmneziaWG configs work
   as plain WireGuard noise too.
+- A `mode` that names a [noise preset](warp-scanner.en.md#noise-presets) (`sip`, `dns`, `stun`,
+  `random`, `quic-mimic`, `dns-cloudflare`, ...) sends that preset: its packets, then its junk.
+  `count`, `size`, `delay` and `sni` set next to it win, and `packets` follow the preset's. `quic`
+  without a `count` sends 2 to 4 Initials, as the `quic` preset.
 - For a peer given by domain, the noise goes to every resolved address of that domain.
 - A noise packet that fails to send is logged and skipped; it never stops the handshake.
 
@@ -160,7 +164,7 @@ connections stall on their first full-size packet.
 | `count` | range | none | How many packets to send. Nothing is sent while this is `0`. |
 | `size` | range | none | Random bytes per packet, in the default mode. Nothing is sent in the default mode while this is `0`. |
 | `delay` | range | `0` | Milliseconds to wait between two fake packets. |
-| `mode` | string | `""` | `""` for random packets after a short header, `"raw"` for random packets with no header, `"quic"` for real QUIC Initial packets. |
+| `mode` | string | `""` | `""` for random packets after a short header, `"raw"` for random packets with no header, `"quic"` for real QUIC Initial packets, or the name of a noise preset: `"sip"`, `"dns"`, `"stun"`, `"random"`, `"quic-mimic"`, `"dns-cloudflare"`, `"dns-www-cloudflare"`. |
 | `packets` | list of strings | none | Templates sent first, in order, in the AmneziaWG `i1`–`i5` syntax: `<b 0xHEX>`, `<r N>`, `<rc N>`, `<rd N>`, `<t>`, `<qi SNI>`. A template that cannot be built fails the config. |
 | `sni` | string | `"www.google.com"` | Server name in the QUIC ClientHello. Only used with `"mode": "quic"`. |
 | `header` | list of bytes | none | Default mode only: each packet starts with one of these bytes, picked at random. Write it as numbers, such as `[192, 193, 194]`, or as a base64 string. |

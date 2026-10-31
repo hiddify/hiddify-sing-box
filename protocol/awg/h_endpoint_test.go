@@ -319,11 +319,25 @@ func TestH_GenIpcConfigMasquerade(t *testing.T) {
 		{IP: "quic"},                                    // no domain
 		{IP: "quic", ID: "a.com> <b 0x00"},              // a domain that would end the tag
 		{IP: "quic", ID: "example.com", I1: "<r 10>"},   // with i1
-		{IP: "dns", ID: "example.com"},                  // not implemented
+		{IP: "telnet"},                                  // neither quic nor a noise preset
 		{IP: "quic", ID: "example.com", IB: "netscape"}, // unknown profile
 	} {
 		_, err := genIpcConfig(option.AwgEndpointOptions{PrivateKey: hKey(t).String(), Awg: invalid}, nil)
 		require.Error(t, err, "%+v", invalid)
+	}
+}
+
+// ip naming a noise preset fills i1–i5 and the junk, and the device accepts them
+func TestH_GenIpcConfigMasqueradePreset(t *testing.T) {
+	for _, name := range []string{"dns", "sip", "stun", "random", "quic-mimic"} {
+		options := option.AwgEndpointOptions{PrivateKey: hKey(t).String(), Awg: option.AwgOptions{IP: name}}
+		ipc, err := genIpcConfig(options, nil)
+		require.NoError(t, err, name)
+		require.Contains(t, ipc, "\njc=", name)
+		if name != "random" {
+			require.Contains(t, ipc, "\ni1=<", name)
+		}
+		require.NoError(t, hApplyIpc(t, ipc), name)
 	}
 }
 

@@ -225,6 +225,7 @@ WARP شما را با WireGuard، با AmneziaWG وقتی `awg` را تنظیم 
 | `dns-www-cloudflare` | پرس‌وجوهای DNS برای `www.cloudflare.com` (A، AAAA)، سپس ۶ بستهٔ junk ۴۳ تا ۱۰۹ بایتی |
 | `quic-mimic` | یک Initial در QUIC و یک بسته با سرآیند کوتاه، سپس ۴ بستهٔ junk ۶۰ تا ۱۹۹ بایتی |
 | `sip` | یک `INVITE` در SIP و پاسخ `100 Trying` آن، سپس ۱۰ بستهٔ junk ۴۲ تا ۲۲۴ بایتی |
+| `stun` | ۲ درخواست Binding در STUN، سپس ۴ بستهٔ junk ۴۰ تا ۱۲۰ بایتی |
 
 probe همان چیزی را می‌فرستد که دستگاه می‌فرستد: noise پیکربندی‌شده، یا با `awg` بسته‌های junk و ویژهٔ آن.
 

@@ -70,10 +70,15 @@ WireGuard noise and as AmneziaWG settings.
 | `dns-www-cloudflare` | 2 DNS queries for `www.cloudflare.com` (A, AAAA), then 6 junk packets of 43 to 109 bytes | DNS traffic to Cloudflare |
 | `quic-mimic` | a recorded QUIC Initial (1,210 bytes: 276 recorded, 934 random) and a short-header packet, then 4 junk packets of 60 to 199 bytes | a QUIC connection |
 | `sip` | a SIP `INVITE` and its `100 Trying` answer, then 10 junk packets of 42 to 224 bytes | a VoIP call setup |
+| `stun` | 2 STUN Binding Requests, each with a random transaction id, then 4 junk packets of 40 to 120 bytes | a video call or WebRTC client checking its address |
 
 As AmneziaWG settings, a preset's templates become `i1`, `i2`, … and its junk `jc`, `jmin`,
 `jmax`; `quic` becomes `<qi www.google.com>` packets. `awg` mode without `awg` settings uses
 `dns-google`.
+
+The presets are not only for WARP: any [WireGuard](wireguard-hiddify.en.md) endpoint takes one
+as its noise `mode` (`"mode": "sip"`), and any [AmneziaWG](amneziawg.en.md) endpoint as its `ip`
+(`"ip": "sip"`). `dns` and `random` are short for `dns-google` and `xray-random`.
 
 ### Endpoint scanner
 
