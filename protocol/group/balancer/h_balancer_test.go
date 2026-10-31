@@ -109,8 +109,8 @@ func TestH_BalancerDialSetsRealOutbound(t *testing.T) {
 	require.Equal(t, int32(1), b.dialed.Load())
 	require.Equal(t, int32(0), a.dialed.Load())
 
-	// interrupting the group closes tracked connections
-	lb.interruptGroup.Interrupt(true)
+	// interrupting the member's group closes its tracked connections
+	lb.memberGroup("b").Interrupt(true)
 	require.Eventually(t, func() bool {
 		_, werr := conn.Write([]byte{1})
 		return werr != nil

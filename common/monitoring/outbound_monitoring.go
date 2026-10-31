@@ -167,7 +167,11 @@ func (m *OutboundMonitoring) OutboundsHistory(groupTag string) map[string]*adapt
 
 	histories := make(map[string]*adapter.URLTestHistory)
 
-	grp, ok := m.reg().groups[groupTag]
+	registry := m.reg()
+	if registry == nil { // before Start
+		return histories
+	}
+	grp, ok := registry.groups[groupTag]
 	if !ok {
 		return histories
 	}
@@ -925,6 +929,9 @@ func (m *OutboundMonitoring) collectCycleTargets() []string {
 		if state.invalid || time.Since(state.history.Time) >= m.mainInterval {
 			tags = append(tags, tag)
 			delays[tag] = state.history.Delay
+			if delays[tag] == 0 { // untested: after every member with a result, cached or not
+				delays[tag] = TimeoutDelay
+			}
 		}
 		state.mu.Unlock()
 	}

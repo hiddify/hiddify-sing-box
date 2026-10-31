@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/netip"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -56,6 +57,9 @@ type Balancer struct {
 	close             chan struct{}
 	closeOnce         sync.Once
 	interruptGroup    *interrupt.Group
+	members           map[string]*interrupt.Group // the connections of each member
+	dead              map[string]bool             // the members whose last test failed
+	settled           atomic.Bool                 // the connections of the first choice were moved
 }
 
 func NewLoadBalance(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.BalancerOutboundOptions) (adapter.Outbound, error) {
@@ -99,6 +103,12 @@ func (s *Balancer) Start() error {
 		}
 		outbounds = append(outbounds, detour)
 	}
+	s.availbleOutbounds = outbounds
+	s.members = make(map[string]*interrupt.Group, len(outbounds))
+	s.dead = make(map[string]bool, len(outbounds))
+	for _, detour := range outbounds {
+		s.members[detour.Tag()] = interrupt.NewGroup()
+	}
 	if s.options.Strategy == "" {
 		s.options.Strategy = StrategyRoundRobin
 	}
@@ -120,6 +130,9 @@ func (s *Balancer) Start() error {
 	default:
 		return E.New("unknown load balance strategy: ", s.options.Strategy)
 	}
+	if s.monitor != nil {
+		s.strategyFn.UpdateOutboundsInfo(s.monitor.OutboundsHistory(s.Tag())) // the cached results choose the first member
+	}
 
 	return nil
 }
@@ -137,6 +150,9 @@ func (s *Balancer) worker() {
 		return
 	}
 	defer s.monitor.UnsubscribeGroup(s.Tag(), observer)
+	settle := time.NewTimer(settleWindow)
+	defer settle.Stop()
+	settling := false
 
 	for {
 		select {
@@ -145,14 +161,17 @@ func (s *Balancer) worker() {
 
 		case <-s.ctx.Done():
 			return
+		case <-settle.C:
+			settling = true
+			s.settle(s.monitor.OutboundsHistory(s.Tag()))
 		case _, ok := <-observer:
 			if !ok {
 				return
 			}
 			outbounds := s.monitor.OutboundsHistory(s.Tag())
-			if s.strategyFn.UpdateOutboundsInfo(outbounds) {
-				s.interruptGroup.Interrupt(s.interruptExternalConnections)
-				s.monitor.SignalChange(s.Tag()) //H: what follows the group learns the new member at once
+			s.update(outbounds)
+			if settling {
+				s.settle(outbounds)
 			}
 
 		}
@@ -183,6 +202,8 @@ func (s *Balancer) Selected(network string) adapter.Outbound {
 	return outbound
 }
 
+// AttachConnection tracks a connection of the route that cannot be attributed to a member; the
+// member's own connection under it is tracked by its group, and closing that closes this one.
 func (s *Balancer) AttachConnection(closer io.Closer) func() {
 	return s.interruptGroup.Add(closer, true)
 }
@@ -202,7 +223,7 @@ func (s *Balancer) DialContext(ctx context.Context, network string, destination 
 
 	conn, err := outbound.DialContext(ctx, network, destination)
 	if err == nil {
-		return s.interruptGroup.NewConn(conn, interrupt.IsExternalConnectionFromContext(ctx)), nil
+		return s.memberGroup(outbound.Tag()).NewConn(conn, interrupt.IsExternalConnectionFromContext(ctx)), nil
 	}
 	s.logger.ErrorContext(ctx, err)
 	s.monitor.InvalidateTest(outbound.Tag())
@@ -225,7 +246,7 @@ func (s *Balancer) ListenPacket(ctx context.Context, destination M.Socksaddr) (n
 
 	conn, err := outbound.ListenPacket(ctx, destination)
 	if err == nil {
-		return s.interruptGroup.NewPacketConn(conn, interrupt.IsExternalConnectionFromContext(ctx)), nil
+		return s.memberGroup(outbound.Tag()).NewPacketConn(conn, interrupt.IsExternalConnectionFromContext(ctx)), nil
 	}
 	s.logger.ErrorContext(ctx, err)
 	s.monitor.InvalidateTest(outbound.Tag())
@@ -240,7 +261,7 @@ func (s *Balancer) NewConnection(ctx context.Context, conn net.Conn, metadata ad
 		return
 	}
 	metadata.SetRealOutbound(selected.Tag())
-	conn = s.interruptGroup.NewConn(conn, interrupt.IsExternalConnectionFromContext(ctx))
+	conn = s.memberGroup(selected.Tag()).NewConn(conn, interrupt.IsExternalConnectionFromContext(ctx))
 	if outboundHandler, isHandler := selected.(adapter.ConnectionHandler); isHandler {
 		outboundHandler.NewConnection(ctx, conn, metadata, onClose)
 	} else {
@@ -256,7 +277,7 @@ func (s *Balancer) NewPacketConnection(ctx context.Context, conn N.PacketConn, m
 		return
 	}
 	metadata.SetRealOutbound(selected.Tag())
-	conn = s.interruptGroup.NewSingPacketConn(conn, interrupt.IsExternalConnectionFromContext(ctx))
+	conn = s.memberGroup(selected.Tag()).NewSingPacketConn(conn, interrupt.IsExternalConnectionFromContext(ctx))
 	if outboundHandler, isHandler := selected.(adapter.PacketConnectionHandler); isHandler {
 		outboundHandler.NewPacketConnection(ctx, conn, metadata, onClose)
 	} else {
