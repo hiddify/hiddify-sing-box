@@ -37,12 +37,32 @@ For UDP connections, the group uses only the members that support UDP, when ther
 When a connection through a member fails to open, that member is tested again at once. The
 connection is not retried on another member.
 
+### Which connections are closed
+
+Every connection is tracked under the member it went through. A member that becomes faster
+only takes the new connections: nothing is closed for speed, so a call or a download through
+a working server goes on. Connections are closed in two cases only:
+
+- A member whose test fails has its connections closed; those of the other members stay.
+- Once after start: the first tests may move the selection several times while the
+  connections opened on the provisional choice are still on it. 30 seconds after start, when
+  some member has a result of this run, the connections of the members the group no longer
+  uses (not selected for `lowest-delay`, outside the acceptable delay otherwise) are closed
+  once. Until a result of this run exists, this waits for the next update.
+
+`interrupt_exist_connections` says whether the connections that came in from inbounds are
+closed too in these cases; connections opened inside sing-box always are.
+
 ### Strategies
 
 - **`round-robin`** (default): members are sorted by delay, and connections take turns among
   the alive ones. Until the first test results arrive, all members take turns in config order.
-- **`lowest-delay`**: every connection uses the member with the lowest delay. Until the first
-  results arrive, it uses the first member.
+- **`lowest-delay`**: every connection uses the member with the lowest delay. At start it uses
+  the member that was fastest in the cached results, or the first member when there are none.
+  It keeps that member while it answers: another member takes the selection only when it is
+  faster by more than `tolerance`, so the jitter between two close servers does not move the
+  group. A member that failed its test is left at once for the fastest live one; when no
+  member is live, the selection stays.
 - **`consistent-hashing`**: the member is chosen from the destination: its registrable domain
   (for example `example.com` for `www.example.com`) or its IP address. The same destination
   always gets the same member while that member is alive. If it is dead, the group tries up to
@@ -89,8 +109,8 @@ connection is not retried on another member.
 | `delay_acceptable_ratio` | number | `2` | How much slower than the fastest member a member may be and still be used. `2` means up to twice the fastest delay. Unset or `0` is `2`. |
 | `max_retry` | int | `0` | For `consistent-hashing` and `sticky-sessions`: how many other hash picks to try before going down the list. |
 | `ttl` | duration | `0` (no expiry) | For `sticky-sessions`: how long a pair keeps its member. |
-| `interrupt_exist_connections` | bool | `false` | When the group's choice changes, also close connections that came in from inbounds. Without it, only connections opened inside sing-box are closed. With `consistent-hashing` and `sticky-sessions`, every new test result counts as a change. |
-| `tolerance` | int | | Accepted, not used. |
+| `interrupt_exist_connections` | bool | `false` | When a member dies, or at the one move after start, also close the connections that came in from inbounds. Without it, only connections opened inside sing-box are closed. |
+| `tolerance` | int | `50` | For `lowest-delay`: how much faster, in milliseconds, another member must be to take the selection. |
 
 ## See also
 

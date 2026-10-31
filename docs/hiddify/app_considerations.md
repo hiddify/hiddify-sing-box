@@ -57,6 +57,13 @@ do about it. Items marked **Required** break or misbehave until they are handled
 - **Balancer.** `delay_acceptable_ratio` now defaults to 2 when unset or 0 (the app sends 2
   already). With `interrupt_exist_connections`, the hashing strategies interrupt only when the
   set of usable members changes, not on every test round.
+- **Balancer connections are stable.** `lowest-delay` now honours `tolerance` (50 ms when unset;
+  send 50–100, not 1) and keeps its member until one is faster by more than that or it fails a
+  test. Connections are closed only for a member that died (its own connections) and once, 30
+  seconds after start, for the members the first tests left out. A faster member takes new
+  connections only, so `interrupt_exist_connections: true` no longer cuts calls or downloads on
+  every test round. The balancer starts from the cached results, and the first cycle tests the
+  cached fastest member first.
 - **Balancer `pool` strategy.** `strategy: "pool"` with `pool`, `pool_tolerance` and
   `sticky_hash` gives a fixed set of slots with sticky keys that do not move when another member
   dies (lx's `round_robin`).

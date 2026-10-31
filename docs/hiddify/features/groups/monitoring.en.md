@@ -39,8 +39,10 @@ It does not. It finds out which outbounds work, so groups can avoid the blocked 
 ### When tests run
 
 - Tests start with sing-box, and run in cycles every `interval`. Each cycle tests the outbounds
-  whose result is older than `interval` or marked for testing, fastest first, `workers` at a
-  time.
+  whose result is older than `interval` or marked for testing, fastest first (by the last
+  result, cached or not), then the untested ones, `workers` at a time. So the first cycle
+  tests last run's fastest member first, and a group on that member confirms it before the
+  others arrive.
 - When no connection has gone through sing-box for `idle_timeout`, testing stops. The next
   connection starts it again.
 - An outbound that is not ready yet, for example Psiphon still connecting, or whose detour has no
