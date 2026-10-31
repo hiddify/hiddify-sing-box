@@ -40,23 +40,35 @@ func NewMASQUEClient(ctx context.Context, logger logger.ContextLogger, serverNam
 	for _, curve := range options.CurvePreferences {
 		tlsConfig.CurvePreferences = append(tlsConfig.CurvePreferences, tls.CurveID(curve))
 	}
-	if !options.Insecure {
-		tlsConfig.VerifyPeerCertificate = func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
-			if len(rawCerts) == 0 {
-				return nil
-			}
-			cert, err := x509.ParseCertificate(rawCerts[0])
-			if err != nil {
-				return err
-			}
-			if _, ok := cert.PublicKey.(*ecdsa.PublicKey); !ok {
-				return x509.ErrUnsupportedAlgorithm
-			}
-			if !cert.PublicKey.(*ecdsa.PublicKey).Equal(peerPublicKey) {
-				return x509.CertificateInvalidError{Cert: cert, Reason: 10, Detail: "remote endpoint has a different public key than what we trust in config.json"}
-			}
+	// verifyCertificate pins the peer key: the WARP endpoint presents a certificate signed for a
+	// name it never reveals, so the key is the only identity worth checking.
+	verifyCertificate := func(cert *x509.Certificate) error {
+		if _, ok := cert.PublicKey.(*ecdsa.PublicKey); !ok {
+			return x509.ErrUnsupportedAlgorithm
+		}
+		if !cert.PublicKey.(*ecdsa.PublicKey).Equal(peerPublicKey) {
+			return x509.CertificateInvalidError{Cert: cert, Reason: 10, Detail: "remote endpoint has a different public key than what we trust in config.json"}
+		}
+		return nil
+	}
+	verifyPeerCertificate := func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
+		if len(rawCerts) == 0 {
 			return nil
 		}
+		cert, err := x509.ParseCertificate(rawCerts[0])
+		if err != nil {
+			return err
+		}
+		return verifyCertificate(cert)
+	}
+	if !options.Insecure {
+		tlsConfig.VerifyPeerCertificate = verifyPeerCertificate
+	}
+	// Cloudflare's WARP endpoint publishes no ECH config of its own and rejects the public
+	// cloudflare-ech.com one, so this is always the fallback path: accept the rejection and let
+	// Go retry the plain handshake, which the pin above still covers. //H
+	tlsConfig.EncryptedClientHelloRejectionVerify = func(state tls.ConnectionState) error {
+		return nil
 	}
 	var config Config = &STDClientConfig{
 		ctx:                   ctx,
@@ -65,6 +77,22 @@ func NewMASQUEClient(ctx context.Context, logger logger.ContextLogger, serverNam
 		fragment:              options.Fragment,
 		fragmentFallbackDelay: time.Duration(options.FragmentFallbackDelay),
 		recordFragment:        options.RecordFragment,
+	}
+	if options.ECH != nil && options.ECH.Enabled { //H
+		// ECH is applied to the underlying client; the tunnel hands this config to http2/quic-go,
+		// so the ClientHello carries the encrypted config list.
+		echConfig, err := parseECHClientConfig(ctx, config.(ECHCapableConfig), option.OutboundTLSOptions{ECH: options.ECH})
+		if err != nil {
+			return nil, err
+		}
+		config = echConfig
+		// The tunnel clones this config and calls Client(), never ClientHandshake: resolve the
+		// DNS-based config list now instead of on first use.
+		if echClient, isECH := config.(*ECHClientConfig); isECH {
+			if err = echClient.FetchConfig(ctx); err != nil {
+				return nil, err
+			}
+		}
 	}
 	if options.KernelRx || options.KernelTx {
 		if !C.IsLinux {
