@@ -52,9 +52,7 @@ func (l *Listener) ListenTCP() (net.Listener, error) {
 			Interval: keepInterval,
 		}
 	}
-	if l.listenOptions.TCPMultiPath {
-		listenConfig.SetMultipathTCP(true)
-	}
+	listenConfig.SetMultipathTCP(l.listenOptions.TCPMultiPath) //H: Go 1.24+ listens MPTCP by default; only when asked
 	if l.tproxy {
 		listenConfig.Control = control.Append(listenConfig.Control, func(network, address string, conn syscall.RawConn) error {
 			return control.Raw(conn, func(fd uintptr) error {
