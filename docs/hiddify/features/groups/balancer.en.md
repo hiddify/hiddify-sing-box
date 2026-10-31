@@ -60,7 +60,8 @@ closed too in these cases; connections opened inside sing-box always are.
 - **`lowest-delay`**: every connection uses the member with the lowest delay. At start it uses
   the member that was fastest in the cached results, or the first member when there are none.
   It keeps that member while it answers: another member takes the selection only when it is
-  faster by more than `tolerance`, so the jitter between two close servers does not move the
+  faster by more than `tolerance` and by more than `tolerance_ratio` of the selected member's
+  delay, whichever is larger, so the jitter between two close servers does not move the
   group. A member that failed its test is left at once for the fastest live one; when no
   member is live, the selection stays.
 - **`consistent-hashing`**: the member is chosen from the destination: its registrable domain
@@ -111,6 +112,7 @@ closed too in these cases; connections opened inside sing-box always are.
 | `ttl` | duration | `0` (no expiry) | For `sticky-sessions`: how long a pair keeps its member. |
 | `interrupt_exist_connections` | bool | `false` | When a member dies, or at the one move after start, also close the connections that came in from inbounds. Without it, only connections opened inside sing-box are closed. |
 | `tolerance` | int | `50` | For `lowest-delay`: how much faster, in milliseconds, another member must be to take the selection. |
+| `tolerance_ratio` | number | `0.1` | For `lowest-delay`: how much faster, as a share of the selected member's delay, another member must be to take the selection. The larger of the two tolerances applies. |
 
 ## See also
 
