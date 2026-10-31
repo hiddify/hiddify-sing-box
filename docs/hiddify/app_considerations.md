@@ -106,6 +106,10 @@ do about it. Items marked **Required** break or misbehave until they are handled
   test leaves them as they are). The exit IP of WARP, Psiphon or a rotating proxy can change
   between runs, so `URLTestHistory.IpInfoFromCache` says which they are, and hiddify-core sends it
   as `IpInfo.from_cache`. Show such an IP as not confirmed yet (dimmed, or with a mark).
+- **Core STARTED and a single proxy.** hiddify-core moves WAITING → STARTED from the ping of the
+  `lowest` (lowest-delay) balancer when the profile has 2+ proxies. With only one proxy, `lowest`
+  is not built; connectivity then uses that proxy's own ping (the select leaf) so the core does
+  not stay WAITING ("Connecting") forever.
 - **WARP over MASQUE in the warp endpoint.** A `warp` endpoint can now run MASQUE instead of
   WireGuard: `"masque": {"enabled": true}`, or any MASQUE setting (`vhttp`, `server_name`,
   `use_ipv6`, `tls`, …). Prefer this to a separate `masque` outbound: one endpoint handles
