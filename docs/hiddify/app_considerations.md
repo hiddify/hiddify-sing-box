@@ -152,6 +152,16 @@ do about it. Items marked **Required** break or misbehave until they are handled
 - **Schema.** `docs/schema.json` is generated again (`make schema`) and now covers the Hiddify
   options. Editors or validators that use it should take the new file.
 
+## Security
+
+- **MPTCP is off unless asked.** Inbounds and outbounds use Multipath TCP only with
+  `tcp_multi_path: true`; the Go default (on, for listeners, since Go 1.24) is overridden in
+  the code and by `godebug multipathtcp=0` in `go.mod`. A main module that builds sing-box
+  into its own binary needs the same `godebug` line in its `go.mod`, as hiddify-core has, or
+  `-X runtime.godebugDefault=multipathtcp=0` in its link flags; `internal/godebug.defaultGODEBUG`
+  is not a symbol and does nothing. Keep inbounds on `127.0.0.1` unless the LAN really needs
+  them, and keep the Linux kernel updated.
+
 ## Network changes and caches
 
 - **Network change callbacks.** WARP and MASQUE now react to network changes: they check the
