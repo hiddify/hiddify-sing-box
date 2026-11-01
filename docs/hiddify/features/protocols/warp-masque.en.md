@@ -58,6 +58,14 @@ Cloudflare's endpoints. It takes the first one it finds:
 A new profile is saved in the cache file unless `store_masque_config` is `false`, so later starts don't
 register again.
 
+With `device`, the device is used as it is and nothing is registered, until Cloudflare refuses
+it (a key that was never enrolled, or a device that was deleted): a device pointed at WARP (an
+endpoint in Cloudflare's ranges, or Cloudflare's server name) is still a WARP config, so the
+outbound then registers a device as in 2, saves it in the cache file as the link device's
+replacement, and runs the tunnel with it. Later starts take the replacement first, as long as the
+config still carries the device it replaced; a device Cloudflare refuses in its turn is replaced
+again after a minute, doubling each time up to 30 minutes.
+
 **HTTP version.** `vhttp` chooses how the tunnel connects:
 
 - `h3`: HTTP/3 over QUIC only.
@@ -72,8 +80,8 @@ for each HTTP/2 win in a row. An HTTP/3 win starts over. This way a short HTTP/3
 keep the tunnel on HTTP/2 for good. If the remembered HTTP/2 fails, the next connect tries HTTP/3
 first again.
 
-**Endpoints.** Without the scanner, the tunnel uses port 443 on the profile's HTTP/3 endpoint and
-on `162.159.198.2` for HTTP/2.
+**Endpoints.** Without the scanner, the tunnel uses the profile's HTTP/3 endpoint and
+`162.159.198.2` for HTTP/2, on port 443, or on the port a `device` endpoint was given with.
 
 **Scanner.** With `scanner.enabled`, the outbound looks for an endpoint that answers before it
 connects. The scanner works as in [WARP](warp.en.md#how-it-works), with these differences:
@@ -172,13 +180,14 @@ A device enrolled elsewhere, as `masque://` share links carry it. Cloudflare's A
 | Field | Type | Default | Meaning |
 |---|---|---|---|
 | `private_key` | string | | The device's ECDSA key: base64 (standard or URL) of SEC 1 or PKCS #8 DER. |
-| `endpoint_public_key` | string | | The endpoint's key: PEM, or base64 of PKIX DER. |
+| `endpoint_public_key` | string | the edge's | The endpoint's key: PEM, or base64 of PKIX DER. Cloudflare's MASQUE edge presents one fixed certificate on every endpoint and port, and its key is built in, so links that carry no key (MahsaNG's) still pin the endpoint. |
 | `ipv4`, `ipv6` | string | | Tunnel addresses. At least one. |
-| `endpoint_v4`, `endpoint_v6` | string | | HTTP/3 endpoints, an IP or `ip:port` (port 443 is used). At least one. |
+| `endpoint_v4`, `endpoint_v6` | string | | HTTP/3 endpoints, an IP or `ip:port`; the port of the first one given is used, 443 without one. At least one. |
 | `endpoint_h2_v4`, `endpoint_h2_v6` | string | Cloudflare's | HTTP/2 endpoints. |
 | `id`, `license` | string | | The device's ID and license, for information. |
 
 A device that cannot work (a key that does not parse, no address, no endpoint) fails the config.
+A device Cloudflare refuses is replaced by a registered one; see "How it works".
 
 ### `scanner` defaults for MASQUE
 
@@ -194,6 +203,7 @@ The other scanner fields and their defaults are the same as in [WARP](warp.en.md
 | Field | Type | Default | Meaning |
 |---|---|---|---|
 | `insecure` | bool | `false` | Don't check that the server's key is the one in the profile. |
+| `certificate_public_key_sha256` | list of strings | | Check the server by the SHA-256 (hex) of its certificate's public key instead, one of these; Xray's `pinnedPeerPublicKeySha256`. |
 | `cipher_suites` | list of strings | | TLS cipher suites to offer. |
 | `curve_preferences` | list of strings | | Key exchange curves to offer. |
 | `fragment` | bool | `false` | Split the ClientHello into TCP segments (HTTP/2). |

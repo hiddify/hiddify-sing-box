@@ -9,14 +9,17 @@ import (
 //H — WARP-flavored MASQUE outbound, tunnels through Cloudflare's consumer WARP service
 
 type MASQUEOutboundTLSOptions struct { //H
-	Insecure              bool                                `json:"insecure,omitempty"`
-	CipherSuites          badoption.Listable[string]          `json:"cipher_suites,omitempty"`
-	CurvePreferences      badoption.Listable[CurvePreference] `json:"curve_preferences,omitempty"`
-	Fragment              bool                                `json:"fragment,omitempty"`
-	FragmentFallbackDelay badoption.Duration                  `json:"fragment_fallback_delay,omitempty"`
-	RecordFragment        bool                                `json:"record_fragment,omitempty"`
-	KernelTx              bool                                `json:"kernel_tx,omitempty"`
-	KernelRx              bool                                `json:"kernel_rx,omitempty"`
+	Insecure bool `json:"insecure,omitempty"`
+	// CertificatePublicKeySHA256 verifies the endpoint by the SHA-256 (hex) of its certificate's
+	// public key instead of the profile's key, as Xray's pinnedPeerPublicKeySha256 does. //H
+	CertificatePublicKeySHA256 badoption.Listable[string]          `json:"certificate_public_key_sha256,omitempty"`
+	CipherSuites               badoption.Listable[string]          `json:"cipher_suites,omitempty"`
+	CurvePreferences           badoption.Listable[CurvePreference] `json:"curve_preferences,omitempty"`
+	Fragment                   bool                                `json:"fragment,omitempty"`
+	FragmentFallbackDelay      badoption.Duration                  `json:"fragment_fallback_delay,omitempty"`
+	RecordFragment             bool                                `json:"record_fragment,omitempty"`
+	KernelTx                   bool                                `json:"kernel_tx,omitempty"`
+	KernelRx                   bool                                `json:"kernel_rx,omitempty"`
 	// ECH hides the tunnel's server name in its ClientHello. Cloudflare's WARP endpoint publishes
 	// no ECH config of its own and rejects the public one, so a rejected config falls back to a
 	// plain handshake; the pinned peer key still verifies the endpoint. //H

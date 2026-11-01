@@ -195,7 +195,7 @@ func selectEndpoints(ctx context.Context, logger log.ContextLogger, config *Conf
 			}
 			logger.WarnContext(ctx, err, ", using the profile's endpoint")
 		}
-		return config.SelectEndpointFromConfig(http2, useIPv6, profilePort)
+		return config.SelectEndpointFromConfig(http2, useIPv6, config.port())
 	}
 	endpoint, err := choose(mode == masque.ModeHTTP2)
 	if err != nil {

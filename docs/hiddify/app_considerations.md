@@ -124,6 +124,12 @@ do about it. Items marked **Required** break or misbehave until they are handled
   `lowest` (lowest-delay) balancer when the profile has 2+ proxies. With only one proxy, `lowest`
   is not built; connectivity then uses that proxy's own ping (the select leaf) so the core does
   not stay WAITING ("Connecting") forever.
+- **MASQUE devices from links.** A `masque` outbound with `device` (what `masque://` links
+  become, MahsaNG's shape included) needs no `endpoint_public_key`: the edge's fixed key is
+  built in. The port of an endpoint written as `ip:port` is used. When Cloudflare refuses the
+  device and it points at WARP, the outbound registers a device like a profile and saves it in
+  the cache file under the profile key as the link device's replacement, so the cache file
+  matters for such configs too.
 - **WARP over MASQUE in the warp endpoint.** A `warp` endpoint can now run MASQUE instead of
   WireGuard: `"masque": {"enabled": true}`, or any MASQUE setting (`vhttp`, `server_name`,
   `use_ipv6`, `tls`, …). Prefer this to a separate `masque` outbound: one endpoint handles

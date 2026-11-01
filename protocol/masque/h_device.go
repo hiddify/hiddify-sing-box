@@ -5,6 +5,8 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/pem"
+	"net"
+	"strconv"
 	"strings"
 
 	"github.com/sagernet/sing-box/common/cloudflare"
@@ -30,6 +32,9 @@ func deviceConfig(device *option.MASQUEDeviceOptions) (*Config, error) {
 		}
 	}
 	publicKey := strings.TrimSpace(device.EndpointPublicKey)
+	if publicKey == "" { // the edge's fixed certificate, as masque:// links leave it out
+		publicKey = cloudflare.MASQUEEndpointPublicKey
+	}
 	if !strings.HasPrefix(publicKey, "-----BEGIN") {
 		publicDER, err := decodeBase64(publicKey)
 		if err != nil {
@@ -48,6 +53,7 @@ func deviceConfig(device *option.MASQUEDeviceOptions) (*Config, error) {
 		ID:             device.ID,
 		IPv4:           endpointHost(device.IPv4),
 		IPv6:           endpointHost(device.IPv6),
+		EndpointPort:   endpointPort(device.EndpointV4, device.EndpointV6),
 	}
 	if config.EndpointH2V4 == "" && config.EndpointH2V6 == "" {
 		config.EndpointH2V4, config.EndpointH2V6 = cloudflare.DefaultEndpointH2V4, cloudflare.DefaultEndpointH2V6
@@ -62,6 +68,26 @@ func deviceConfig(device *option.MASQUEDeviceOptions) (*Config, error) {
 		return nil, err
 	}
 	return config, nil
+}
+
+// endpointPort is the port of the first endpoint written with one, else 0.
+func endpointPort(endpoints ...string) int {
+	for _, endpoint := range endpoints {
+		if _, port, err := net.SplitHostPort(endpoint); err == nil {
+			if value, err := strconv.Atoi(port); err == nil && value > 0 && value <= 65535 {
+				return value
+			}
+		}
+	}
+	return 0
+}
+
+// port is the port of the device's endpoints: the one its endpoints were given with, else 443.
+func (c *Config) port() int {
+	if c.EndpointPort != 0 {
+		return c.EndpointPort
+	}
+	return profilePort
 }
 
 // decodeBase64 reads standard or URL base64, with or without padding.

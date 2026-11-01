@@ -43,6 +43,9 @@ func NewMASQUEClient(ctx context.Context, logger logger.ContextLogger, serverNam
 	// verifyCertificate pins the peer key: the WARP endpoint presents a certificate signed for a
 	// name it never reveals, so the key is the only identity worth checking.
 	verifyCertificate := func(cert *x509.Certificate) error {
+		if len(options.CertificatePublicKeySHA256) > 0 { //H: pinned by hash instead of the profile's key
+			return verifyPublicKeySHA256(cert, options.CertificatePublicKeySHA256) //H
+		} //H
 		if _, ok := cert.PublicKey.(*ecdsa.PublicKey); !ok {
 			return x509.ErrUnsupportedAlgorithm
 		}

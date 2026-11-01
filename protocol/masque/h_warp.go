@@ -146,7 +146,7 @@ func ProbeWARP(ctx context.Context, logger log.ContextLogger, options option.MAS
 	if hasPeer(peer) && peer.Addr.IsValid() {
 		endpoint, err = fixedEndpoint(config, peer, http2, options.UseIPv6)
 	} else {
-		endpoint, err = config.SelectEndpointFromConfig(http2, options.UseIPv6, profilePort)
+		endpoint, err = config.SelectEndpointFromConfig(http2, options.UseIPv6, config.port())
 	}
 	if err != nil {
 		return 0, err
