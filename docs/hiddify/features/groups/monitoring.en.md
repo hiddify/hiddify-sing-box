@@ -38,11 +38,13 @@ It does not. It finds out which outbounds work, so groups can avoid the blocked 
 
 ### When tests run
 
-- Tests start with sing-box, and run in cycles every `interval`. Each cycle tests the outbounds
-  whose result is older than `interval` or marked for testing, fastest first (by the last
-  result, cached or not), then the untested ones, `workers` at a time. So the first cycle
-  tests last run's fastest member first, and a group on that member confirms it before the
-  others arrive.
+- Tests start with sing-box. First, the outbound each group's selection leads to (a selector's
+  pick, a balancer's current member, through nested groups) is tested ahead of everything else:
+  the ping the user looks at shows at once. Then tests run in cycles every `interval`. Each
+  cycle tests the outbounds whose result is older than `interval` or marked for testing, fastest
+  first (by the last result, cached or not), then the untested ones, `workers` at a time. So the
+  first cycle tests last run's fastest member first, and a group on that member confirms it
+  before the others arrive.
 - When no connection has gone through sing-box for `idle_timeout`, testing stops. The next
   connection starts it again.
 - An outbound that is not ready yet, for example Psiphon still connecting, or whose detour has no
@@ -50,10 +52,27 @@ It does not. It finds out which outbounds work, so groups can avoid the blocked 
 - When an outbound works after failing, the outbounds already tested through it are tested
   again.
 - Some events test at once: a connection that fails through a balancer member, a selector that
-  switches to another outbound (the outbounds that depend on it are tested again), or an
-  outbound that finished connecting, such as Psiphon or DNSTT.
+  switches to another outbound (the new selection is tested, and so are the outbounds that
+  depend on the selector), or an outbound that finished connecting, such as Psiphon or DNSTT.
+  Such a test runs right away, beside the cycle's tests, not behind them: it does not wait for
+  one of the `workers`, which a cycle of timeouts can hold for seconds. Its result reaches the
+  groups' subscribers at once, past `debounce_window`.
+- A test asked for runs in stages, `on_demand_timeouts` (1 s, 3 s and 10 s unless set). The
+  first attempt starts at once. When it fails, or has not answered by the first mark, the
+  outbound shows as unavailable for now, and at that mark a second attempt starts beside the
+  first; so at every mark but the last, which is the deadline of them all. The first answer from
+  any attempt shows at once, however late: an answer at 1.5 s replaces the miss shown at 1 s.
+  When every attempt has failed and none is due, it is over without waiting for the deadline.
+  Groups never see the miss, only the last confirmed result, so a balancer does not take a slow
+  member for dead, move away from it and cut its connections, on a miss its next attempt answers.
+- A test's delay is published as soon as the URL test answers. The IP lookup that follows it,
+  which can take as long again, brings the IP information when it is done.
 - When the network changes, every outbound is tested again 2 seconds after the last change.
   A test broken by the network reset runs again.
+- A test that has not returned after three times `url_test_timeout` plus 2 seconds (an outbound
+  whose dial ignores its deadline, as one into a native library may) counts as failed, and its
+  worker goes on. Otherwise a few such outbounds would hold every worker, and the cycle, for
+  good, and nothing would be tested again.
 
 ### URLs
 
@@ -101,6 +120,7 @@ tried in turn, starting from a random one:
         "https://cp.cloudflare.com"
       ],
       "url_test_timeout": "5s",
+      "on_demand_timeouts": ["1s", "3s", "10s"],
       "idle_timeout": "10m"
     }
   }
@@ -113,7 +133,8 @@ tried in turn, starting from a random one:
 | `urls` | list of strings | `["https://www.gstatic.com/generate_204"]` | Test addresses, in order of preference. |
 | `ipinfo_url` | string | `""` | An IP information service to try first, for example from your subscription. |
 | `workers` | int | `10` | Tests that run at once. |
-| `url_test_timeout` | duration | `5s` | Longest time for one test, and for one IP information request. |
+| `url_test_timeout` | duration | `5s` | Longest time for one test of the cycle, and for one IP information request. |
+| `on_demand_timeouts` | list of durations | `["1s", "3s", "10s"]` | The marks of a test asked for: unavailable for now at the first with no answer, another attempt at each but the last, which is the deadline. |
 | `idle_timeout` | duration | `10m` | Stop testing after this long with no connections. |
 | `debounce_window` | duration | `500ms` | How long to collect results before groups get an update. |
 

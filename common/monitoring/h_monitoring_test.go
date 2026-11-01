@@ -237,8 +237,16 @@ func TestH_MonitoringGroupsAndHistory(t *testing.T) {
 }
 
 func TestH_MonitoringQueueAndApplyResult(t *testing.T) {
-	a := &fakeOutbound{tag: "a"}
-	b := &fakeOutbound{tag: "b"}
+	// a priority test runs at once; these dials hold it until the end, so the marks can be read
+	release := make(chan struct{})
+	releaseAll := sync.OnceFunc(func() { close(release) })
+	defer releaseAll()
+	held := func(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
+		<-release
+		return nil, errors.New("held")
+	}
+	a := &fakeOutbound{tag: "a", dial: held}
+	b := &fakeOutbound{tag: "b", dial: held}
 	grp := &fakeGroup{fakeOutbound: fakeOutbound{tag: "grp"}, all: []string{"a", "b"}}
 	m := newTestMonitor(t, nil, option.MonitoringOptions{}, a, b, grp)
 	require.NoError(t, htest.Start(m, adapter.StartStateInitialize))
@@ -249,7 +257,13 @@ func TestH_MonitoringQueueAndApplyResult(t *testing.T) {
 	require.True(t, m.enqueueTask(&testTask{outboundTag: "a", cycleID: 1}))
 	require.False(t, m.enqueueTask(&testTask{outboundTag: "a", cycleID: 1}), "same cycle is deduplicated")
 	require.True(t, m.enqueueTask(&testTask{outboundTag: "a", priority: true}))
-	require.False(t, m.enqueueTask(&testTask{outboundTag: "a", priority: true}))
+	require.False(t, m.enqueueTask(&testTask{outboundTag: "a", priority: true}), "one priority test at a time")
+	require.Eventually(t, func() bool {
+		state := m.reg().outbounds["a"]
+		state.mu.Lock()
+		defer state.mu.Unlock()
+		return state.testing
+	}, time.Second, time.Millisecond, "the priority test runs at once")
 	require.False(t, m.enqueueTask(&testTask{outboundTag: "unknown"}))
 	require.Equal(t, []string{"b"}, m.collectCycleTargets(), "queued outbounds are skipped")
 
@@ -271,7 +285,15 @@ func TestH_MonitoringQueueAndApplyResult(t *testing.T) {
 	require.True(t, m.reg().outbounds["b"].invalid)
 	require.True(t, m.reg().outbounds["b"].priorityQueued)
 
-	require.Contains(t, m.collectCycleTargets(), "a")
+	require.NotContains(t, m.collectCycleTargets(), "a", "a is still being tested")
+	releaseAll()
+	require.Eventually(t, func() bool {
+		state := m.reg().outbounds["a"]
+		state.mu.Lock()
+		defer state.mu.Unlock()
+		return !state.testing && !state.priorityQueued
+	}, 2*time.Second, 5*time.Millisecond)
+	require.Contains(t, m.collectCycleTargets(), "a", "free again, and its test failed: due")
 }
 
 func TestH_MonitoringSaveLoadHistory(t *testing.T) {
@@ -358,7 +380,9 @@ func TestH_MonitoringSignalChangePropagatesToDependents(t *testing.T) {
 	selector := &fakeGroup{fakeOutbound: fakeOutbound{tag: "select"}, all: []string{"a", "b"}, selected: a}
 	viaSelector := &fakeOutbound{tag: "c", deps: []string{"select"}}
 	outer := &fakeGroup{fakeOutbound: fakeOutbound{tag: "outer"}, all: []string{"c"}, selected: viaSelector}
-	m := newTestMonitor(t, nil, option.MonitoringOptions{}, a, b, selector, viaSelector, outer)
+	m := newTestMonitor(t, nil, option.MonitoringOptions{
+		OnDemandTimeouts: []badoption.Duration{badoption.Duration(50 * time.Millisecond), badoption.Duration(100 * time.Millisecond), badoption.Duration(200 * time.Millisecond)},
+	}, a, b, selector, viaSelector, outer)
 	require.NoError(t, htest.Start(m, adapter.StartStateInitialize))
 
 	done := make(chan error, 1)
@@ -379,9 +403,20 @@ func TestH_MonitoringSignalChangePropagatesToDependents(t *testing.T) {
 	for _, groupTag := range []string{"select", "", "outer"} {
 		require.Len(t, m.reg().groups[groupTag].notifyCh, 1, "group %q not notified", groupTag)
 	}
-	require.True(t, m.reg().outbounds["c"].priorityQueued, "outbound routed through the selector is re-tested")
-	require.False(t, m.reg().outbounds["a"].priorityQueued, "selector members did not change")
-	require.False(t, m.reg().outbounds["b"].priorityQueued, "selector members did not change")
+	// a test asked for runs at once, not through a worker: these outbounds fail to dial, so it
+	// ends with a timeout
+	tested := func(tag string) func() bool {
+		return func() bool {
+			state := m.reg().outbounds[tag]
+			state.mu.Lock()
+			defer state.mu.Unlock()
+			return state.history.Delay == TimeoutDelay
+		}
+	}
+	require.Eventually(t, tested("a"), 2*time.Second, 10*time.Millisecond, "the new selection is tested at once")
+	// c waits for its detour's result (a's), then dependencyWait, before it is tested
+	require.Eventually(t, tested("c"), dependencyWait+2*time.Second, 10*time.Millisecond, "outbound routed through the selector is re-tested")
+	require.Never(t, tested("b"), 300*time.Millisecond, 10*time.Millisecond, "the other member did not change")
 
 	require.Error(t, m.SignalChange("missing"))
 }

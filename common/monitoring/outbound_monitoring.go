@@ -88,13 +88,13 @@ type OutboundMonitoring struct {
 	mainInterval     time.Duration
 	debounceWindow   time.Duration
 	urlTestTimeout   time.Duration
+	onDemand         []time.Duration // H: see option.MonitoringOptions.OnDemandTimeouts
 	workersCount     int
 	history          adapter.URLTestHistoryStorage
 
 	mainTicker *time.Ticker
 
-	priorityQueue chan *testTask
-	normalQueue   chan *testTask
+	normalQueue chan *testTask
 
 	// H: outbounds and groups, replaced as a whole when outbounds are hot reloaded
 	registry     atomic.Pointer[monitoringRegistry]
@@ -177,7 +177,7 @@ func (m *OutboundMonitoring) OutboundsHistory(groupTag string) map[string]*adapt
 	}
 	//m.logger.Debug("collecting history for group ", groupTag, " with ", len(grp.outbounds), " outbounds")
 	for outboundTag := range grp.outbounds {
-		histories[outboundTag] = m.getUrlTest(outboundTag)
+		histories[outboundTag] = m.confirmed(groupTag, outboundTag, m.getUrlTest(outboundTag)) //H
 		// m.logger.Error("checking history for outbound ", outboundTag)
 
 	}
@@ -291,6 +291,7 @@ func NewOutboundMonitoring(ctx context.Context, logger log.ContextLogger, option
 	if options.DebounceWindow <= 0 {
 		options.DebounceWindow = badoption.Duration(defaultDebounceWindow)
 	}
+	onDemand := onDemandTimeouts(options.OnDemandTimeouts) //H
 
 	cloned := append([]string(nil), options.URLs...)
 	if len(cloned) == 0 {
@@ -325,9 +326,9 @@ func NewOutboundMonitoring(ctx context.Context, logger log.ContextLogger, option
 		workersCount:   options.Workers,
 		urlTestTimeout: options.URLTestTimeout.Build(),
 		debounceWindow: options.DebounceWindow.Build(),
+		onDemand:       onDemand, //H
 
-		priorityQueue: make(chan *testTask, 1000),
-		normalQueue:   make(chan *testTask, 10000),
+		normalQueue: make(chan *testTask, 10000),
 	}
 	m.registry.Store(newMonitoringRegistry())
 
@@ -361,6 +362,7 @@ func (m *OutboundMonitoring) Start(stage adapter.StartStage, scope *adapter.Scop
 		}
 
 		m.started = true
+		m.testSelections() // H: the selected proxies first, before the cycle Touch starts
 		m.Touch()
 	}
 
@@ -406,6 +408,7 @@ func (m *OutboundMonitoring) SignalChange(outboundTag string) error {
 	m.signalChange(outboundTag, make(map[string]bool))
 	m.flushSelectionEvents(outboundTag)
 	m.testParents(outboundTag, true)
+	m.testSelected(outboundTag) // H: the new selection itself, now
 	return nil
 }
 
@@ -470,6 +473,7 @@ func (m *OutboundMonitoring) testNow(outboundTag string, priority bool) error {
 			outboundTag: outboundTag,
 			cycleID:     m.cycleSeq,
 			priority:    priority,
+			staged:      priority, //H
 		}
 
 		if !m.enqueueTask(task) {
@@ -574,25 +578,16 @@ func (m *OutboundMonitoring) scheduleLoop(ticker *time.Ticker) {
 	}
 }
 
+// workerLoop runs the cycle's tests, workers at a time. A test asked for (priority) does not
+// wait for a worker: enqueueTask runs it at once. //H
 func (m *OutboundMonitoring) workerLoop() {
-
 	defer m.workerWG.Done()
 	for {
-
 		select {
 		case <-m.ctx.Done():
 			return
-		case task := <-m.priorityQueue:
-			m.executeTask(task) //for prioritising tasks, we execute them immediately
-		default:
-			select {
-			case <-m.ctx.Done():
-				return
-			case task := <-m.priorityQueue:
-				m.executeTask(task)
-			case task := <-m.normalQueue:
-				m.executeTask(task)
-			}
+		case task := <-m.normalQueue:
+			m.executeTask(task)
 		}
 	}
 }
@@ -641,8 +636,12 @@ func (m *OutboundMonitoring) executeTask(task *testTask) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
+		state.mu.Lock()
+		worked := !state.from_cache && state.history.Delay != 0 && state.history.Delay < TimeoutDelay //H
+		state.mu.Unlock()
+		interim := func(history adapter.URLTestHistory, tentative bool) { m.applyInterim(task, state, history, tentative) } //H
 		networkSeq := m.networkSeq.Load()
-		delay, err := m.tester(m.ctx, task.outboundTag)
+		delay, err := m.tester(m.ctx, task.outboundTag, interim, task.staged)
 		for err != nil && m.networkSeq.Load() != networkSeq { //H: a network reset broke the test
 			m.logger.Info("outbound ", task.outboundTag, " test broken by a network reset, testing again")
 			networkSeq = m.networkSeq.Load()
@@ -651,42 +650,23 @@ func (m *OutboundMonitoring) executeTask(task *testTask) {
 				return
 			case <-time.After(networkResetWait):
 			}
-			delay, err = m.tester(m.ctx, task.outboundTag)
+			delay, err = m.tester(m.ctx, task.outboundTag, interim, task.staged)
 		}
-
-		outcome := testOutcome{
-			outboundTag: task.outboundTag,
-			history:     delay,
-			err:         err,
-			cycleID:     task.cycleID,
-			priority:    task.priority,
-		}
-
-		state.mu.Lock()
-		worked := !state.from_cache && state.history.Delay != 0 && state.history.Delay < TimeoutDelay //H
-		state.mu.Unlock()
-		m.applyResult(outcome)
-		if err == nil && !worked { //H: it works now; what was measured through it did not
-			m.retestDependents(task.outboundTag, make(map[string]bool))
-		}
-		if task.resultCh != nil {
-			select {
-			case task.resultCh <- outcome:
-			case <-m.ctx.Done():
-			default:
-			}
-
-		}
+		m.settle(task, state, delay, err, worked) //H
 	}()
 	select {
 	case <-m.ctx.Done():
 		return
 	case <-done:
+	case <-time.After(m.testHardLimit(task)): //H: the outbound ignored its deadline; see settleLate
+		m.settleLate(task, state)
 	}
 
 }
 
-func (m *OutboundMonitoring) tester(parent context.Context, tag string) (adapter.URLTestHistory, error) {
+// tester runs the URL test and, when it answers, the IP lookup. The delay goes to interim as
+// soon as the URL test answers, before the lookup, which can take as long again. //H
+func (m *OutboundMonitoring) tester(parent context.Context, tag string, interim func(adapter.URLTestHistory, bool), staged bool) (adapter.URLTestHistory, error) {
 	out, ok := m.reg().outbounds[tag]
 	if !ok {
 		return adapter.URLTestHistory{Delay: 0}, errors.New("outbound not registered")
@@ -694,10 +674,17 @@ func (m *OutboundMonitoring) tester(parent context.Context, tag string) (adapter
 
 	idx := m.currentLinkIndex.Load()
 
-	ctx, cancel := context.WithTimeout(parent, m.urlTestTimeout)
-	defer cancel()
-
-	delay, err := urltest.URLTest(ctx, m.urls[idx], out.outbound)
+	var ( //H
+		delay uint16
+		err   error
+	)
+	if staged { //H
+		delay, err = m.stagedURLTest(parent, m.urls[idx], out.outbound, interim)
+	} else {
+		ctx, cancel := context.WithTimeout(parent, m.urlTestTimeout)
+		defer cancel()
+		delay, err = urltest.URLTest(ctx, m.urls[idx], out.outbound)
+	}
 
 	his := adapter.URLTestHistory{
 		Time:  time.Now(),
@@ -712,6 +699,9 @@ func (m *OutboundMonitoring) tester(parent context.Context, tag string) (adapter
 	case <-parent.Done():
 		return his, parent.Err()
 	default:
+	}
+	if interim != nil { //H
+		interim(his, false)
 	}
 	if out.history.IpInfo == nil || out.history.IpInfoFromCache { //H: until looked up in this run
 
@@ -842,22 +832,17 @@ func (m *OutboundMonitoring) enqueueTask(task *testTask) bool {
 		state.queued = true
 	}
 	if task.priority {
-		select {
-		case m.priorityQueue <- task:
-			return true
-		default:
-			return false
-		}
-
-	} else {
-		select {
-		case m.normalQueue <- task:
-			return true
-		default:
-			return false
-		}
+		// H: asked for, so run now, beside the cycle's tests, not behind them: the workers may all
+		// be busy with a cycle of timeouts for seconds
+		go m.executeTask(task)
+		return true
 	}
-
+	select {
+	case m.normalQueue <- task:
+		return true
+	default:
+		return false
+	}
 }
 
 func (m *OutboundMonitoring) applyResult(outcome testOutcome) *adapter.URLTestHistory {
@@ -884,6 +869,7 @@ func (m *OutboundMonitoring) applyResult(outcome testOutcome) *adapter.URLTestHi
 	state.history.Delay = outcome.history.Delay
 	state.history.Time = outcome.history.Time
 	state.from_cache = false
+	state.tentative = false //H
 	if outcome.history.IpInfo != nil {
 		state.history.IpInfo = outcome.history.IpInfo
 		state.history.IpInfoFromCache = false //H
@@ -1147,6 +1133,8 @@ func (m *OutboundMonitoring) getState(tag string) *outboundState {
 }
 
 type testTask struct {
+	settled     atomic.Bool // H: its result is in, or it was given up on; the other of the two is dropped
+	staged      bool        // H: asked for by a tap or a selection: tested in stages, see stagedURLTest
 	outboundTag string
 	cycleID     uint64
 	priority    bool
@@ -1178,6 +1166,9 @@ type outboundState struct {
 	testing        bool
 	enqueuedCycle  uint64
 	from_cache     bool
+	// H: history is a staged test's early miss, not a result; confirmed is the last result
+	tentative bool
+	confirmed adapter.URLTestHistory
 
 	history adapter.URLTestHistory
 }

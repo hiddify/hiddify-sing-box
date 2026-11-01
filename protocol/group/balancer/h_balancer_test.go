@@ -167,8 +167,9 @@ func TestH_BalancerFailoverViaMonitoring(t *testing.T) {
 	require.NoError(t, htest.Start(monitor, adapter.StartStatePostStart))
 
 	require.Eventually(t, func() bool { return lb.Now() == "b" }, 4*time.Second, 20*time.Millisecond)
+	// a, the selected member, was tested in stages: its failure is confirmed after the last attempt
+	require.Eventually(t, func() bool { return monitor.OutboundsHistory("lb")["a"].Delay == monitoring.TimeoutDelay }, 5*time.Second, 20*time.Millisecond)
 	history := monitor.OutboundsHistory("lb")
-	require.Equal(t, monitoring.TimeoutDelay, history["a"].Delay)
 	require.Greater(t, history["b"].Delay, uint16(0))
 	require.Less(t, history["b"].Delay, monitoring.TimeoutDelay)
 

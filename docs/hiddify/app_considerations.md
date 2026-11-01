@@ -70,6 +70,12 @@ do about it. Items marked **Required** break or misbehave until they are handled
   dies (lx's `round_robin`).
 - **URL test failover.** A failover member that is more than 2 times slower than the fastest
   other one, twice in a row, is now left for one more than 1.5 times faster.
+- **A tapped or selected proxy answers at once.** The outbound a group's selection leads to is
+  tested before the first cycle and again when the selection moves; a test asked for runs at
+  once beside the cycle, in stages (`experimental.monitoring.on_demand_timeouts`, 1 s, 3 s,
+  10 s by default): the app sees the proxy as unavailable after the first mark with no answer,
+  then the first answer from any attempt, however late. The delay is published before the IP
+  lookup, so the IP arrives after the ping. Nothing to set; the core's defaults are these.
 - **New options worth exposing:**
   - DNS group: `mode` `stable` and `fastest`, `error_ttl`, `win_ttl`.
   - URL test: `urls` (more test URLs) and `mode: "failover"`.
