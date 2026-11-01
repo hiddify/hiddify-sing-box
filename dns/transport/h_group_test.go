@@ -144,9 +144,9 @@ var hErrMember = errors.New("member failed")
 
 func TestH_GroupModeParsing(t *testing.T) {
 	member := hMember("a", hReply("1.1.1.1"))
-	require.False(t, hNewGroup(t, option.GroupDNSServerOptions{}, member).sequential)
-	require.False(t, hNewGroup(t, option.GroupDNSServerOptions{Mode: C.DNSGroupModeParallel}, member).sequential)
-	require.True(t, hNewGroup(t, option.GroupDNSServerOptions{Mode: C.DNSGroupModeSequential}, member).sequential)
+	require.Nil(t, hNewGroup(t, option.GroupDNSServerOptions{}, member).sequential)
+	require.Nil(t, hNewGroup(t, option.GroupDNSServerOptions{Mode: C.DNSGroupModeParallel}, member).sequential)
+	require.NotNil(t, hNewGroup(t, option.GroupDNSServerOptions{Mode: C.DNSGroupModeSequential}, member).sequential)
 
 	_, err := NewGroup(hGroupContext(member), log.NewNOPFactory().Logger(), "group", option.GroupDNSServerOptions{Servers: []string{"a"}, Mode: "random"})
 	require.ErrorContains(t, err, "unknown group mode: random")
@@ -177,7 +177,7 @@ func TestH_GroupMultiAlias(t *testing.T) {
 		group := transport.(*GroupTransport)
 		require.Equal(t, C.DNSTypeMulti, group.Type())
 		require.Equal(t, "legacy", group.Tag())
-		require.Equal(t, !parallel, group.sequential)
+		require.Equal(t, !parallel, group.sequential != nil)
 		require.Equal(t, []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}, group.ignoreRanges)
 	}
 	_, err := NewMulti(hGroupContext(member), log.NewNOPFactory().Logger(), "legacy", option.MultiDNSServerOptions{})
@@ -390,4 +390,61 @@ func TestH_GroupIsIgnored(t *testing.T) {
 	require.False(t, group.isIgnored(net.ParseIP("11.0.0.1")))
 	require.False(t, group.isIgnored(net.ParseIP("2001:db9::1")))
 	require.True(t, group.isIgnored(nil), "invalid address is ignored")
+}
+
+// A server that failed is asked after the others for error_ttl, so a dead first server does not
+// open every query; once it answers again it is back in its place.
+func TestH_GroupSequentialAsksRecentFailuresLast(t *testing.T) {
+	first := hMember("first", hFail(hErrMember))
+	second := hMember("second", hReply("2.2.2.2"))
+	group := hNewGroup(t, option.GroupDNSServerOptions{Mode: C.DNSGroupModeSequential, ErrorTTL: badoption.Duration(time.Minute)}, first, second)
+	for i := 0; i < 3; i++ {
+		response, err := hExchange(t, group)
+		require.NoError(t, err)
+		require.Equal(t, []string{"2.2.2.2"}, hAnswerIPs(response))
+	}
+	require.EqualValues(t, 1, first.calls.Load(), "the failed server is not asked first again within error_ttl")
+	require.EqualValues(t, 3, second.calls.Load())
+
+	// every server failed recently: all of them are still asked, in their order
+	second.exchange = hFail(hErrMember)
+	_, err := hExchange(t, group)
+	require.Error(t, err)
+	require.EqualValues(t, 2, first.calls.Load())
+
+	// the network changed: the record is forgotten and the first server is first again
+	second.exchange = hReply("2.2.2.2")
+	group.Reset()
+	_, err = hExchange(t, group)
+	require.NoError(t, err)
+	require.EqualValues(t, 3, first.calls.Load())
+}
+
+// A server that hangs gets a share of the query's time, not all of it: the servers behind it are
+// still asked and one of them answers within the query's deadline.
+func TestH_GroupSequentialBoundsAHangingServer(t *testing.T) {
+	silent := hMember("silent", hHang)
+	next := hMember("next", hReply("5.5.5.5"))
+	group := hNewGroup(t, option.GroupDNSServerOptions{Mode: C.DNSGroupModeSequential, MemberTimeout: badoption.Duration(100 * time.Millisecond)}, silent, next)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	start := time.Now()
+	response, err := group.Exchange(ctx, new(mDNS.Msg).SetQuestion("example.com.", mDNS.TypeA))
+	require.NoError(t, err)
+	require.Equal(t, []string{"5.5.5.5"}, hAnswerIPs(response))
+	require.Less(t, time.Since(start), 600*time.Millisecond, "the hanging server was given up on after member_timeout")
+	require.EqualValues(t, 1, next.calls.Load())
+}
+
+// Without member_timeout the time left is shared, with a floor: a short deadline gives the first
+// server all of it, as before.
+func TestH_GroupSequentialSharesTheDeadline(t *testing.T) {
+	sequential := newGroupSequential(option.GroupDNSServerOptions{Mode: C.DNSGroupModeSequential})
+	ctx, cancel := context.WithTimeout(context.Background(), 9*time.Second)
+	defer cancel()
+	require.InDelta(t, 3*time.Second, sequential.budget(ctx, 3), float64(100*time.Millisecond))
+	require.InDelta(t, defaultSequentialMemberFloor, sequential.budget(ctx, 9), float64(100*time.Millisecond))
+	short, cancelShort := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancelShort()
+	require.LessOrEqual(t, sequential.budget(short, 2), 50*time.Millisecond)
 }
