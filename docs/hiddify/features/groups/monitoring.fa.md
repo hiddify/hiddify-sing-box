@@ -111,6 +111,10 @@
 - api.country.is
 - api.my-ip.io
 
+وقتی همهٔ این‌ها ناموفق باشند، چنان‌که در شبکهٔ شلوغ با محدودیت نرخ یا timeout می‌شوند، از
+`cloudflare.com/cdn-cgi/trace` خود Cloudflare، همراه api.country.is و api.my-ip.io پرسیده
+می‌شود: فقط نشانی و کشور را پاسخ می‌دهد، بی محدودیت نرخ.
+
 ## پیکربندی
 
 ```json

@@ -108,6 +108,10 @@ tried in turn, starting from a random one:
 - api.country.is
 - api.my-ip.io
 
+When every one of them fails, as they do on a busy network where they rate-limit or time out,
+Cloudflare's own `cloudflare.com/cdn-cgi/trace` is asked, along with api.country.is and
+api.my-ip.io: it answers the address and the country only, with no rate limit.
+
 ## Configuration
 
 ```json

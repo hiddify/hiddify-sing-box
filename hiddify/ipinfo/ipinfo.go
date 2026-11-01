@@ -30,7 +30,13 @@ var providers = []Provider{
 	NewMyIPioProvider(),
 }
 
+// fallbackProviders are tried when every provider above failed. The providers are tried from a
+// random one, so a place in the list is no order; Cloudflare's trace endpoint is here, not
+// above, because it answers only the address and the country: the JSON providers also give the
+// network, which the app shows, so they come first, and the trace answers when they rate-limit
+// (429) or time out on a busy network and the core would otherwise have no measurement at all.
 var fallbackProviders = []Provider{
+	NewCloudflareTraceProvider(),
 	NewCountryIsProvider(),
 	NewMyIPioProvider(),
 }
@@ -83,8 +89,22 @@ func (p *BaseProvider) GetName() string {
 	return p.URL
 }
 
-// fetchData retrieves the data from the provider's URL with a custom user agent and dialer.
+// fetchData retrieves the JSON a provider answers with, from its URL, with a custom user agent
+// and dialer.
 func (p *BaseProvider) fetchData(ctx context.Context, detour N.Dialer) (map[string]interface{}, uint16, error) {
+	body, t, err := p.fetchBody(ctx, detour)
+	if err != nil {
+		return nil, t, err
+	}
+	var jsonResponse map[string]interface{}
+	if err = json.Unmarshal(body, &jsonResponse); err != nil {
+		return nil, 65535, fmt.Errorf("failed to parse JSON from [%s]: %v", p.URL, err)
+	}
+	return jsonResponse, t, nil
+}
+
+// fetchBody is fetchData without the JSON step, for the providers that answer plain text.
+func (p *BaseProvider) fetchBody(ctx context.Context, detour N.Dialer) ([]byte, uint16, error) {
 	link := p.URL
 	linkURL, err := url.Parse(link)
 	if err != nil {
@@ -153,14 +173,7 @@ func (p *BaseProvider) fetchData(ctx context.Context, detour N.Dialer) (map[stri
 		return nil, 65535, fmt.Errorf("failed to read response from [%s]: %v", p.URL, err)
 	}
 	t := uint16(time.Since(start) / time.Millisecond)
-	var jsonResponse map[string]interface{}
-	err = json.Unmarshal(body, &jsonResponse)
-	if err != nil {
-		return nil, 65535, fmt.Errorf("failed to parse JSON from [%s]: %v", p.URL, err)
-	}
-
-	return jsonResponse, t, nil
-
+	return body, t, nil
 }
 
 // GetIpInfo iterates over the providers to fetch and parse IP information.
