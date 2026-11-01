@@ -17,6 +17,10 @@ type MASQUEOutboundTLSOptions struct { //H
 	RecordFragment        bool                                `json:"record_fragment,omitempty"`
 	KernelTx              bool                                `json:"kernel_tx,omitempty"`
 	KernelRx              bool                                `json:"kernel_rx,omitempty"`
+	// ECH hides the tunnel's server name in its ClientHello. Cloudflare's WARP endpoint publishes
+	// no ECH config of its own and rejects the public one, so a rejected config falls back to a
+	// plain handshake; the pinned peer key still verifies the endpoint. //H
+	ECH *OutboundECHOptions `json:"ech,omitempty"`
 }
 
 type MASQUEOutboundOptions struct { //H

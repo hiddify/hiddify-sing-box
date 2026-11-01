@@ -274,7 +274,7 @@ to use MASQUE with every default.
 | `vhttp` | string | `auto` | `h3`, `h2`, or `auto` (HTTP/3, falling back to HTTP/2). |
 | `server_name` | string | `consumer-masque.cloudflareclient.com` | TLS server name. |
 | `use_ipv6` | bool | `false` | Use the IPv6 endpoint. |
-| `tls` | object | | `insecure`, `cipher_suites`, `curve_preferences`, `fragment`, `fragment_fallback_delay`, `record_fragment`, `kernel_tx`, `kernel_rx`. |
+| `tls` | object | | `insecure`, `cipher_suites`, `curve_preferences`, `fragment`, `fragment_fallback_delay`, `record_fragment`, `kernel_tx`, `kernel_rx`, `ech`. `ech` takes `enabled`, `config` and `query_server_name`: the ClientHello then carries an encrypted config list. WARP publishes no config of its own and rejects the public one, so a rejection falls back to a plain handshake, which the pinned peer key still verifies. |
 | `udp_keepalive_period` | duration | `30s` | QUIC keepalive. |
 | `udp_initial_packet_size` | number | | First QUIC packet size. |
 | `reconnect_delay` | duration | | Wait between connect attempts. |

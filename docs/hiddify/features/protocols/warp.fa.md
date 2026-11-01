@@ -177,7 +177,7 @@ WARP شما را با WireGuard، با AmneziaWG وقتی `awg` را تنظیم 
 | `vhttp` | string | `auto` | `h3`، `h2` یا `auto` (HTTP/3، با بازگشت به HTTP/2). |
 | `server_name` | string | `consumer-masque.cloudflareclient.com` | نام سرور TLS. |
 | `use_ipv6` | bool | `false` | استفاده از endpoint ‏IPv6. |
-| `tls` | object | | `insecure`، `cipher_suites`، `curve_preferences`، `fragment`، `fragment_fallback_delay`، `record_fragment`، `kernel_tx`، `kernel_rx`. |
+| `tls` | object | | `insecure`، `cipher_suites`، `curve_preferences`، `fragment`، `fragment_fallback_delay`، `record_fragment`، `kernel_tx`، `kernel_rx`، `ech`. `ech` شامل `enabled`، `config` و `query_server_name` است: در این حالت ClientHello فهرست پیکربندی رمزنگاری‌شده را همراه دارد. WARP خودش هیچ پیکربندی ECH منتشر نمی‌کند و پیکربندی عمومی را رد می‌کند، پس در صورت رد شدن، دست‌دادن به حالت ساده برمی‌گردد که کلید پین‌شدهٔ همتا همچنان آن را بررسی می‌کند. |
 | `udp_keepalive_period` | duration | `30s` | keepalive در QUIC. |
 | `udp_initial_packet_size` | number | | اندازهٔ اولین بستهٔ QUIC. |
 | `reconnect_delay` | duration | | فاصلهٔ میان تلاش‌های اتصال. |
