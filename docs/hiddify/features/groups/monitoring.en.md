@@ -136,6 +136,7 @@ api.my-ip.io: it answers the address and the country only, with no rate limit.
 | `interval` | duration | `5m` | How often outbounds are tested. |
 | `urls` | list of strings | `["https://www.gstatic.com/generate_204"]` | Test addresses, in order of preference. |
 | `ipinfo_url` | string | `""` | An IP information service to try first, for example from your subscription. |
+| `ipv6_probe` | string | `[2606:4700:4700::1111]:443` | The IPv6 address a connection is opened to through each outbound that answered, once per outbound per run, to learn whether that outbound carries IPv6; see [IPv6 by outbound](../dns/ipv6-by-outbound.en.md). `none` turns it off. |
 | `workers` | int | `10` | Tests that run at once. |
 | `url_test_timeout` | duration | `5s` | Longest time for one test of the cycle, and for one IP information request. |
 | `on_demand_timeouts` | list of durations | `["1s", "3s", "10s"]` | The marks of a test asked for: unavailable for now at the first with no answer, another attempt at each but the last, which is the deadline. |

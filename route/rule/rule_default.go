@@ -80,6 +80,11 @@ func NewDefaultRule(ctx context.Context, logger log.ContextLogger, options optio
 			return nil, E.New("invalid ip version: ", options.IPVersion)
 		}
 	}
+	if options.IPv6UnavailableVia != "" { //H
+		item := NewIPv6UnavailableItem(ctx, options.IPv6UnavailableVia) //H
+		rule.items = append(rule.items, item)                           //H
+		rule.allItems = append(rule.allItems, item)                     //H
+	} //H
 	if len(options.Network) > 0 {
 		item := NewNetworkItem(options.Network)
 		rule.items = append(rule.items, item)

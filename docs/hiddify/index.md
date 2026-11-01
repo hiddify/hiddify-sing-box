@@ -49,6 +49,7 @@ an English and a Persian version.
 - [Smart DNS pool](features/dns/smart-dns-pool.en.md): a local DNS server that spreads queries over many resolvers, made for DNSTT.
 - [DNSCrypt (SDNS stamps)](features/dns/sdns.en.md): the `sdns` server, which sends encrypted queries to a DNSCrypt resolver given by its stamp.
 - [sslip.io names](features/dns/sslip-hosts.en.md): the `hosts` server answers `sslip.io` names with the address written in the name.
+- [IPv6 by outbound](features/dns/ipv6-by-outbound.en.md): AAAA answers and IPv6 connections only through outbounds the monitoring found to carry IPv6; the rest falls back to IPv4 at once.
 
 ## Groups and monitoring
 

@@ -220,6 +220,9 @@ type AbstractDNSRouteActionOptions struct {
 	RemoveClientSubnet     bool                  `json:"remove_client_subnet,omitempty"`
 
 	BypassIfFailed bool `json:"bypass_if_failed,omitempty"` //H
+	// IPv6ByOutbound names an outbound (a group: its selected member): while the monitoring knows
+	// it cannot carry IPv6, AAAA questions get an empty answer, whatever the strategy. //H
+	IPv6ByOutbound string `json:"ipv6_by_outbound,omitempty"` //H
 }
 
 type DNSRouteOptionsActionOptions AbstractDNSRouteActionOptions

@@ -71,7 +71,8 @@ its changes small and close to upstream so it can follow every sing-box release.
   [bypass_if_failed](docs/hiddify/features/dns/dns-bypass-if-failed.en.md),
   [smart DNS pool](docs/hiddify/features/dns/smart-dns-pool.en.md),
   [DNSCrypt (SDNS)](docs/hiddify/features/dns/sdns.en.md),
-  [sslip.io names](docs/hiddify/features/dns/sslip-hosts.en.md).
+  [sslip.io names](docs/hiddify/features/dns/sslip-hosts.en.md),
+  [IPv6 by outbound](docs/hiddify/features/dns/ipv6-by-outbound.en.md).
 
 ### Groups and monitoring
 

@@ -30,6 +30,9 @@ type URLTestHistory struct {
 	IsFromCache bool           `json:"from_cache"`
 	// IpInfoFromCache: IpInfo is the one of a previous run, not looked up in this one yet. //H
 	IpInfoFromCache bool `json:"ipinfo_from_cache"` //H
+	// IPv6: whether the outbound carried a connection to an IPv6 address when the monitoring
+	// probed it; nil until it was probed. //H
+	IPv6 *bool `json:"ipv6,omitempty"` //H
 }
 
 type URLTestHistoryStorage interface {

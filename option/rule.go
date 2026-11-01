@@ -140,6 +140,7 @@ func logicalProperties(node *schema.Node, nestedRef *schema.Node) {
 type RawDefaultRule struct {
 	Inbound                  badoption.Listable[string]                                                  `json:"inbound,omitempty" reference:"inbound"`
 	IPVersion                int                                                                         `json:"ip_version,omitempty" enum:"4,6"`
+	IPv6UnavailableVia       string                                                                      `json:"ipv6_unavailable_via,omitempty"` //H: matches an IPv6 destination while this outbound cannot carry IPv6
 	Network                  badoption.Listable[string]                                                  `json:"network,omitempty" enum:"tcp,udp,icmp"`
 	AuthUser                 badoption.Listable[string]                                                  `json:"auth_user,omitempty"`
 	Protocol                 badoption.Listable[string]                                                  `json:"protocol,omitempty" enum:"tls,http,quic,dns,stun,bittorrent,dtls,ssh,rdp,ntp"`

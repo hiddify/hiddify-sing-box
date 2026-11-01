@@ -47,6 +47,7 @@
 ## DNS
 
 - [گروه DNS](features/dns/dns-group.fa.md): از چند سرور DNS هم‌زمان یا به نوبت بپرسید، یا روی سروری که کار می‌کند بمانید، و پاسخ‌های مسموم را کنار بگذارید.
+- [IPv6 بر اساس خروجی](features/dns/ipv6-by-outbound.fa.md): پاسخ AAAA و اتصال IPv6 فقط از خروجی‌هایی که پایش دید IPv6 را رد می‌کنند؛ بقیه بی‌درنگ به IPv4 برمی‌گردند.
 - [قاعده‌های DNS: bypass_if_failed](features/dns/dns-bypass-if-failed.fa.md): وقتی سرور یک قاعدهٔ DNS شکست می‌خورد، پرس‌وجو به قاعدهٔ منطبق بعدی می‌رود.
 - [مجموعهٔ هوشمند DNS](features/dns/smart-dns-pool.fa.md): یک سرور DNS محلی که پرس‌وجوها را میان resolverهای زیادی پخش می‌کند، ساخته‌شده برای DNSTT.
 - [DNSCrypt (استمپ‌های SDNS)](features/dns/sdns.fa.md): سرور `sdns` که پرس‌وجوهای رمزشده را به یک resolver از نوع DNSCrypt می‌فرستد که با استمپش مشخص شده است.
