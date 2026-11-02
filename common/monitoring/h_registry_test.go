@@ -1,7 +1,6 @@
 package monitoring
 
 import (
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -61,7 +60,7 @@ func TestH_ReloadTestsChangedOnly(t *testing.T) {
 	m.started = true
 	m.workerWG.Add(1)
 	go m.workerLoop() // the tests run on the workers, started at post-start
-	atomic.StoreUint64(&m.cycleSeq, 1)
+	m.cycleSeq.Store(1)
 	setHistory(m, "a", 120, false, nil)
 	setHistory(m, "b", 80, false, nil)
 	m.reg().outbounds["a"].invalid = false

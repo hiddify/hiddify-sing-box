@@ -495,7 +495,7 @@ func TestH_MonitoringRetestsEverythingAfterNetworkChange(t *testing.T) {
 		return aDials.Load() >= 1 && bDials.Load() >= 1 && !m.cycleRunning.Load()
 	}, 3*time.Second, 10*time.Millisecond, "the first cycle ends")
 	aBefore, bBefore := aDials.Load(), bDials.Load()
-	cyclesBefore := atomic.LoadUint64(&m.cycleSeq)
+	cyclesBefore := m.cycleSeq.Load()
 
 	// the interval is an hour: only the network change can make a second test happen
 	m.NetworkChanged()
@@ -507,5 +507,5 @@ func TestH_MonitoringRetestsEverythingAfterNetworkChange(t *testing.T) {
 	}, 4*time.Second, 20*time.Millisecond, "every outbound is tested again")
 	time.Sleep(networkRetestDelay + 500*time.Millisecond)
 	// a test can dial more than once (the url test, then the IP lookup), so count cycles
-	require.EqualValues(t, cyclesBefore+1, atomic.LoadUint64(&m.cycleSeq), "a burst of changes is one retest")
+	require.EqualValues(t, cyclesBefore+1, m.cycleSeq.Load(), "a burst of changes is one retest")
 }

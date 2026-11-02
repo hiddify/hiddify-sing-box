@@ -106,7 +106,7 @@ type OutboundMonitoring struct {
 
 	cacheDirty atomic.Bool
 
-	cycleSeq     uint64
+	cycleSeq     atomic.Uint64 // H: a typed atomic, 8-byte aligned also on 32-bit ARM, where a bare uint64 used with atomic.AddUint64 panics
 	cycleRunning atomic.Bool
 	networkSeq   atomic.Uint64 //H: counts network resets, see executeTask
 
@@ -483,7 +483,7 @@ func (m *OutboundMonitoring) testNow(outboundTag string, priority bool) error {
 
 		task := &testTask{
 			outboundTag: outboundTag,
-			cycleID:     m.cycleSeq,
+			cycleID:     m.cycleSeq.Load(),
 			priority:    priority,
 			staged:      priority, //H
 		}
@@ -522,7 +522,7 @@ func (m *OutboundMonitoring) InvalidateTest(outboundTag string) error {
 
 	m.enqueueTask(&testTask{
 		outboundTag: outboundTag,
-		cycleID:     m.cycleSeq,
+		cycleID:     m.cycleSeq.Load(),
 		priority:    true,
 	})
 
@@ -756,7 +756,7 @@ func (m *OutboundMonitoring) startCycleOnce() bool {
 }
 
 func (m *OutboundMonitoring) runCycle() {
-	cycleID := atomic.AddUint64(&m.cycleSeq, 1)
+	cycleID := m.cycleSeq.Add(1)
 	tags := m.collectCycleTargets()
 
 	if len(tags) == 0 {

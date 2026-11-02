@@ -2,7 +2,6 @@ package monitoring
 
 import (
 	"errors"
-	"sync/atomic"
 
 	"github.com/sagernet/sing-box/adapter"
 )
@@ -147,7 +146,7 @@ func (m *OutboundMonitoring) Reload() error {
 // of them, and the changed ones waited behind them, or for the next tick when a cycle was
 // already running. Before the first cycle there is nothing to do: it tests everything.
 func (m *OutboundMonitoring) testChanged(previous, registry *monitoringRegistry) {
-	cycleID := atomic.LoadUint64(&m.cycleSeq)
+	cycleID := m.cycleSeq.Load()
 	if cycleID == 0 {
 		return
 	}
