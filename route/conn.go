@@ -40,12 +40,15 @@ type ConnectionManager struct {
 	urlTestHistory *urltest.HistoryStorage
 	access         sync.Mutex
 	connections    list.List[io.Closer]
+	ctx            context.Context //H: for the IPv6 capability, see h_ipv6_fallback.go
+	hIPv6Fallback  bool            //H: route option ipv6_fallback, set by the router
 }
 
 func NewConnectionManager(ctx context.Context, logger logger.ContextLogger) *ConnectionManager {
 	return &ConnectionManager{
 		logger:         logger,
 		urlTestHistory: service.PtrFromContext[urltest.HistoryStorage](ctx),
+		ctx:            ctx, //H
 	}
 }
 
@@ -106,6 +109,10 @@ func (m *ConnectionManager) TrackPacketConn(conn net.PacketConn) net.PacketConn 
 }
 
 func (m *ConnectionManager) NewConnection(ctx context.Context, this N.Dialer, conn net.Conn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
+	if m.hIPv6Fallback && hIPv6FallbackApplies(&metadata) { //H: every outbound and group comes through here
+		m.hNewIPv6Connection(ctx, this, conn, metadata, onClose, service.FromContext[adapter.IPv6Capability](m.ctx)) //H
+		return                                                                                                       //H
+	} //H
 	ctx = adapter.WithContext(ctx, &metadata)
 	var (
 		remoteConn net.Conn

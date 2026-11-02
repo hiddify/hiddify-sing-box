@@ -54,7 +54,7 @@ type Router struct {
 }
 
 func NewRouter(ctx context.Context, logFactory log.Factory, options option.RouteOptions, dnsOptions option.DNSOptions) *Router {
-	return &Router{
+	router := &Router{ //H: the manager learns the IPv6 carry-over below
 		ctx:               ctx,
 		logger:            logFactory.NewLogger("router"),
 		inbound:           service.FromContext[adapter.InboundManager](ctx),
@@ -74,6 +74,8 @@ func NewRouter(ctx context.Context, logFactory log.Factory, options option.Route
 		pauseManager:      service.FromContext[pause.Manager](ctx),
 		platformInterface: service.FromContext[adapter.PlatformInterface](ctx),
 	}
+	hSetIPv6Fallback(router.connection, options.IPv6Fallback) //H
+	return router                                             //H
 }
 
 func (r *Router) Initialize(rules []option.Rule, ruleSets []option.RuleSet) error {

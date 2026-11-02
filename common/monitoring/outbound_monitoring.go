@@ -80,7 +80,10 @@ type OutboundMonitoring struct {
 	started          bool
 	urls             []string
 	ipInfoURL        string
-	ipv6Probe        string // H: see option.MonitoringOptions.IPv6Probe; empty when off
+	ipv6Access       sync.Mutex                // H: guards ipv6
+	ipv6             map[string]*ipv6Knowledge // H: what is known of each outbound's IPv6, see h_ipv6.go
+	verifyIPv6       bool                      // H: option.MonitoringOptions.VerifyIPv6
+	ipv6Declared     map[string]bool           // H: option.MonitoringOptions.IPv6Declared
 	currentLinkIndex atomic.Uint32
 	access           sync.Mutex
 	idleTimeout      time.Duration
@@ -314,7 +317,9 @@ func NewOutboundMonitoring(ctx context.Context, logger log.ContextLogger, option
 		cancel:          cancel,
 		urls:            cloned,
 		ipInfoURL:       options.IpInfoURL,
-		ipv6Probe:       ipv6ProbeAddress(options.IPv6Probe), //H
+		ipv6:            make(map[string]*ipv6Knowledge), //H
+		verifyIPv6:      options.VerifyIPv6,              //H
+		ipv6Declared:    options.IPv6Declared,            //H
 		pause:           service.FromContext[pause.Manager](ctx),
 		started:         false,
 		logger:          logger,
@@ -356,6 +361,7 @@ func (m *OutboundMonitoring) Start(stage adapter.StartStage, scope *adapter.Scop
 		m.logger.Info("registered ", len(registry.outbounds), " outbounds for monitoring")
 		m.logger.Info("registered ", len(registry.groups), " outbound groups for monitoring")
 		m.loadHistory()
+		m.seedIPv6Knowledge() //H: what the cache and the links' declarations say
 	case adapter.StartStatePostStart:
 		for i := 0; i < m.workersCount; i++ {
 			m.workerWG.Add(1)
@@ -709,7 +715,9 @@ func (m *OutboundMonitoring) tester(parent context.Context, tag string, interim 
 	if interim != nil { //H
 		interim(his, false)
 	}
-	his.IPv6 = m.ipv6Of(parent, out)                              //H
+	if m.verifyIPv6 && (out.history.IPv6 == nil || out.history.IPv6FromCache) { //H: once per run, like the IP lookup
+		his.IPv6 = m.verifyIPv6Of(parent, out, m.urls[idx]) //H
+	} //H
 	if out.history.IpInfo == nil || out.history.IpInfoFromCache { //H: until looked up in this run
 
 		ctx, cancel2 := context.WithTimeout(parent, m.urlTestTimeout)
@@ -881,8 +889,11 @@ func (m *OutboundMonitoring) applyResult(outcome testOutcome) *adapter.URLTestHi
 		state.history.IpInfo = outcome.history.IpInfo
 		state.history.IpInfoFromCache = false //H
 	}
-	if outcome.history.IPv6 != nil { //H
-		state.history.IPv6 = outcome.history.IPv6 //H
+	if outcome.history.IPv6 != nil { //H: verified at this test
+		state.history.IPv6 = outcome.history.IPv6                //H
+		state.history.IPv6FromCache = false                      //H
+		m.cacheDirty.Store(true)                                 //H
+		m.recordIPv6(outcome.outboundTag, *outcome.history.IPv6) //H
 	} //H
 	m.history.StoreURLTestHistory(outcome.outboundTag, &state.history)
 
@@ -1254,6 +1265,7 @@ func (m *OutboundMonitoring) loadHistory() *History {
 			state.mu.Lock()
 			state.history = *his
 			state.history.IpInfoFromCache = his.IpInfo != nil //H
+			state.history.IPv6FromCache = his.IPv6 != nil     //H
 			state.from_cache = true
 			state.mu.Unlock()
 		}

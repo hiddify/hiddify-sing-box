@@ -76,13 +76,19 @@ do about it. Items marked **Required** break or misbehave until they are handled
   10 s by default): the app sees the proxy as unavailable after the first mark with no answer,
   then the first answer from any attempt, however late. The delay is published before the IP
   lookup, so the IP arrives after the ping. Nothing to set; the core's defaults are these.
-- **IPv6 follows the proxy.** The monitoring probes an IPv6 address through every outbound and
-  endpoint that answered, each on its own (`experimental.monitoring.ipv6_probe`); hiddify-core sets `ipv6_by_outbound` on the
-  remote DNS rules and an `ipv6_unavailable_via` reject rule, both on the main selector. A
-  browser through a proxy without IPv6 gets IPv4 answers only, and an IPv6 connection that still
-  comes is refused so it falls back (hiddify-app #2307, #2420). Nothing to set in the app; the
-  IPv6 mode only orders the families. `URLTestHistory.IPv6` says what the probe found, for an
-  app that wants to show it.
+- **IPv6 for the apps is off by default, and verified per proxy when on.** hiddify-core answers
+  the apps with `ipv4_only` DNS rules and rejects every IPv6 destination before the sniff rule
+  (so before the handshake) unless the IPv6 mode turns IPv6 on; the app's routing page says why
+  (most exits have no IPv6, and a connection the proxy cannot carry dies after it opened, which
+  browsers never retry). When on, the core sets `verify_ipv6` (each proxy's URL test is followed
+  once per run by the same URL over IPv6, cached per proxy), `route.ipv6_fallback` (an IPv6
+  connection through a proxy not known yet is carried over IPv4 inside the connection and
+  teaches the proxy's IPv6), `ipv6_by_outbound` on the DNS rules answering the apps and an
+  `ipv6_unavailable_via` reject rule on the main selector, both fail-open. A subscription turns
+  IPv6 on for its profile with an `ipv6-mode: prefer_ipv4` header (the app's override list), and
+  a share link declares its proxy with `ipv6=1` or `ipv6=0` (ray2sing, `ipv6_declared`). No
+  probe of a public address is made (`ipv6_probe` is retired): the verification uses the user's
+  own test URL. See [IPv6 by outbound](features/dns/ipv6-by-outbound.en.md).
 - **New options worth exposing:**
   - DNS group: `mode` `stable` and `fastest`, `error_ttl`, `win_ttl`.
   - URL test: `urls` (more test URLs) and `mode: "failover"`.

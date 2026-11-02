@@ -18,8 +18,10 @@ func (c hIPv6Capability) OutboundIPv6(tag string) (bool, bool) {
 	return supported, known
 }
 
-// The item matches an IPv6 destination only while the named outbound is known not to carry
-// IPv6; IPv4 destinations, an outbound with IPv6 and one not probed yet never match.
+func (c hIPv6Capability) ObserveIPv6(tag string, carried bool) { c[tag] = carried }
+
+// The item matches an IPv6 destination only while the named outbound is known to lack IPv6; an
+// IPv4 destination, an outbound with IPv6 and one not observed yet never match.
 func TestH_IPv6UnavailableItem(t *testing.T) {
 	t.Parallel()
 	ctx := service.ContextWithDefaultRegistry(context.Background())
@@ -35,6 +37,6 @@ func TestH_IPv6UnavailableItem(t *testing.T) {
 	require.Equal(t, "ipv6_unavailable_via=without6", without.String())
 
 	require.False(t, NewIPv6UnavailableItem(ctx, "with6").Match(v6))
-	require.False(t, NewIPv6UnavailableItem(ctx, "unknown").Match(v6))
+	require.False(t, NewIPv6UnavailableItem(ctx, "unknown").Match(v6), "not observed yet: let through, its connections teach")
 	require.False(t, NewIPv6UnavailableItem(service.ContextWithDefaultRegistry(context.Background()), "without6").Match(v6), "no monitoring: never matches")
 }

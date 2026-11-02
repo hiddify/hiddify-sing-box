@@ -10,9 +10,12 @@ import (
 var _ RuleItem = (*IPv6UnavailableItem)(nil)
 
 // IPv6UnavailableItem matches a connection to an IPv6 destination while the monitoring knows the
-// named outbound (a group: its selected member) cannot carry IPv6. With a reject action, such a
-// connection is refused at once and the client falls back to IPv4, instead of being accepted by
-// a proxy that then closes it, which a browser shows as a dead site.
+// named outbound (a group: the member it leads to) does not carry IPv6, as its connections
+// showed (route option ipv6_fallback). With a reject action, such a connection is refused at
+// once, before its handshake, and the client falls back to IPv4, instead of being accepted by a
+// proxy that then closes it, which a browser shows as a dead site. An outbound not observed yet
+// never matches: its first IPv6 connections are the ones that teach, carried over IPv4 when
+// needed. Without the monitoring it never matches.
 type IPv6UnavailableItem struct {
 	ctx        context.Context
 	outbound   string

@@ -7,10 +7,11 @@ import (
 )
 
 // ipv6ByOutbound is the strategy of a rule naming an outbound in ipv6_by_outbound: ipv4_only,
-// which leaves AAAA questions unanswered, while the monitoring knows the outbound (a group: its
-// selected member) cannot carry IPv6; the rule's own strategy otherwise, so a client is handed
-// IPv6 addresses only where they lead somewhere. An IPv6-first site through a proxy without
-// IPv6 used to get its AAAA answer, connect, and have the connection closed by the proxy.
+// which leaves AAAA questions unanswered, while the monitoring knows the outbound (a group: the
+// member it leads to) does not carry IPv6, as its connections showed (route option
+// ipv6_fallback); the rule's own strategy otherwise, so a client is handed IPv6 addresses only
+// where they lead somewhere. An outbound not observed yet changes nothing: its first IPv6
+// connections teach, carried over IPv4 when needed. Without the monitoring nothing changes.
 func (r *Router) ipv6ByOutbound(strategy C.DomainStrategy, outbound string) C.DomainStrategy {
 	if outbound == "" {
 		return strategy

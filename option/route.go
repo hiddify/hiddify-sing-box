@@ -21,6 +21,10 @@ type RouteOptions struct {
 	DefaultFallbackNetworkType badoption.Listable[InterfaceType] `json:"default_fallback_network_type,omitempty"`
 	DefaultFallbackDelay       badoption.Duration                `json:"default_fallback_delay,omitempty"`
 	DefaultHTTPClient          string                            `json:"default_http_client,omitempty"`
+	// H: a TCP connection to an IPv6 address that the outbound's exit cannot reach is carried over
+	// IPv4 instead (the sniffed domain, for the proxy to resolve), and teaches the outbound's IPv6
+	// capability (dns rule ipv6_by_outbound, rule ipv6_unavailable_via). See h_ipv6_fallback.go.
+	IPv6Fallback bool `json:"ipv6_fallback,omitempty"` //H
 }
 
 type GeoIPOptions struct {
