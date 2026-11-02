@@ -24,6 +24,7 @@ type PoolOptions struct {
 	PerAttempt    time.Duration
 	ProbeInterval time.Duration
 	DownAfter     int
+	Duplicate     int // resolvers each query is sent to, copies included (see multidns.Options)
 }
 
 // PoolOptionsFrom reads an outbound's smart_pool block; nil means the defaults.
@@ -37,6 +38,7 @@ func PoolOptionsFrom(options *option.SmartPoolOptions) PoolOptions {
 		PerAttempt:    time.Duration(options.PerAttempt),
 		ProbeInterval: time.Duration(options.ProbeInterval),
 		DownAfter:     options.DownAfter,
+		Duplicate:     options.Duplicate,
 	}
 }
 

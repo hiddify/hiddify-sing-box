@@ -26,6 +26,10 @@ type SmartPoolOptions struct {
 	// timeouts or network errors in a row make a resolver down (default 8).
 	ProbeInterval badoption.Duration `json:"probe_interval,omitempty"`
 	DownAfter     int                `json:"down_after,omitempty"`
+	// Duplicate sends each query to up to this many resolvers, the copies only to resolvers
+	// without a rate limit, and passes every answer to the tunnel: the tunnel server answers each
+	// copy with data of its own. Default 1 for dnstt; masterdns uses its packet_duplication (2).
+	Duplicate int `json:"duplicate,omitempty"`
 }
 
 // RawSmartPoolOptions is the object form alone, for the JSON schema.

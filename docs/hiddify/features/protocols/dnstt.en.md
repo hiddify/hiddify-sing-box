@@ -102,7 +102,7 @@ connection goes.
 | `session-check-interval` | duration | `20s` | How often the tunnel checks that its session is alive. |
 | `handshake-timeout` | duration | `15s` | How long the Noise handshake may take. |
 | `udp-timeout` | duration | `500ms` | For plain UDP resolvers: how long to wait for each answer. |
-| `udp-workers` | int | `100` | For plain UDP resolvers: queries in flight at once. |
+| `udp-workers` | int | `100`; with `smart_pool`: `300` | For plain UDP resolvers: queries in flight at once. With `smart_pool`, toward the pool, each worker keeps one socket. |
 | `udp-shared-socket` | bool | `false` | For plain UDP resolvers: send every query from one socket instead of one socket per query. |
 | `udp-accept-errors` | bool | `false` | For plain UDP resolvers: accept answers with an error code instead of dropping them. |
 | `tunnel-per-resolver` | int | | Deprecated and ignored. |

@@ -105,7 +105,7 @@ Noise رمز می‌شوند، پس نه resolver و نه فیلتر نمی‌ت
 | `session-check-interval` | duration | `20s` | هر چند وقت تونل زنده بودن نشستش را بررسی می‌کند. |
 | `handshake-timeout` | duration | `15s` | بیشترین زمان دست‌دهی Noise. |
 | `udp-timeout` | duration | `500ms` | برای resolverهای UDP ساده: مدت انتظار برای هر پاسخ. |
-| `udp-workers` | int | `100` | برای resolverهای UDP ساده: تعداد پرسش‌های هم‌زمان در جریان. |
+| `udp-workers` | int | `100`؛ با `smart_pool`: `300` | برای resolverهای UDP ساده: تعداد پرسش‌های هم‌زمان در جریان. با `smart_pool`، به سوی مجموعه، هر worker یک سوکت نگه می‌دارد. |
 | `udp-shared-socket` | bool | `false` | برای resolverهای UDP ساده: همهٔ پرسش‌ها از یک سوکت، به‌جای یک سوکت برای هر پرسش. |
 | `udp-accept-errors` | bool | `false` | برای resolverهای UDP ساده: پاسخ‌های دارای کد خطا را بپذیر و دور نریز. |
 | `tunnel-per-resolver` | int | | منسوخ است و نادیده گرفته می‌شود. |

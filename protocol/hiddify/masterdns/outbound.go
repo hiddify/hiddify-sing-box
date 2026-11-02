@@ -44,6 +44,9 @@ const (
 	poolHistoryKey = "masterdns_resolvers"
 	// poolMaxResolvers is how many resolvers the smart pool takes; checking stops once it has them.
 	poolMaxResolvers = 10
+	// defaultPoolDuplicate is the pool's duplicate count without packet_duplication: the
+	// MasterDnsVPN client's own default.
+	defaultPoolDuplicate = 2
 	// poolProbeConcurrency is how many resolvers are probed at once.
 	poolProbeConcurrency = 100
 )
@@ -201,7 +204,16 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 		if err != nil {
 			return nil, err
 		}
-		pool, err := dnspool.StartPool(logger, tag, dnspool.PoolOptionsFrom(options.SmartPool), dial)
+		poolOptions := dnspool.PoolOptionsFrom(options.SmartPool)
+		if poolOptions.Duplicate == 0 {
+			// behind the pool the client sees one resolver and cannot send a packet over
+			// several: the pool does it, over resolvers without a rate limit
+			poolOptions.Duplicate = options.PacketDuplication
+			if poolOptions.Duplicate <= 0 {
+				poolOptions.Duplicate = defaultPoolDuplicate
+			}
+		}
+		pool, err := dnspool.StartPool(logger, tag, poolOptions, dial)
 		if err != nil {
 			return nil, err
 		}

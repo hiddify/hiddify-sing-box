@@ -210,6 +210,6 @@ func TestH_DnspoolPool(t *testing.T) {
 	require.NoError(t, nilPool.Close())
 
 	require.Equal(t, PoolOptions{}, PoolOptionsFrom(nil))
-	from := PoolOptionsFrom(&option.SmartPoolOptions{Enabled: true, LoadBalance: "weighted", Deadline: badoption.Duration(time.Second), DownAfter: 3})
-	require.Equal(t, PoolOptions{LoadBalance: "weighted", Deadline: time.Second, DownAfter: 3}, from)
+	from := PoolOptionsFrom(&option.SmartPoolOptions{Enabled: true, LoadBalance: "weighted", Deadline: badoption.Duration(time.Second), DownAfter: 3, Duplicate: 2})
+	require.Equal(t, PoolOptions{LoadBalance: "weighted", Deadline: time.Second, DownAfter: 3, Duplicate: 2}, from)
 }
