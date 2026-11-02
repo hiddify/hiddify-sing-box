@@ -2,6 +2,7 @@ package monitoring
 
 import (
 	"errors"
+	"sync/atomic"
 
 	"github.com/sagernet/sing-box/adapter"
 )
@@ -25,18 +26,26 @@ func (m *OutboundMonitoring) reg() *monitoringRegistry {
 }
 
 // buildRegistry reads the current outbounds, endpoints and groups. An outbound that is still the
-// same instance keeps its test history from previous; a group that still exists keeps its
-// observer, so subscribers keep receiving its events.
+// same instance keeps its test history from previous; one replaced by a hot reload keeps its
+// last result as a cached one, due for a test, the way a result loaded at start is: the groups
+// can still fall back on it, the cycle tests it before the untested, and the app shows it as
+// waiting until the new instance has answered. A group that still exists keeps its observer, so
+// subscribers keep receiving its events.
 func (m *OutboundMonitoring) buildRegistry(previous *monitoringRegistry) (*monitoringRegistry, error) {
 	registry := newMonitoringRegistry()
 	add := func(outbound adapter.Outbound) {
 		state := &outboundState{groupTags: []string{}, invalid: true, outbound: outbound, dependencies: outbound.Dependencies()}
-		if old, ok := previous.outbounds[outbound.Tag()]; ok && old.outbound == outbound {
+		if old, ok := previous.outbounds[outbound.Tag()]; ok {
 			old.mu.Lock()
 			state.history = old.history
 			state.lastURL = old.lastURL
-			state.invalid = old.invalid
-			state.from_cache = old.from_cache
+			if old.outbound == outbound {
+				state.invalid = old.invalid
+				state.from_cache = old.from_cache
+			} else {
+				state.from_cache = state.history.Delay != 0
+				state.history.IpInfoFromCache = state.history.IpInfo != nil
+			}
 			old.mu.Unlock()
 		}
 		registry.outbounds[outbound.Tag()] = state
@@ -127,7 +136,28 @@ func (m *OutboundMonitoring) Reload() error {
 			groupTags = append(groupTags, tag)
 		}
 		m.emitGroupEvent(groupTags)
-		m.startCycleOnce()
+		m.testChanged(previous, registry)
 	}
 	return nil
+}
+
+// testChanged queues a test of every outbound the reload created or replaced, and of nothing
+// else: the others keep their result until their regular time. A whole cycle here used to test
+// every outbound whose result was older than the interval, which after a profile update was all
+// of them, and the changed ones waited behind them, or for the next tick when a cycle was
+// already running. Before the first cycle there is nothing to do: it tests everything.
+func (m *OutboundMonitoring) testChanged(previous, registry *monitoringRegistry) {
+	cycleID := atomic.LoadUint64(&m.cycleSeq)
+	if cycleID == 0 {
+		return
+	}
+	for tag, state := range registry.outbounds {
+		if _, isGroup := registry.groups[tag]; isGroup {
+			continue
+		}
+		if old, ok := previous.outbounds[tag]; ok && old.outbound == state.outbound {
+			continue
+		}
+		m.enqueueTask(&testTask{outboundTag: tag, cycleID: cycleID})
+	}
 }

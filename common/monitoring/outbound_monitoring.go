@@ -379,6 +379,7 @@ func (m *OutboundMonitoring) startTimerWorkers() {
 		return
 	}
 	m.mainTicker = time.NewTicker(m.mainInterval)
+	m.lastActive.Store(time.Now()) // H: the Touch that restarts the workers is activity too
 
 	m.pauseCallback = pause.RegisterTicker(m.pause, m.mainTicker, m.mainInterval, nil)
 	m.schedulerWG.Add(1)
