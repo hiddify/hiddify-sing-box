@@ -420,6 +420,9 @@ func uTLSClientHelloID(name string) (utls.ClientHelloID, error) {
 	case "randomized":
 		return randomizedFingerprint, nil
 	default:
+		if id, ok := xrayFingerprint(name); ok { //H: Xray's names, hellochrome_120 and the like
+			return id, nil //H
+		} //H
 		return utls.ClientHelloID{}, E.New("unknown uTLS fingerprint: ", name)
 	}
 }

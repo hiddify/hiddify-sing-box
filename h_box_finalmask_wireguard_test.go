@@ -83,7 +83,7 @@ func TestH_WireGuardEndpointFinalMask(t *testing.T) {
 	replay, err := net.ListenPacket("udp", "127.0.0.1:0")
 	require.NoError(t, err)
 	defer replay.Close()
-	unmasker, err := serverMasks.UDP.WrapPacketConnServer(replay)
+	unmasker, err := serverMasks.WrapPacketConnServer(replay)
 	require.NoError(t, err)
 	sender, err := net.Dial("udp", replay.LocalAddr().String())
 	require.NoError(t, err)

@@ -9,7 +9,6 @@ import (
 	"testing"
 )
 
-
 func hOldNew(old bool, oldValue, newValue string) string {
 	if old {
 		return oldValue
@@ -22,8 +21,8 @@ func hStartXrayUDP(t *testing.T, binary string, config string) {
 	hStartXray(t, binary, config, 0)
 }
 
-// mKCP against Xray in both directions, plain and with the finalmask mkcp-legacy layers that
-// replaced its header and seed.
+// mKCP against Xray in both directions, plain, with the finalmask mkcp-legacy layers that
+// replaced its header and seed, and through xdns and noise.
 func TestH_XrayKCP(t *testing.T) {
 	binaries := hXrayBinaries(t)
 	echoAddress := hStartEcho(t)
@@ -34,7 +33,15 @@ func TestH_XrayKCP(t *testing.T) {
 			{"plain", ``, ``},
 			{"aes128gcm", hOldNew(old, `, "finalmask": {"udp": [{"type": "mkcp-aes128gcm", "settings": {"password": "hiddify"}}]}`, `, "finalmask": {"udp": [{"type": "mkcp-legacy", "settings": {"value": "hiddify"}}]}`), `, "finalmask": {"udp": [{"type": "mkcp-legacy", "settings": {"value": "hiddify"}}]}`},
 			{"wechat", hOldNew(old, `, "finalmask": {"udp": [{"type": "header-wechat"}]}`, `, "finalmask": {"udp": [{"type": "mkcp-legacy", "settings": {"header": "wechat"}}]}`), `, "finalmask": {"udp": [{"type": "mkcp-legacy", "settings": {"header": "wechat"}}]}`},
+			// since 26.10: the client sends mKCP in DNS queries to the server as its resolver; an mKCP
+			// segment fits in a reply only with EDNS0 on both sides
+			{"xdns", `, "finalmask": {"udp": [{"type": "xdns", "settings": {"domains": [{"names": ["t.example.com"], "edns0": 4096}]}}]}`,
+				`, "finalmask": {"udp": [{"type": "xdns", "settings": {"domains": [{"names": ["t.example.com"], "edns0": 4096}], "resolvers": [{"addrs": ["udp://127.0.0.1:XRAY_PORT"]}]}}]}`},
+			{"noise-exp", ``, `, "finalmask": {"udp": [{"type": "noise", "settings": {"noise": [{"type": "exp", "packet": "<b 0x0100> <r 8-16> <t>", "delay": "1"}]}}]}`},
 		} {
+			if old && (mask.name == "xdns" || mask.name == "noise-exp") {
+				continue
+			}
 			t.Run(version+"/sing-box-client/"+mask.name, func(t *testing.T) {
 				xrayPort := hFreeUDPPort(t)
 				hStartXrayUDP(t, binary, `{
@@ -49,7 +56,7 @@ func TestH_XrayKCP(t *testing.T) {
 					"log": {"disabled": true},
 					"inbounds": [{"type": "mixed", "listen": "127.0.0.1", "listen_port": `+strconv.Itoa(mixedPort)+`}],
 					"outbounds": [{"type": "vless", "server": "127.0.0.1", "server_port": `+strconv.Itoa(xrayPort)+`,
-						"uuid": "`+hInteropUUID+`", "transport": {"type": "mkcp"}`+mask.singBox+`}]
+						"uuid": "`+hInteropUUID+`", "transport": {"type": "mkcp"}`+strings.ReplaceAll(mask.singBox, "XRAY_PORT", strconv.Itoa(xrayPort))+`}]
 				}`, nil)
 				hEchoThroughSOCKS(t, mixedPort, echoAddress)
 			})

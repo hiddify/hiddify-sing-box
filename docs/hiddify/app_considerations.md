@@ -22,9 +22,9 @@ do about it. Items marked **Required** break or misbehave until they are handled
   config using one of them fails with "… is not included in this build" unless the tag is set.
   Decide per platform whether to ship them; `with_call` pulls in a large WebRTC stack. rmux needs
   no tag.
-- **Go 1.27.** Binaries with Psiphon crashed at start when built with Go 1.27 (psiphon-tls
-  checked the old `tls.ConnectionState` layout). Fixed in `bb18926a9`; Go 1.26.3 and 1.27.3 both
-  work.
+- **Go 1.27 required.** Xray-core v26.10.31, which finalmask and XDRIVE use, needs Go 1.27, so
+  `go.mod` and `test/go.mod` now say `go 1.27`. Every CI and gomobile build must use Go 1.27.3 or
+  newer. (Binaries with Psiphon crashed at start when built with Go 1.27; fixed in `bb18926a9`.)
 - **uTLS fork.** `github.com/metacubex/utls` is replaced by `github.com/Leadaxe/utls-lx` in
   `go.mod` and `test/go.mod`. The `firefox` fingerprint is now Firefox 148 and `safari` is
   Safari 26.3; `chrome` stays Chrome 133. Nothing to change in configs.
@@ -231,6 +231,13 @@ do about it. Items marked **Required** break or misbehave until they are handled
   should stop showing an "encrypted" state for reports.
 
 ## Behaviour the app should know about
+
+- **finalmask follows Xray v26.10.** `xdns` takes `domains` as `{"names": [...]}` and
+  `resolvers` as `{"addrs": [...]}`, with DoH resolvers (`https://…` plus `tlsConfig`); the older
+  string forms still load. New masks: `udphop`, noise `type: "exp"` and `script`. Masks are now
+  dialed through: `xdns` and `udphop` open their own sockets with the outbound's dialer. Links
+  carry finalmask as JSON (`fm=`), which ray2sing passes through unchanged, so nothing to change
+  in link parsing for the new masks.
 
 - **URL test.** A dial that fails because the path is dead moves the group to another member
   immediately, without closing live connections, so the selected member can change between tests.

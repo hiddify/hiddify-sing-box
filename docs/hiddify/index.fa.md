@@ -41,7 +41,7 @@
 - [mKCP](features/transports/kcp.fa.md): mKCP نسخهٔ Xray 26 روی UDP برای شبکه‌های پرافت یا شبکه‌هایی که TCP را کند می‌کنند، پنهان‌شده با ماسک‌های UDP در finalmask (build tag `with_kcp`).
 - [ترنسپورت raw](features/transports/raw.fa.md): ترنسپورت `raw`، تا کانفیگ‌هایی که از Xray تبدیل شده‌اند بارگذاری شوند.
 - [مسیرهای دلخواه gRPC](features/transports/grpc-custom-path.fa.md): مسیرهای چندبخشی gRPC به سبک Xray در `service_name`.
-- [finalmask](features/transports/finalmask.fa.md): ماسک‌های finalmask از Xray (fragment، noise، header-custom و موارد دیگر) روی هر اتصالی که یک خروجی برقرار می‌کند.
+- [finalmask](features/transports/finalmask.fa.md): ماسک‌های finalmask از Xray (fragment، noise، header-custom، xdns روی UDP، TCP یا DoH، udphop، merge، oob و موارد دیگر) روی هر اتصالی که یک خروجی برقرار می‌کند.
 - [سرور simple-obfs در Shadowsocks](features/transports/shadowsocks-obfs.fa.md): یک سرور simple-obfs روی ورودی‌های Shadowsocks، با یک مقصد فریب وقتی obfs یا ورود شکست بخورد.
 - [rmux](features/transports/rmux.fa.md): یک پروتکل چندگانه‌سازی دیگر برای بردن چند اتصال در یک اتصال، در کنار smux، yamux و h2mux.
 

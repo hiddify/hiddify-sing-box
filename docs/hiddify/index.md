@@ -39,7 +39,7 @@ an English and a Persian version.
 - [mKCP](features/transports/kcp.en.md): Xray 26's mKCP over UDP for lossy or TCP-throttled networks, hidden by finalmask UDP masks (build tag `with_kcp`).
 - [Raw transport](features/transports/raw.en.md): the `raw` transport, so configs converted from Xray load.
 - [Custom gRPC paths](features/transports/grpc-custom-path.en.md): Xray-style multi-segment gRPC paths in `service_name`.
-- [finalmask](features/transports/finalmask.en.md): Xray's finalmask masks (fragment, noise, header-custom and more) on every connection an outbound dials.
+- [finalmask](features/transports/finalmask.en.md): Xray's finalmask masks (fragment, noise, header-custom, xdns over UDP, TCP or DoH, udphop, merge, oob and more) on every connection an outbound dials.
 - [Shadowsocks simple-obfs server](features/transports/shadowsocks-obfs.en.md): a simple-obfs server on Shadowsocks inbounds, with a decoy when obfs or login fails.
 - [rmux](features/transports/rmux.en.md): one more multiplex protocol for many connections in one, next to smux, yamux and h2mux.
 

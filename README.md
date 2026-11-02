@@ -96,7 +96,7 @@ Many crash, leak and stability fixes on top of sing-box, each with its commit:
 ```bash
 git clone --recursive https://github.com/hiddify/hiddify-sing-box
 cd hiddify-sing-box
-make          # Go 1.26.3 or newer
+make          # Go 1.27.3 or newer
 ```
 
 The forks of dependencies live under `replace/` as git submodules, so clone with `--recursive`
@@ -142,6 +142,8 @@ Besides sing-box, this fork takes work from other forks and projects. Thank you 
 - [GFW-knocker](https://github.com/GFW-knocker): the WireGuard noise packets.
 - [XTLS/Xray-core](https://github.com/XTLS/Xray-core): XHTTP, mKCP, finalmask, VLESS encryption
   and REALITY, which the matching features here follow and are tested against.
+- [patterniha/Xray-core](https://github.com/patterniha/xray-core): the `merge` finalmask and the
+  `oob` dial mode.
 
 ## License
 
