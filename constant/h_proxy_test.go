@@ -49,7 +49,6 @@ func TestH_HiddifyTypeValues(t *testing.T) {
 		"TypeFallback":        TypeFallback,
 		"TypeDNSTT":           TypeDNSTT,
 		"TypeGooseRelay":      TypeGooseRelay,
-		"TypeSmartDNSPool":    TypeSmartDNSPool,
 		"TypeTrustTunnel":     TypeTrustTunnel,
 		"TypeLegacyWireGuard": TypeLegacyWireGuard,
 	}

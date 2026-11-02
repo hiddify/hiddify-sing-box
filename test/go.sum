@@ -256,8 +256,8 @@ github.com/hdevalence/ed25519consensus v0.2.0 h1:37ICyZqdyj0lAZ8P4D1d1id3HqbbG1N
 github.com/hdevalence/ed25519consensus v0.2.0/go.mod h1:w3BHWjwJbFU29IRHL1Iqkw3sus+7FctEyM4RqDxYNzo=
 github.com/hiddify/GooseRelayVPN v0.0.0-20260429125124-0e68c2a3ae4c h1:9Zc0hJ14G+SNJvGxtaSCSsvGB/RdLltrgjgR//9zgTQ=
 github.com/hiddify/GooseRelayVPN v0.0.0-20260429125124-0e68c2a3ae4c/go.mod h1:LI/1qA7FDU3MumegfyFOHGZCXcOw6rjIk7NPXga3/pQ=
-github.com/hiddify/hmrd_multi_resolver_dns v0.0.0-20260429114007-8d809dc33d0e h1:GsHpSccRtSFe1l3hq0WtBjqsKjJdU+an2D+uCsXm+xk=
-github.com/hiddify/hmrd_multi_resolver_dns v0.0.0-20260429114007-8d809dc33d0e/go.mod h1:7u9Ece+I3gvMFzcpqhROWaykNUyoE21g/fYQMBasAWY=
+github.com/hiddify/hmrd_multi_resolver_dns v0.0.0-20261102140835-72045bdb2631 h1:TPGcW5M0UxiWLyNd44Pl9Pl9WHKFqjCxsqztjZMWvOc=
+github.com/hiddify/hmrd_multi_resolver_dns v0.0.0-20261102140835-72045bdb2631/go.mod h1:7u9Ece+I3gvMFzcpqhROWaykNUyoE21g/fYQMBasAWY=
 github.com/hiddify/vaydns v0.0.0-20260401180616-890dc987a6a9 h1:KXnaABX8hHmkcL0jbL769hEIGI5+z/DajCrlO+Bkzcc=
 github.com/hiddify/vaydns v0.0.0-20260401180616-890dc987a6a9/go.mod h1:+8kEfQsZJn7/4aIppVekrSuqhrKjGBIgnacTJkdAlS8=
 github.com/huin/goupnp v1.3.0 h1:UvLUlWDNpoUdYzb2TCn+MuTWtcjXKSza2n6CBdQ0xXc=

@@ -8,10 +8,10 @@ import (
 	"sync"
 	"time"
 
-	multidns "github.com/hiddify/hmrd_multi_resolver_dns"
 	dnstt "github.com/net2share/vaydns/client"
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/outbound"
+	"github.com/sagernet/sing-box/common/dnspool"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
@@ -26,7 +26,6 @@ import (
 
 func RegisterOutbound(registry *outbound.Registry) {
 	outbound.Register[option.DnsttOptions](registry, C.TypeDNSTT, NewOutbound)
-	loadResolvers()
 }
 
 var _ adapter.Outbound = (*Outbound)(nil)
@@ -48,7 +47,7 @@ type Outbound struct {
 	resolve            bool
 	tunnel_index       int
 
-	mdMgr *multidns.Manager // smart pool, set when options.SmartPool
+	pool *dnspool.Pool // the outbound's own resolver pool, set when options.SmartPool is enabled
 
 	options option.DnsttOptions
 }
@@ -128,15 +127,19 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 		options: options,
 	}
 
-	if options.SmartPool {
-		mgr, addr, err := multidns.StartLocal(multidns.Options{})
+	if options.SmartPool.IsEnabled() {
+		dial, err := dnspool.DialFunc(ctx, options.DialerOptions)
 		if err != nil {
 			return nil, err
 		}
-		out.mdMgr = mgr
-		out.resolvers = []dnstt.Resolver{{ResolverType: dnstt.ResolverTypeUDP, ResolverAddr: addr}}
+		pool, err := dnspool.StartPool(logger, tag, dnspool.PoolOptionsFrom(options.SmartPool), dial)
+		if err != nil {
+			return nil, err
+		}
+		out.pool = pool
+		out.resolvers = []dnstt.Resolver{{ResolverType: dnstt.ResolverTypeUDP, ResolverAddr: pool.Addr()}}
 		out.tunnels = []*dnstt.Tunnel{nil}
-		logger.InfoContext(ctx, "dnstt smart_pool listening on ", addr)
+		logger.InfoContext(ctx, "dnstt smart_pool listening on ", pool.Addr())
 	}
 
 	return out, nil
@@ -194,8 +197,8 @@ func (c *Outbound) Close() error {
 			t.Close()
 		}
 	}
-	if c.mdMgr != nil {
-		_ = c.mdMgr.Close()
+	if c.pool != nil {
+		_ = c.pool.Close()
 	}
 	return nil
 }

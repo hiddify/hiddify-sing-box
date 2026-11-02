@@ -14,14 +14,14 @@ import (
 
 func (c *Outbound) addResolver(resolver dnstt.Resolver) {
 	c.mu.Lock()
-	if c.mdMgr != nil {
-		// Smart pool mode: register the resolver as a multidns upstream.
+	if c.pool != nil {
+		// Smart pool mode: register the resolver as a pool upstream.
 		// c.resolvers stays at the single virtual resolver set up in
 		// NewOutbound, so the existing tunnel keeps running — the pool
 		// rotates upstreams behind it. No need to invalidate
 		// c.mutlitunnel here (unlike the legacy path, which has to
 		// rebuild the tunnel when its resolver list changes).
-		_, _ = c.mdMgr.AddResolverURL(resolverURL(resolver))
+		_ = c.pool.Add(resolverURL(resolver))
 	} else {
 		// for i := 0; i < c.options.TunnelPerResolver; i++ {
 		c.resolvers = append(c.resolvers, resolver)
@@ -37,7 +37,7 @@ func (c *Outbound) addResolver(resolver dnstt.Resolver) {
 	}
 }
 
-// resolverURL renders a dnstt.Resolver as the URL form multidns parses.
+// resolverURL renders a dnstt.Resolver as the URL form the pool parses.
 // UDP resolvers are bare host:port (multidns defaults to UDP/53); DoT gets
 // the "dot://" prefix; DoH is already a full https:// URL.
 func resolverURL(r dnstt.Resolver) string {

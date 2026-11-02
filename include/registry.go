@@ -52,7 +52,6 @@ import (
 	"github.com/sagernet/sing-box/service/api"
 	originca "github.com/sagernet/sing-box/service/origin_ca"
 	"github.com/sagernet/sing-box/service/resolved"
-	smartdnspool "github.com/sagernet/sing-box/service/smart_dns_pool"
 	"github.com/sagernet/sing-box/service/ssmapi"
 	E "github.com/sagernet/sing/common/exceptions"
 )
@@ -189,7 +188,6 @@ func ServiceRegistry() *service.Registry {
 	api.RegisterService(registry)
 	resolved.RegisterService(registry)
 	ssmapi.RegisterService(registry)
-	smartdnspool.RegisterService(registry) //H
 
 	registerQUICServices(registry)
 	registerDERPService(registry)

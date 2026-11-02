@@ -72,12 +72,6 @@ func TestH_DNSTransportRegistryHiddifyTypes(t *testing.T) {
 	})
 }
 
-func TestH_ServiceRegistryHiddifyTypes(t *testing.T) {
-	hRequireRegistered(t, ServiceRegistry(), map[string]any{
-		C.TypeSmartDNSPool: &option.SmartDNSPoolServiceOptions{},
-	})
-}
-
 func TestH_CertificateProviderRegistryHiddifyTypes(t *testing.T) {
 	hRequireRegistered(t, CertificateProviderRegistry(), map[string]any{
 		C.TypeCloudflareOriginCA: &option.CloudflareOriginCACertificateProviderOptions{},

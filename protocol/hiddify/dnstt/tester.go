@@ -3,62 +3,29 @@ package dnstt
 import (
 	"context"
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
-	"math/rand/v2"
 	"net"
 	"net/http"
-	"sort"
-	"strconv"
-	"sync"
 	"time"
 
 	dnstt "github.com/net2share/vaydns/client"
-	"github.com/sagernet/sing-box/adapter"
-
-	"github.com/sagernet/sing-box/dns/transport"
-	"github.com/sagernet/sing-box/option"
+	"github.com/sagernet/sing-box/common/dnspool"
 	"github.com/sagernet/sing/common/batch"
 
 	"github.com/miekg/dns"
 )
 
-type History struct {
-	ResolverRate map[string]int `json:"resolver_rate"`
+// historyKey names the saved resolver scores; each record type keeps its own.
+func (h *Outbound) historyKey() string {
+	return "dnstt_resolvers" + h.options.RecordType
 }
 
-func (h *Outbound) loadHistory() *History {
-	history := &History{ResolverRate: make(map[string]int)}
-
-	if h.cache == nil {
-		return history
-	}
-
-	savedBinary := h.cache.LoadBinary("dnstt_resolvers" + h.options.RecordType)
-	if savedBinary == nil {
-		return history
-	}
-	if err := json.Unmarshal(savedBinary.Content, history); err != nil {
-		return history
-	}
-
-	return history
+func (h *Outbound) loadHistory() *dnspool.History {
+	return dnspool.LoadHistory(h.cache, h.historyKey())
 }
 
-func (h *Outbound) saveHistory(his *History) {
-	if h.cache == nil {
-		return
-	}
-
-	content, err := json.Marshal(his)
-	if err != nil {
-		h.logger.Error("failed to marshal outbound monitoring history: ", err)
-		return
-	}
-	h.cache.SaveBinary("dnstt_resolvers"+h.options.RecordType, &adapter.SavedBinary{
-		LastUpdated: time.Now(),
-		Content:     content,
-	})
+func (h *Outbound) saveHistory(his *dnspool.History) {
+	his.Save(h.cache, h.historyKey(), h.logger)
 }
 
 func (h *Outbound) startTestResolver() error {
@@ -67,30 +34,17 @@ func (h *Outbound) startTestResolver() error {
 
 	b, _ := batch.New(h.ctx, batch.WithConcurrencyNum[any](100))
 
-	candidates := h.candidateResolvers
-	rand.Shuffle(len(candidates), func(i, j int) {
-		candidates[i], candidates[j] = candidates[j], candidates[i]
-	})
+	// the shared order: built-in resolvers first, then by saved score, equals shuffled
+	ordered := make([]dnspool.Candidate, len(h.candidateResolvers))
+	byAddress := make(map[string]dnstt.Resolver, len(h.candidateResolvers))
+	for i, r := range h.candidateResolvers {
+		ordered[i] = dnspool.Candidate{Address: r.Resolver.ResolverAddr, Auto: r.Auto}
+		byAddress[r.Resolver.ResolverAddr] = r.Resolver
+	}
+	history.Sort(ordered)
 
-	sort.Slice(candidates, func(i, j int) bool {
-		a := candidates[i]
-		b := candidates[j]
-
-		// Auto first
-		if a.Auto != b.Auto {
-			return a.Auto
-		}
-
-		// Then by rate descending
-		rateA := history.ResolverRate[a.Resolver.ResolverAddr]
-		rateB := history.ResolverRate[b.Resolver.ResolverAddr]
-
-		return rateA > rateB
-	})
-	historyMutex := sync.Mutex{}
-
-	for _, r := range candidates {
-		resolver := r.Resolver
+	for _, candidate := range ordered {
+		resolver := byAddress[candidate.Address]
 
 		select {
 		case <-h.ctx.Done():
@@ -114,34 +68,16 @@ func (h *Outbound) startTestResolver() error {
 			}
 
 			rate, err := h.testTunnelResolver(resolver)
-
-			// update history safely
-			historyMutex.Lock()
-			defer historyMutex.Unlock()
+			history.Record(resolver.ResolverAddr, rate)
 
 			if err == nil {
 				h.logger.InfoContext(h.ctx, "resolver ", resolver.ResolverAddr, " is working and added to the pool")
-
-				if history.ResolverRate[resolver.ResolverAddr] < 0 {
-					history.ResolverRate[resolver.ResolverAddr] = 0
-				}
-				history.ResolverRate[resolver.ResolverAddr] += rate
-				if history.ResolverRate[resolver.ResolverAddr] > 10 {
-					history.ResolverRate[resolver.ResolverAddr] = 10
-				}
-
 				h.addResolver(resolver)
 				if h.isReady() {
 					h.saveHistory(history)
 				}
-
 			} else {
 				h.logger.WarnContext(h.ctx, "resolver ", resolver.ResolverAddr, " failed: ", err)
-
-				history.ResolverRate[resolver.ResolverAddr] += rate
-				if history.ResolverRate[resolver.ResolverAddr] < -10 {
-					history.ResolverRate[resolver.ResolverAddr] = -10
-				}
 			}
 
 			return nil, nil
@@ -150,36 +86,11 @@ func (h *Outbound) startTestResolver() error {
 
 	return b.Wait()
 }
-func getDnsRecordType(record string) uint16 {
-	switch record {
-	case "a":
-		return dns.TypeA
-	case "aaaa":
-		return dns.TypeAAAA
-	case "cname":
-		return dns.TypeCNAME
-	case "mx":
-		return dns.TypeMX
-	case "ns":
-		return dns.TypeNS
-	case "ptr":
-		return dns.TypePTR
-	case "soa":
-		return dns.TypeSOA
-	case "srv":
-		return dns.TypeSRV
-	case "txt":
-		return dns.TypeTXT
-	default:
-		return dns.TypeA
-	}
-}
-
 func (h *Outbound) testTunnelResolver(resolver dnstt.Resolver) (rate int, err error) {
 	domain := h.options.PreTestDomain
 	record := h.options.PreTestRecordType
 	h.logger.DebugContext(h.ctx, "testing resolver ", resolver.ResolverAddr, " with domain ", domain, " and record type ", record)
-	resp, err := h.Resolve(resolver, domain, getDnsRecordType(record))
+	resp, err := h.Resolve(resolver, domain, dnspool.QueryType(record))
 	h.logger.DebugContext(h.ctx, "resolver ", resolver.ResolverAddr, " response ", fmt.Sprint(resp), " error ", err)
 	if err != nil {
 		return -4, err
@@ -222,54 +133,9 @@ func (h *Outbound) testTunnelResolver(resolver dnstt.Resolver) (rate int, err er
 
 }
 
-func buildDNSQuery(name string, qtype uint16) *dns.Msg {
-	m := new(dns.Msg)
-	m.SetQuestion(dns.Fqdn(name), qtype)
-	m.RecursionDesired = true
-
-	return m
-}
-
+// ResolveUDP is the shared plain-DNS probe, through sing-box's UDP transport.
 func (h *Outbound) ResolveUDP(resolver dnstt.Resolver, name string, qtype uint16) (*dns.Msg, error) {
-	host, portStr, err := net.SplitHostPort(resolver.ResolverAddr)
-	if err != nil {
-		return nil, err
-	}
-
-	portInt, err := strconv.Atoi(portStr)
-	if err != nil {
-		return nil, err
-	}
-	trans, err := transport.NewUDP(
-		h.ctx,
-		h.logger,
-		"resolver"+resolver.ResolverAddr,
-		option.RemoteDNSServerOptions{
-			DNSServerAddressOptions: option.DNSServerAddressOptions{
-				Server:     host,
-				ServerPort: uint16(portInt),
-			},
-		},
-	)
-	if err != nil {
-		return nil, err
-	}
-	// h.logger.InfoContext(h.ctx, "resolving name ", name, " of type ", qtype, " using resolver ", resolver.ResolverAddr)
-
-	msg := buildDNSQuery(name, qtype)
-	scope := adapter.NewScope(h.ctx, h.logger) // H: the transport lives only for this query
-	defer scope.Close()
-	err = scope.Start("dns/test", trans, adapter.StartStateStart)
-	if err != nil {
-		return nil, err
-	}
-	ctx, cancel := context.WithTimeout(h.ctx, 5*time.Second)
-	defer cancel()
-	resp, err := trans.Exchange(ctx, msg)
-	if err != nil {
-		return nil, err
-	}
-	return resp, nil
+	return dnspool.Probe(h.ctx, h.logger, resolver.ResolverAddr, name, qtype, h.options.DialerOptions)
 }
 
 func (h *Outbound) Resolve(resolver dnstt.Resolver, name string, qtype uint16) (*dns.Msg, error) {
@@ -282,7 +148,7 @@ func (h *Outbound) Resolve(resolver dnstt.Resolver, name string, qtype uint16) (
 	}
 	defer conn.Close()                                     // one connection per resolver test
 	_ = conn.SetDeadline(time.Now().Add(10 * time.Second)) // a resolver that never answers must not block the test
-	msg := buildDNSQuery(name, qtype)
+	msg := dnspool.BuildQuery(name, qtype)
 
 	data, err := msg.Pack()
 	if err != nil {

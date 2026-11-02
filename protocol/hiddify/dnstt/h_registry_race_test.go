@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/sagernet/sing-box/adapter/outbound"
+	"github.com/sagernet/sing-box/common/dnspool"
 )
 
 // registries are built for every new context, possibly at the same time
@@ -18,7 +19,7 @@ func TestH_RegisterOutboundConcurrently(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	if len(resolverCountry) == 0 {
+	if len(dnspool.BuiltinResolvers()) == 0 {
 		t.Fatal("resolvers not loaded")
 	}
 }

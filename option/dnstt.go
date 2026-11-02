@@ -41,9 +41,8 @@ type DnsttOptions struct {
 	UdpTimeout      *badoption.Duration `json:"udp-timeout,omitempty"`
 	UdpWorkers      *int                `json:"udp-workers,omitempty"`
 
-	// SmartPool routes every resolver registered via the dnstt outbound's
-	// addResolver flow through an internal hmrd_multi_resolver_dns pool
-	// (deadline-aware failover, AIMD throttling, recovery probing) instead
-	// of using each resolver as its own tunnel.
-	SmartPool bool `json:"smart_pool,omitempty"`
+	// SmartPool sends the queries through the outbound's own resolver pool (SmartPoolOptions)
+	// instead of using each resolver as its own tunnel: `true`, or an object with the pool's
+	// settings.
+	SmartPool *SmartPoolOptions `json:"smart_pool,omitempty"`
 }

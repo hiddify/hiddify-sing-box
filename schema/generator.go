@@ -106,6 +106,15 @@ func (g *generator) Describe(valueType reflect.Type) (*Node, error) {
 	case rawMessageType: //H
 		return &Node{}, nil //H
 	}
+	if valueType.Name() == "SmartPoolOptions" && strings.HasSuffix(valueType.PkgPath(), "sing-box/option") { //H: a bare true or the settings object (option imports this package, so by name)
+		return g.Define("SmartPool", func() (*Node, error) { //H
+			node := StrictObject()                                   //H
+			if err := g.FlattenStruct(node, valueType); err != nil { //H
+				return nil, err //H
+			} //H
+			return AnyOf(BooleanNode(), node), nil //H
+		}) //H
+	} //H
 	if slices.Contains(rangeTypes, valueType) { //H
 		return g.Define("Range", func() (*Node, error) { //H
 			return AnyOf(IntegerNode(), StringNode(), &Node{Type: "object"}), nil //H

@@ -40,7 +40,7 @@ resolvers you can reach drop long or unusual queries.
   `single-resolver`, each resolver gets its own tunnel, and each connection uses one picked at
   random; a tunnel that fails is closed and rebuilt. With `smart_pool`, queries go to a local
   resolver pool that spreads them over the working resolvers, slows down for a resolver that
-  rate-limits, and skips one that stops answering (see [Smart DNS pool](../dns/smart-dns-pool.en.md)).
+  rate-limits, and skips one that stops answering (see [Smart resolver pool](../dns/smart-dns-pool.en.md)).
 - **Inside the tunnel.** The data runs over KCP for reliability, Noise for encryption, and smux
   so that many connections share one tunnel.
 - **Destination.** The outbound does not choose where a connection goes. Every connection
@@ -86,7 +86,7 @@ connection goes.
 | `record-type` | string | `"txt"` | Record type of the answers that carry data back from the server: `txt`, `cname`, `a`, `aaaa`, `mx`, `ns` or `srv`. It must match the server. Another value uses TXT. Each record type keeps its own saved resolver history. |
 | `utls` | string | `""` | TLS fingerprint for DoH and DoT, for example `"Chrome"`, `"Firefox"`, `"iOS"` or `"random"`. Empty uses Go's own TLS. |
 | `single-resolver` | bool | `false` | One tunnel per resolver instead of one tunnel over all of them. |
-| `smart_pool` | bool | `false` | Send queries through a local resolver pool, as described above. |
+| `smart_pool` | bool or object | `false` | Send queries through the outbound's own resolver pool, as described above: `true`, or an object with `load_balance`, `deadline`, `per_attempt`, `probe_interval` and `down_after` (see [Smart resolver pool](../dns/smart-dns-pool.en.md)). |
 | `dnstt-compat` | bool | `false` | Use the original DNSTT wire format, for an original DNSTT server. |
 | `clientid-size` | int | `2` | Client ID size in bytes. Ignored with `dnstt-compat`, which uses 8. Must match the server. |
 | `max-qname-len` | int | `101` (`253` with `dnstt-compat`) | Longest query name to send. |
@@ -116,5 +116,5 @@ log shows a warning.
 
 ## See also
 
-- [Smart DNS pool](../dns/smart-dns-pool.en.md)
+- [Smart resolver pool](../dns/smart-dns-pool.en.md)
 - [Monitoring](../groups/monitoring.en.md)
