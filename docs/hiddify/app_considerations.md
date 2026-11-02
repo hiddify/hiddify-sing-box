@@ -22,6 +22,11 @@ do about it. Items marked **Required** break or misbehave until they are handled
   config using one of them fails with "… is not included in this build" unless the tag is set.
   Decide per platform whether to ship them; `with_call` pulls in a large WebRTC stack. rmux needs
   no tag.
+- **XDRIVE and the default tags.** The core Makefile's default tags meant to include
+  `with_sudoku`, `with_call`, `with_bond` and `with_kcp` but joined them with `/`, so none of the
+  four was built; they are now separated by commas, and `with_xdrive` (the XDRIVE transport) is
+  added. hiddify-core's `PROTOCOL_TAGS` has `with_xdrive` too. A profile with
+  `"transport": {"type": "xdrive"}` fails with "XDRIVE is not included in this build" without it.
 - **Go 1.27 required.** Xray-core v26.10.31, which finalmask and XDRIVE use, needs Go 1.27, so
   `go.mod` and `test/go.mod` now say `go 1.27`. Every CI and gomobile build must use Go 1.27.3 or
   newer. (Binaries with Psiphon crashed at start when built with Go 1.27; fixed in `bb18926a9`.)

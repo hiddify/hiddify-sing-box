@@ -101,8 +101,9 @@ make          # Go 1.27.3 or newer
 ```
 
 The forks of dependencies live under `replace/` as git submodules, so clone with `--recursive`
-(or run `git submodule update --init --recursive`). The default build tags are in the `Makefile`;
-`with_kcp`, `with_sudoku`, `with_bond`, `with_call` and `with_tailscale` add optional features.
+(or run `git submodule update --init --recursive`). The default build tags are in the `Makefile`,
+including the optional `with_kcp`, `with_sudoku`, `with_bond`, `with_call` and `with_xdrive`;
+`with_tailscale` adds another optional feature.
 
 ## Contributing
 
