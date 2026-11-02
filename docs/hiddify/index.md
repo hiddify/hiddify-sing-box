@@ -37,6 +37,7 @@ an English and a Persian version.
 
 - [XHTTP](features/transports/xhttp.en.md): Xray's XHTTP transport with its modes, padding, placements, XMUX and split download.
 - [mKCP](features/transports/kcp.en.md): Xray 26's mKCP over UDP for lossy or TCP-throttled networks, hidden by finalmask UDP masks (build tag `with_kcp`).
+- [XDRIVE](features/transports/xdrive.en.md): Xray's storage transport, a VLESS connection carried in files on Google Drive, S3 or another storage service, so the client never contacts the server (build tag `with_xdrive`).
 - [Raw transport](features/transports/raw.en.md): the `raw` transport, so configs converted from Xray load.
 - [Custom gRPC paths](features/transports/grpc-custom-path.en.md): Xray-style multi-segment gRPC paths in `service_name`.
 - [finalmask](features/transports/finalmask.en.md): Xray's finalmask masks (fragment, noise, header-custom, xdns over UDP, TCP or DoH, udphop, merge, oob and more) on every connection an outbound dials.

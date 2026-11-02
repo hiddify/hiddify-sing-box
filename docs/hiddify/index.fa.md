@@ -39,6 +39,7 @@
 
 - [XHTTP](features/transports/xhttp.fa.md): ترنسپورت XHTTP از Xray با حالت‌ها، padding، جایگاه‌ها، XMUX و دانلود جداگانه.
 - [mKCP](features/transports/kcp.fa.md): mKCP نسخهٔ Xray 26 روی UDP برای شبکه‌های پرافت یا شبکه‌هایی که TCP را کند می‌کنند، پنهان‌شده با ماسک‌های UDP در finalmask (build tag `with_kcp`).
+- [XDRIVE](features/transports/xdrive.fa.md): ترنسپورت ذخیره‌سازی Xray؛ اتصال VLESS در فایل‌هایی روی Google Drive، S3 یا سرویس ذخیره‌سازی دیگر حمل می‌شود و کلاینت هرگز به سرور وصل نمی‌شود (build tag `with_xdrive`).
 - [ترنسپورت raw](features/transports/raw.fa.md): ترنسپورت `raw`، تا کانفیگ‌هایی که از Xray تبدیل شده‌اند بارگذاری شوند.
 - [مسیرهای دلخواه gRPC](features/transports/grpc-custom-path.fa.md): مسیرهای چندبخشی gRPC به سبک Xray در `service_name`.
 - [finalmask](features/transports/finalmask.fa.md): ماسک‌های finalmask از Xray (fragment، noise، header-custom، xdns روی UDP، TCP یا DoH، udphop، merge، oob و موارد دیگر) روی هر اتصالی که یک خروجی برقرار می‌کند.

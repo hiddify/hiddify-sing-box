@@ -184,6 +184,7 @@
 
 ## همچنین ببینید
 
+- [ترنسپورت XDRIVE](xdrive.fa.md)
 - [تکه‌تکه کردن TLS](../tls-fragment.fa.md)
 - [ترفندهای TLS](../tls-tricks.fa.md)
 - [ترنسپورت XHTTP](xhttp.fa.md)

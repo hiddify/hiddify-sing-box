@@ -55,6 +55,7 @@ its changes small and close to upstream so it can follow every sing-box release.
 
 - [XHTTP](docs/hiddify/features/transports/xhttp.en.md),
   [mKCP](docs/hiddify/features/transports/kcp.en.md),
+  [XDRIVE](docs/hiddify/features/transports/xdrive.en.md),
   [raw](docs/hiddify/features/transports/raw.en.md),
   [custom gRPC paths](docs/hiddify/features/transports/grpc-custom-path.en.md),
   [finalmask](docs/hiddify/features/transports/finalmask.en.md),
@@ -140,8 +141,8 @@ Besides sing-box, this fork takes work from other forks and projects. Thank you 
 - [masterking32/MasterDnsVPN](https://github.com/masterking32/MasterDnsVPN): MasterDNS.
 - [kianmhz/GooseRelayVPN](https://github.com/kianmhz/GooseRelayVPN): GooseRelay.
 - [GFW-knocker](https://github.com/GFW-knocker): the WireGuard noise packets.
-- [XTLS/Xray-core](https://github.com/XTLS/Xray-core): XHTTP, mKCP, finalmask, VLESS encryption
-  and REALITY, which the matching features here follow and are tested against.
+- [XTLS/Xray-core](https://github.com/XTLS/Xray-core): XHTTP, mKCP, XDRIVE, finalmask, VLESS
+  encryption and REALITY, which the matching features here follow and are tested against.
 - [patterniha/Xray-core](https://github.com/patterniha/xray-core): the `merge` finalmask and the
   `oob` dial mode.
 

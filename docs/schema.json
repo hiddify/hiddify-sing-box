@@ -22952,8 +22952,112 @@
             "type"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "xdrive"
+            },
+            "service": {
+              "type": "string"
+            },
+            "remote_folder": {
+              "type": "string"
+            },
+            "secrets": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "segment_bytes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            "flush_interval_ms": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            "poll_interval_ms": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            "max_poll_interval_ms": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            "session_ttl_seconds": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            "concurrency": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            "eager_window_ms": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            "hole_timeout_ms": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            "template": {},
+            "s3": {
+              "$ref": "#/$defs/V2RayXDriveS3Options"
+            },
+            "xmux": {
+              "$ref": "#/$defs/V2RayXHTTPXmuxOptions"
+            },
+            "fronting_address": {
+              "type": "string"
+            },
+            "fronting_port": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65535
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
         }
       ]
+    },
+    "V2RayXDriveS3Options": {
+      "type": "object",
+      "properties": {
+        "endpoint": {
+          "type": "string"
+        },
+        "region": {
+          "type": "string"
+        },
+        "bucket": {
+          "type": "string"
+        },
+        "path_style": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
     },
     "V2RayXHTTPDownloadOptions": {
       "type": "object",

@@ -26,6 +26,7 @@ type _V2RayTransportOptions struct {
 	DNSTTOptions       DnsttOptions            `json:"-"` //H
 	RawOptions         V2RayRawOptions         `json:"-"` //H
 	KCPOptions         V2RayKCPOptions         `json:"-"` //H
+	XDriveOptions      V2RayXDriveOptions      `json:"-"` //H
 }
 
 type V2RayTransportOptions _V2RayTransportOptions
@@ -49,6 +50,8 @@ func (o V2RayTransportOptions) MarshalJSON() ([]byte, error) {
 		v = o.RawOptions //H
 	case C.V2RayTransportTypeKCP, C.V2RayTransportTypeKCPAlias: //H
 		v = o.KCPOptions //H
+	case C.V2RayTransportTypeXDrive: //H
+		v = o.XDriveOptions //H
 
 	case "":
 		return nil, E.New("missing transport type")
@@ -82,6 +85,8 @@ func (o *V2RayTransportOptions) UnmarshalJSON(bytes []byte) error {
 	case C.V2RayTransportTypeKCP, C.V2RayTransportTypeKCPAlias: //H
 		o.Type = C.V2RayTransportTypeKCP //H
 		v = &o.KCPOptions                //H
+	case C.V2RayTransportTypeXDrive: //H
+		v = &o.XDriveOptions //H
 	default:
 		return E.New("unknown transport type: " + o.Type)
 	}
@@ -100,9 +105,10 @@ func (o V2RayTransportOptions) DescribeSchema(builder schema.Builder) (*schema.N
 			{Value: C.V2RayTransportTypeQUIC, StructType: reflect.TypeFor[V2RayQUICOptions]()},
 			{Value: C.V2RayTransportTypeGRPC, StructType: reflect.TypeFor[V2RayGRPCOptions]()},
 			{Value: C.V2RayTransportTypeHTTPUpgrade, StructType: reflect.TypeFor[V2RayHTTPUpgradeOptions]()},
-			{Value: C.V2RayTransportTypeXHTTP, StructType: reflect.TypeFor[V2RayXHTTPOptions]()}, //H
-			{Value: C.V2RayTransportTypeRaw, StructType: reflect.TypeFor[V2RayRawOptions]()},     //H
-			{Value: C.V2RayTransportTypeKCP, StructType: reflect.TypeFor[V2RayKCPOptions]()},     //H
+			{Value: C.V2RayTransportTypeXHTTP, StructType: reflect.TypeFor[V2RayXHTTPOptions]()},   //H
+			{Value: C.V2RayTransportTypeRaw, StructType: reflect.TypeFor[V2RayRawOptions]()},       //H
+			{Value: C.V2RayTransportTypeKCP, StructType: reflect.TypeFor[V2RayKCPOptions]()},       //H
+			{Value: C.V2RayTransportTypeXDrive, StructType: reflect.TypeFor[V2RayXDriveOptions]()}, //H
 		}, nil)
 	})
 }

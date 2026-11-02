@@ -238,6 +238,11 @@ do about it. Items marked **Required** break or misbehave until they are handled
   dialed through: `xdns` and `udphop` open their own sockets with the outbound's dialer. Links
   carry finalmask as JSON (`fm=`), which ray2sing passes through unchanged, so nothing to change
   in link parsing for the new masks.
+- **XDRIVE.** The `xdrive` transport needs VLESS with `encryption` for an Xray server. The
+  outbound's `server` and `server_port` are required but unused; the app may show them as
+  meaningless for such a profile. Each proxy connection is its own storage session, since the
+  client has no Mux.Cool: a profile on Google Drive is slow and spends API quota, so a URL test
+  every few minutes costs a session each time.
 
 - **URL test.** A dial that fails because the path is dead moves the group to another member
   immediately, without closing live connections, so the selected member can change between tests.
