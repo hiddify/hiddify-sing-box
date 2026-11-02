@@ -30,3 +30,7 @@
 	path = replace/sing-mux
 	url = https://github.com/hiddify/sing-mux.git
 	branch = v5
+[submodule "replace/MasterDnsVPN"]
+	path = replace/MasterDnsVPN
+	url = https://github.com/hiddify/MasterDnsVPN
+	branch = hiddify

@@ -22,6 +22,8 @@ replace github.com/net2share/vaydns => github.com/hiddify/vaydns v0.0.0-20260401
 
 replace github.com/kianmhz/GooseRelayVPN => github.com/hiddify/GooseRelayVPN v0.0.0-20260429125124-0e68c2a3ae4c
 
+replace masterdnsvpn-go => ../replace/MasterDnsVPN
+
 replace github.com/sagernet/sing-vmess => ../replace/sing-vmess
 
 replace github.com/Diniboy1123/connect-ip-go => github.com/shtorm-7/connect-ip-go v1.0.0-extended-1.1.1
@@ -54,6 +56,7 @@ require (
 	github.com/AdguardTeam/golibs v0.32.7 // indirect
 	github.com/AndreasBriese/bbloom v0.0.0-20190825152654-46b345b51c96 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
+	github.com/BurntSushi/toml v1.4.1-0.20240526193622-a339e1f7089c // indirect
 	github.com/Diniboy1123/connect-ip-go v0.0.0-20260613064811-66cba32d7d33 // indirect
 	github.com/Jigsaw-Code/outline-sdk v0.0.20 // indirect
 	github.com/Microsoft/go-winio v0.6.1 // indirect
@@ -320,6 +323,7 @@ require (
 	google.golang.org/protobuf v1.36.11 // indirect
 	gotest.tools/v3 v3.5.1 // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
+	masterdnsvpn-go v0.0.0 // indirect
 	tailscale.com v1.58.2 // indirect
 	zombiezen.com/go/capnproto2 v2.18.2+incompatible // indirect
 )

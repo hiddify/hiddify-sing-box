@@ -65,6 +65,7 @@ const (
 	TypeCall           = "call"       //H
 	TypeDNSTT          = "dnstt"      //H
 	TypeGooseRelay     = "gooserelay" //H
+	TypeMasterDNS      = "masterdns"  //H
 	TypeTrustTunnel    = "trusttunnel"
 )
 
@@ -183,6 +184,8 @@ func ProxyDisplayName(proxyType string) string {
 		return "DNSTT"
 	case TypeGooseRelay:
 		return "GooseRelay"
+	case TypeMasterDNS: //H
+		return "MasterDNS" //H
 	case TypeTrustTunnel:
 		return "TrustTunnel"
 	case TypeSelector:

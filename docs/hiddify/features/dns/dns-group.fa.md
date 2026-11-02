@@ -100,7 +100,7 @@
 
 ## همچنین ببینید
 
-- [استخر DNS هوشمند](smart-dns-pool.fa.md)
+- [مجموعهٔ هوشمند resolver](smart-dns-pool.fa.md)
 - [جایگزین](../groups/fallback.fa.md)
 
 </div>

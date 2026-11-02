@@ -154,10 +154,28 @@ func TestH_SmartPoolOptions(t *testing.T) {
 	require.Equal(t, 7*time.Second, time.Duration(full.SmartPool.ProbeInterval))
 	require.Equal(t, 3, full.SmartPool.DownAfter)
 
-	_, err = hUnmarshal[DnsttOptions](t, `{"smart_pool":{"enabled":true,"down_after":"many"}}`)
+	md := hRoundTrip[MasterDNSOptions](t, `{"domains":["v.example.com"],"resolvers":["auto"],"key":"k","smart_pool":true}`)
+	require.True(t, md.SmartPool.IsEnabled())
+	md, err = hUnmarshal[MasterDNSOptions](t, `{"smart_pool":{"enabled":true,"down_after":"many"}}`)
 	require.Error(t, err)
-	_, err = hUnmarshal[DnsttOptions](t, `{"smart_pool":"yes"}`)
+	_, err = hUnmarshal[MasterDNSOptions](t, `{"smart_pool":"yes"}`)
 	require.Error(t, err)
+}
+
+func TestH_MasterDNSOptions(t *testing.T) {
+	t.Parallel()
+	md := hRoundTrip[MasterDNSOptions](t, `{"domains":"v.example.com","resolvers":["8.8.8.8","1.1.1.1:5353"],"encryption":"aes-256-gcm","key":"k","mode":"tcp","balancing":"least-loss","packet_duplication":3,"mtu_test_timeout":"2s","auto_remove_low_mtu_resolvers":false,"ready_timeout":"10s","udp_over_tcp":{"enabled":true}}`)
+	require.Equal(t, []string{"v.example.com"}, []string(md.Domains))
+	require.Equal(t, []string{"8.8.8.8", "1.1.1.1:5353"}, []string(md.Resolvers))
+	require.Equal(t, "aes-256-gcm", md.Encryption)
+	require.Equal(t, "tcp", md.Mode)
+	require.Equal(t, 3, md.PacketDuplication)
+	require.Equal(t, 2*time.Second, time.Duration(md.MTUTestTimeout))
+	require.NotNil(t, md.AutoRemoveLowMTUResolvers)
+	require.False(t, *md.AutoRemoveLowMTUResolvers)
+	require.Nil(t, md.RecheckInactiveResolvers)
+	require.Equal(t, 10*time.Second, time.Duration(md.ReadyTimeout))
+	require.True(t, md.UDPOverTCP.Enabled)
 }
 
 func TestH_DNSServerOptionsHiddify(t *testing.T) {

@@ -29,6 +29,7 @@
 - [SSH](features/protocols/ssh.fa.md): یک ورودی سرور SSH برای port forwarding، به‌علاوهٔ UDP روی TCP و اتصال پس‌زمینه برای خروجی SSH.
 - [سایفون](features/protocols/psiphon.fa.md): بدون سرور شخصی از راه شبکهٔ سایفون وصل شوید و کشور خروجی را انتخاب کنید.
 - [DNSTT](features/protocols/dnstt.fa.md): ترافیک را درون پرس‌وجوهای DNS از راه resolverهای عمومی می‌برد و خودش آن‌ها را پیدا می‌کند.
+- [MasterDNS](features/protocols/masterdns.fa.md): تونل MasterDnsVPN از راه resolverهای عمومی، با سربار کم، تکرار بسته‌ها روی چند resolver و آزمایش MTU؛ سرور خودش به مقصد وصل می‌شود.
 - [GooseRelay](features/protocols/gooserelay.fa.md): ترافیک را از راه Google Apps Script به سرور خودتان می‌فرستد، پس شبکه فقط HTTPS به گوگل می‌بیند.
 - [تونل تماس](features/protocols/call.fa.md): ترافیک پراکسی را درون یک تماس تصویری در VK، Telemost، Dion، WB Stream یا Bitrix24 می‌برد تا شبیه تماس با یک سرویس داخلی مجاز باشد؛ به‌طور کامل تست نشده است (build tag `with_call`).
 - [Tunnel](features/protocols/tunnel.fa.md): یک تونل معکوس که از راه یک سرور عمومی به دستگاه‌های پشت NAT می‌رسد.
@@ -49,7 +50,7 @@
 - [گروه DNS](features/dns/dns-group.fa.md): از چند سرور DNS هم‌زمان یا به نوبت بپرسید، یا روی سروری که کار می‌کند بمانید، و پاسخ‌های مسموم را کنار بگذارید.
 - [IPv6 بر اساس خروجی](features/dns/ipv6-by-outbound.fa.md): IPv6 فقط از خروجی‌هایی که معلوم است آن را رد می‌کنند، بررسی‌شده در تست URL و آموخته از اتصال‌ها؛ اتصالی که خروجی نتواند رد کند درون همان اتصال با IPv4 برده می‌شود تا هیچ برنامه‌ای مرگش را نبیند.
 - [قاعده‌های DNS: bypass_if_failed](features/dns/dns-bypass-if-failed.fa.md): وقتی سرور یک قاعدهٔ DNS شکست می‌خورد، پرس‌وجو به قاعدهٔ منطبق بعدی می‌رود.
-- [مجموعهٔ هوشمند DNS](features/dns/smart-dns-pool.fa.md): یک سرور DNS محلی که پرس‌وجوها را میان resolverهای زیادی پخش می‌کند، ساخته‌شده برای DNSTT.
+- [مجموعهٔ هوشمند resolver](features/dns/smart-dns-pool.fa.md): مجموعهٔ resolverی که هر خروجی تونل DNS با `smart_pool` برای خودش راه می‌اندازد، مشترک میان DNSTT و MasterDNS، با resolverهای `auto`، امتیازهای ذخیره‌شده و DoT/DoH.
 - [DNSCrypt (استمپ‌های SDNS)](features/dns/sdns.fa.md): سرور `sdns` که پرس‌وجوهای رمزشده را به یک resolver از نوع DNSCrypt می‌فرستد که با استمپش مشخص شده است.
 - [نام‌های sslip.io](features/dns/sslip-hosts.fa.md): سرور `hosts` به نام‌های `sslip.io` با نشانی‌ای که در خود نام نوشته شده پاسخ می‌دهد.
 

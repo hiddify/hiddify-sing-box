@@ -62,6 +62,6 @@
 ## همچنین ببینید
 
 - [گروه DNS](dns-group.fa.md)
-- [مجموعهٔ هوشمند DNS](smart-dns-pool.fa.md)
+- [مجموعهٔ هوشمند resolver](smart-dns-pool.fa.md)
 
 </div>

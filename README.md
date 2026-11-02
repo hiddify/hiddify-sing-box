@@ -45,6 +45,7 @@ its changes small and close to upstream so it can follow every sing-box release.
   [SSH](docs/hiddify/features/protocols/ssh.en.md),
   [Psiphon](docs/hiddify/features/protocols/psiphon.en.md),
   [DNSTT](docs/hiddify/features/protocols/dnstt.en.md),
+  [MasterDNS](docs/hiddify/features/protocols/masterdns.en.md),
   [GooseRelay](docs/hiddify/features/protocols/gooserelay.en.md),
   [Call tunnel](docs/hiddify/features/protocols/call.en.md),
   [Tunnel](docs/hiddify/features/protocols/tunnel.en.md),
@@ -69,7 +70,7 @@ its changes small and close to upstream so it can follow every sing-box release.
 
 - [DNS group](docs/hiddify/features/dns/dns-group.en.md),
   [bypass_if_failed](docs/hiddify/features/dns/dns-bypass-if-failed.en.md),
-  [smart DNS pool](docs/hiddify/features/dns/smart-dns-pool.en.md),
+  [smart resolver pool](docs/hiddify/features/dns/smart-dns-pool.en.md),
   [DNSCrypt (SDNS)](docs/hiddify/features/dns/sdns.en.md),
   [sslip.io names](docs/hiddify/features/dns/sslip-hosts.en.md),
   [IPv6 by outbound](docs/hiddify/features/dns/ipv6-by-outbound.en.md).
@@ -136,6 +137,7 @@ Besides sing-box, this fork takes work from other forks and projects. Thank you 
   [metacubex/utls](https://github.com/metacubex/utls): TLS fingerprints.
 - [Psiphon-Labs](https://github.com/Psiphon-Labs): Psiphon.
 - [net2share/vaydns](https://github.com/net2share/vaydns): DNSTT.
+- [masterking32/MasterDnsVPN](https://github.com/masterking32/MasterDnsVPN): MasterDNS.
 - [kianmhz/GooseRelayVPN](https://github.com/kianmhz/GooseRelayVPN): GooseRelay.
 - [GFW-knocker](https://github.com/GFW-knocker): the WireGuard noise packets.
 - [XTLS/Xray-core](https://github.com/XTLS/Xray-core): XHTTP, mKCP, finalmask, VLESS encryption

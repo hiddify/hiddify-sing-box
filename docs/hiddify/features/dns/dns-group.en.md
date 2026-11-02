@@ -98,5 +98,5 @@ The `stable` and `fastest` modes follow sing-box-lx.
 
 ## See also
 
-- [Smart DNS pool](smart-dns-pool.en.md)
+- [Smart resolver pool](smart-dns-pool.en.md)
 - [Fallback](../groups/fallback.en.md)

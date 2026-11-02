@@ -61,4 +61,4 @@ are not used.
 ## See also
 
 - [DNS group](dns-group.en.md)
-- [Smart DNS pool](smart-dns-pool.en.md)
+- [Smart resolver pool](smart-dns-pool.en.md)

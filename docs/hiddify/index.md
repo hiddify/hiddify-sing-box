@@ -27,6 +27,7 @@ an English and a Persian version.
 - [SSH](features/protocols/ssh.en.md): an SSH server inbound for port forwarding, plus UDP over TCP and a background connection for the SSH outbound.
 - [Psiphon](features/protocols/psiphon.en.md): connect through the Psiphon network with no server of your own, and pick the exit country.
 - [DNSTT](features/protocols/dnstt.en.md): carry traffic inside DNS queries through public resolvers, which it finds by itself.
+- [MasterDNS](features/protocols/masterdns.en.md): the MasterDnsVPN tunnel over public resolvers, with a small header, packet duplication over several resolvers and MTU tests; the server connects to the destination itself.
 - [GooseRelay](features/protocols/gooserelay.en.md): send traffic through Google Apps Script to your own server, so the network sees only HTTPS to Google.
 - [Call tunnel](features/protocols/call.en.md): carry proxy traffic inside a video call on VK, Telemost, Dion, WB Stream or Bitrix24, so it looks like a call to an allowed domestic service; not tested end to end (build tag `with_call`).
 - [Tunnel](features/protocols/tunnel.en.md): a reverse tunnel that reaches machines behind NAT through a public server.
@@ -46,7 +47,7 @@ an English and a Persian version.
 
 - [DNS group](features/dns/dns-group.en.md): ask several DNS servers at once, in turn, or stick to the one that works, and drop poisoned answers.
 - [DNS rules: bypass_if_failed](features/dns/dns-bypass-if-failed.en.md): when a DNS rule's server fails, the query goes on to the next matching rule.
-- [Smart DNS pool](features/dns/smart-dns-pool.en.md): a local DNS server that spreads queries over many resolvers, made for DNSTT.
+- [Smart resolver pool](features/dns/smart-dns-pool.en.md): the resolver pool each DNS tunnel outbound runs for itself with `smart_pool`, shared by DNSTT and MasterDNS, with `auto` resolvers, saved scores and DoT/DoH.
 - [DNSCrypt (SDNS stamps)](features/dns/sdns.en.md): the `sdns` server, which sends encrypted queries to a DNSCrypt resolver given by its stamp.
 - [sslip.io names](features/dns/sslip-hosts.en.md): the `hosts` server answers `sslip.io` names with the address written in the name.
 - [IPv6 by outbound](features/dns/ipv6-by-outbound.en.md): IPv6 only through outbounds known to carry it, verified at the URL test and learned from the connections; a connection an outbound cannot carry is carried over IPv4 inside, so no app sees it die.

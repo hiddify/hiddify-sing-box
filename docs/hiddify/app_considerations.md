@@ -11,6 +11,11 @@ do about it. Items marked **Required** break or misbehave until they are handled
   (v5), plus the existing ones. `go.mod` and `test/go.mod` point at them with `replace`.
   **Required:** hiddify-core and every CI or gomobile build must check out submodules recursively
   (`git submodule update --init --recursive`), or the build fails on missing modules.
+- **MasterDnsVPN fork.** `replace/MasterDnsVPN` (module `masterdnsvpn-go`, fork
+  `github.com/hiddify/MasterDnsVPN`, branch `hiddify`) is the client of the `masterdns` outbound,
+  with a library API in `lib/`. **Required:** hiddify-core's `go.mod` (and ray2sing's) need
+  `replace masterdnsvpn-go => ./hiddify-sing-box/replace/MasterDnsVPN`, like the other
+  `replace/` forks. No build tag.
 - **Build tags.** `with_masque` is now in the core Makefile and in hiddify-core's Makefile
   (hiddify-core commit `6bea470`). Four new features are behind tags that are **off** by default:
   `with_kcp` (mKCP), `with_sudoku` (Sudoku), `with_bond` (Bond) and `with_call` (call tunnel). A
@@ -89,6 +94,22 @@ do about it. Items marked **Required** break or misbehave until they are handled
   a share link declares its proxy with `ipv6=1` or `ipv6=0` (ray2sing, `ipv6_declared`). No
   probe of a public address is made (`ipv6_probe` is retired): the verification uses the user's
   own test URL. See [IPv6 by outbound](features/dns/ipv6-by-outbound.en.md).
+- **MasterDNS outbound.** `"type": "masterdns"` (display name `MasterDNS`) is a new outbound
+  type for MasterDnsVPN servers: `domains`, `resolvers`, `encryption`, `key`, `mode` and tuning
+  fields, see [MasterDNS](features/protocols/masterdns.en.md). TCP only; in `socks5` mode it needs
+  no outbound behind it, in `tcp` mode the app chains a `socks` or `ssh` outbound with `detour`
+  as for DNSTT. Its status is CONNECTING until the resolvers are tested and the session is open,
+  which can take several seconds; the app should show that rather than an error. ray2sing reads
+  `masterdns://` links, `slipnet://` links (SlipNet profiles for DNSTT, NoizDNS and VayDNS) as
+  `dnstt` outbounds with a `socks` or `ssh` outbound in front, and `dnst://` links (the dnst URL
+  spec, github.com/net2share/dnst-url-spec) for the dnstt, vaydns and masterdns transports.
+- **Smart resolver pool, per outbound.** `dnstt` and `masterdns` take `smart_pool`, `true` or an
+  object (`load_balance`, `deadline`, `per_attempt`, `probe_interval`, `down_after`); the
+  resolver list, scores, probe and pool of every DNS tunnel are one shared package,
+  `common/dnspool`, and each outbound runs its own pool. With it, `auto`, DoT and DoH resolvers
+  work for both tunnels. See [Smart resolver pool](features/dns/smart-dns-pool.en.md).
+  **Required:** the `smart_dns_pool` service is removed; a config with it fails to load. Set
+  `smart_pool` on the outbound instead.
 - **New options worth exposing:**
   - DNS group: `mode` `stable` and `fastest`, `error_ttl`, `win_ttl`.
   - URL test: `urls` (more test URLs) and `mode: "failover"`.

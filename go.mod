@@ -107,6 +107,7 @@ require (
 	google.golang.org/protobuf v1.36.11
 	howett.net/plist v1.0.1
 	lukechampine.com/blake3 v1.4.1
+	masterdnsvpn-go v0.0.0
 )
 
 require (
@@ -233,6 +234,7 @@ require (
 	filippo.io/bigmod v0.0.1 // indirect
 	filippo.io/keygen v0.0.0-20230306160926-5201437acf8e // indirect
 	github.com/AndreasBriese/bbloom v0.0.0-20190825152654-46b345b51c96 // indirect
+	github.com/BurntSushi/toml v1.4.1-0.20240526193622-a339e1f7089c // indirect
 	github.com/Jigsaw-Code/outline-sdk v0.0.20 // indirect
 	github.com/Psiphon-Labs/bolt v0.0.0-20200624191537-23cedaef7ad7 // indirect
 	github.com/Psiphon-Labs/consistent v0.0.0-20240322131436-20aaa4e05737 // indirect
@@ -316,6 +318,9 @@ replace github.com/Psiphon-Labs/psiphon-tls => ./replace/psiphon-tls
 replace github.com/net2share/vaydns => github.com/hiddify/vaydns v0.0.0-20260401180616-890dc987a6a9
 
 replace github.com/kianmhz/GooseRelayVPN => github.com/hiddify/GooseRelayVPN v0.0.0-20260429125124-0e68c2a3ae4c
+
+// MasterDnsVPN with a library API (lib/): github.com/hiddify/MasterDnsVPN, branch hiddify
+replace masterdnsvpn-go => ./replace/MasterDnsVPN
 
 replace github.com/amnezia-vpn/amneziawg-go/v3 => ./replace/amneziawg-go
 
