@@ -64,6 +64,10 @@ type WARPMASQUEOptions struct {
 	VHTTP string `json:"vhttp,omitempty"`
 	// ServerName is the TLS server name; consumer-masque.cloudflareclient.com when empty.
 	ServerName string `json:"server_name,omitempty"`
+	// Device is a device enrolled elsewhere (a masque:// link's), used before the saved devices
+	// and registering. When Cloudflare refuses it, the endpoint takes a saved device or
+	// registers one, and does not try this one again.
+	Device *MASQUEDeviceOptions `json:"device,omitempty"`
 }
 
 // IsEnabled reports whether the warp endpoint uses MASQUE. //H

@@ -16,6 +16,12 @@ import (
 
 // deviceConfig is the tunnel config of an enrolled device (option device), with its keys in the
 // forms Config reads: SEC 1 DER in base64, and PEM. A device that cannot work fails the config.
+// DeviceConfig is the tunnel config of a device enrolled elsewhere (a masque:// link's), for the
+// warp endpoint: an error when it cannot work.
+func DeviceConfig(device *option.MASQUEDeviceOptions) (*Config, error) {
+	return deviceConfig(device)
+}
+
 func deviceConfig(device *option.MASQUEDeviceOptions) (*Config, error) {
 	keyDER, err := decodeBase64(device.PrivateKey)
 	if err != nil {

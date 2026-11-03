@@ -25,3 +25,14 @@ func registerMASQUEProfile(ctx context.Context, profile *option.WARPProfile) (*w
 func (w *WARPEndpoint) probeMASQUE(ctx context.Context, profile *warpProfile) (time.Duration, error) {
 	return 0, errMASQUENotIncluded
 }
+
+func validateMASQUEDevice(options *option.WARPEndpointOptions) error {
+	if options.MASQUE != nil && options.MASQUE.Device != nil {
+		return errMASQUENotIncluded
+	}
+	return nil
+}
+
+func (w *WARPEndpoint) linkMASQUEProfile() *warpProfile {
+	return nil
+}

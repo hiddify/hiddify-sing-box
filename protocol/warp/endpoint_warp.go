@@ -69,6 +69,7 @@ type WARPEndpoint struct {
 	current       *warpSession  // H: the current start
 	candidate     bool          // H: a new tunnel next to the one in use, see h_switch.go
 	discarded     atomic.Bool   // H: the candidate is not used
+	linkRefused   atomic.Bool   // H: Cloudflare refused masque.device, see h_link_device.go
 }
 
 func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.WARPEndpointOptions) (adapter.Endpoint, error) {
@@ -85,6 +86,9 @@ func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.Cont
 	}
 	mode, err := warpMode(&options) //H: wg, awg, masque or auto
 	if err != nil {                 //H
+		return nil, err //H
+	} //H
+	if err := validateMASQUEDevice(&options); err != nil { //H: a link device that cannot work fails the config
 		return nil, err //H
 	} //H
 	if err := options.Noise.FakePacket.Validate(); err != nil { //H: a bad template fails the config, not the handshake

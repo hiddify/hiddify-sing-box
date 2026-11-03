@@ -4,15 +4,16 @@
 
 WARP over MASQUE connects you to Cloudflare's free WARP VPN with MASQUE, the protocol the
 official WARP apps now use. Your IP packets travel inside an HTTP CONNECT-IP request, over
-HTTP/3 (QUIC) or HTTP/2 (TLS over TCP). It registers a free WARP account by itself. It is an
-outbound: `"type": "masque"` in the `outbounds` list.
+HTTP/3 (QUIC) or HTTP/2 (TLS over TCP). It is an outbound, `"type": "masque"` in the
+`outbounds` list, and runs a device enrolled elsewhere: it registers none.
 
 This page is about MASQUE to WARP. The same tunnel runs in two places:
 
 - **The `warp` endpoint with `masque` set** (recommended): one endpoint that registers the
   device, looks up endpoints, and runs WireGuard, AmneziaWG or MASQUE. Its display type is
   `WARP · MASQUE`. See [WARP](warp.en.md).
-- **The `masque` outbound**, described here, which registers its own device.
+- **The `masque` outbound**, described here, which runs the device it is given (`device`) and
+  registers none.
 
 For your own MASQUE server, use the `masque-client` and `masque-server` types from upstream
 sing-box (RFC 9484 CONNECT-IP, with a path, a username and password, and the usual TLS
@@ -22,7 +23,7 @@ settings). They are documented there.
 
 - It works where WireGuard is blocked: the tunnel looks like HTTPS traffic to Cloudflare.
 - With `vhttp` set to `auto`, it falls back to HTTP/2 over TCP when UDP or QUIC is blocked.
-- Like [WARP](warp.en.md), it needs no server of your own and no account setup.
+- Like [WARP](warp.en.md), it needs no server of your own.
 
 Choose [WARP](warp.en.md) when WireGuard works on your network. It has less overhead.
 
@@ -43,28 +44,22 @@ accepts.
 
 ## How it works
 
-**Account.** At start, the outbound needs a profile: a MASQUE key pair, the tunnel addresses and
-Cloudflare's endpoints. It takes the first one it finds:
+**Device.** The outbound needs `device`: a device Cloudflare enrolled for MASQUE (its key, its
+tunnel addresses and the endpoints), as `masque://` share links carry it. It never reaches
+Cloudflare's API and never registers a device. A config without `device` fails to load with
+"masque outbound needs a device (an enrolled MASQUE key); to register a WARP device, use the warp
+endpoint with mode masque".
 
-1. The saved profile in the cache file, unless `cache_file.store_masque_config` is `false` (it is
-   on by default), and when `profile.recreate` is off. It is saved under `unique_identifier`, or under the tag when that
-   is empty.
-2. A new one: it registers a free WARP device, or uses the device given by `profile.id` and
-   `profile.auth_token`, and enrolls a new MASQUE key on it. The requests go through
-   `profile.detour` when set, and only through it. A failed registration is tried again after
-   1 s, then after twice as long each time, up to every 30 s, until it works or the outbound
-   closes.
+When Cloudflare refuses the device (a key that was never enrolled, or a device that was deleted),
+the tunnel keeps trying, and the outbound reports the refusal as why it is not ready. It does not
+register a replacement. The `warp` endpoint with `mode` `masque` takes such a device as
+`masque.device` and, once Cloudflare refuses it, goes on with its saved or newly registered
+devices; see [WARP](warp.en.md#how-it-works).
 
-A new profile is saved in the cache file unless `store_masque_config` is `false`, so later starts don't
-register again.
-
-With `device`, the device is used as it is and nothing is registered, until Cloudflare refuses
-it (a key that was never enrolled, or a device that was deleted): a device pointed at WARP (an
-endpoint in Cloudflare's ranges, or Cloudflare's server name) is still a WARP config, so the
-outbound then registers a device as in 2, saves it in the cache file as the link device's
-replacement, and runs the tunnel with it. Later starts take the replacement first, as long as the
-config still carries the device it replaced; a device Cloudflare refuses in its turn is replaced
-again after a minute, doubling each time up to 30 minutes.
+**`masque://` links.** hiddify-core reads a `masque://` link to Cloudflare's WARP (an endpoint in
+WARP's ranges or under `cloudflareclient.com`, or Cloudflare's server name, or none) as a `warp`
+endpoint with `mode` `masque`, with the link's key as `masque.device`, or with none when the link
+has no key. Only a link to another MASQUE server becomes this outbound, and it needs its key.
 
 **HTTP version.** `vhttp` chooses how the tunnel connects:
 
@@ -122,17 +117,16 @@ tunnel never connected through Shadowsocks, VLESS or Trojan.
 
 ```json
 {
-  "experimental": {
-    "cache_file": {
-      "enabled": true,
-      "store_masque_config": true
-    }
-  },
   "outbounds": [
     {
       "type": "masque",
       "tag": "warp-masque",
       "vhttp": "auto",
+      "device": {
+        "private_key": "MHcCAQEEI...",
+        "ipv4": "172.16.0.2",
+        "endpoint_v4": "162.159.198.2:443"
+      },
       "scanner": {
         "enabled": true
       }
@@ -146,8 +140,7 @@ tunnel never connected through Shadowsocks, VLESS or Trojan.
 
 | Field | Type | Default | Meaning |
 |---|---|---|---|
-| `profile` | object | | How to get the WARP account. See below. |
-| `device` | object | | A device already enrolled for MASQUE, used as is instead of `profile`: no call to Cloudflare's API. See below. |
+| `device` | object | required | A device already enrolled for MASQUE, used as is: no call to Cloudflare's API. See below. |
 | `vhttp` | string | `auto` | `h3`, `h2` or `auto`. Empty means `auto`, or `h2` when `use_http2` is on. |
 | `use_http2` | bool | `false` | Older way to choose HTTP/2. `vhttp` takes priority. |
 | `server_name` | string | `consumer-masque.cloudflareclient.com` | TLS server name. |
@@ -159,19 +152,10 @@ tunnel never connected through Shadowsocks, VLESS or Trojan.
 | `udp_initial_packet_size` | number | QUIC default | QUIC initial packet size. When set, path MTU discovery is off. |
 | `mtu` | number | `1280` | MTU of the tunnel, `1280` to `9000`. Over HTTP/3, a packet larger than the path carries gets an ICMP "packet too big" back, so TCP adjusts to it. |
 | `reconnect_delay` | duration | `0` | Wait between failed connects of the tunnel. |
-| `unique_identifier` | string | the tag | Key of the saved profile and scanner scores in the cache file. |
+| `unique_identifier` | string | the tag | Key of the scanner scores in the cache file. |
 
 Dial fields (`detour`, `bind_interface` and the rest) apply to the tunnel, the scanner probes
 and the network name check.
-
-### `profile`
-
-| Field | Type | Default | Meaning |
-|---|---|---|---|
-| `id` | string | | ID of an existing WARP device. With `auth_token`, it is used instead of registering a new one. |
-| `auth_token` | string | | Access token of that device. |
-| `detour` | string | direct | Outbound tag used to reach Cloudflare's API. |
-| `recreate` | bool | `false` | Ignore the saved profile and get a new one. |
 
 ### `device`
 
@@ -187,7 +171,8 @@ A device enrolled elsewhere, as `masque://` share links carry it. Cloudflare's A
 | `id`, `license` | string | | The device's ID and license, for information. |
 
 A device that cannot work (a key that does not parse, no address, no endpoint) fails the config.
-A device Cloudflare refuses is replaced by a registered one; see "How it works".
+A device Cloudflare refuses is not replaced; see "How it works". `profile` is no longer read:
+the outbound registers no device.
 
 ### `scanner` defaults for MASQUE
 
@@ -215,10 +200,8 @@ Notes:
 
 - The outbound needs the `with_masque` build tag. It is in the default tags of the Makefile.
   Without it, the config fails to load with "MASQUE outbound is not included in this build".
-- The profile and the scores live in the cache file. Without `cache_file`, each start registers
-  a new device and the scanner starts with no history. Without `unique_identifier`, the profile
-  is saved under the tag, so renaming the outbound registers a new device. Set
-  `unique_identifier` to keep the device when you rename the outbound.
+- The scanner scores live in the cache file, under `unique_identifier` or the tag. Without
+  `cache_file`, the scanner starts with no history.
 - The tunnel starts in the background. Connections wait for the first start to finish. If it
   failed, they fail with "tunnel not initialized".
 - When a connect fails, the tunnel logs the error and tries again after `reconnect_delay`.

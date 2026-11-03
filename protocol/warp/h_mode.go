@@ -240,6 +240,11 @@ func (w *WARPEndpoint) obtainProfile(done <-chan struct{}, kind string) *warpPro
 	if kind != kindMASQUE && w.options.WARPConfig != nil && w.options.WARPConfig.PrivateKey != "" {
 		return &warpProfile{Kind: kind, WireGuard: w.options.WARPConfig, inline: true}
 	}
+	if kind == kindMASQUE {
+		if profile := w.linkMASQUEProfile(); profile != nil { // a masque:// link's device, until Cloudflare refuses it
+			return profile
+		}
+	}
 	_, recreated := w.recreated.Load(kind)
 	if !w.options.Profile.Recreate || recreated {
 		if profile := w.profiles.usable(kind); profile != nil {

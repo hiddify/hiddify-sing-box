@@ -156,12 +156,17 @@ do about it. Items marked **Required** break or misbehave until they are handled
   `lowest` (lowest-delay) balancer when the profile has 2+ proxies. With only one proxy, `lowest`
   is not built; connectivity then uses that proxy's own ping (the select leaf) so the core does
   not stay WAITING ("Connecting") forever.
-- **MASQUE devices from links.** A `masque` outbound with `device` (what `masque://` links
-  become, MahsaNG's shape included) needs no `endpoint_public_key`: the edge's fixed key is
-  built in. The port of an endpoint written as `ip:port` is used. When Cloudflare refuses the
-  device and it points at WARP, the outbound registers a device like a profile and saves it in
-  the cache file under the profile key as the link device's replacement, so the cache file
-  matters for such configs too.
+- **MASQUE devices from links.** The `masque` outbound never registers a WARP device: it needs
+  `device`, and a config without one fails to load ("use the warp endpoint with mode masque").
+  A device needs no `endpoint_public_key`: the edge's fixed key is built in. The port of an
+  endpoint written as `ip:port` is used. A `masque://` link to WARP (an endpoint in WARP's ranges
+  or under `cloudflareclient.com`, or Cloudflare's server name, or none) is a `warp` endpoint with
+  `mode` `masque` (ray2sing): the link's key goes to `masque.device`, and a link without a key gets
+  a saved or registered device from the WARP pool. When Cloudflare refuses `masque.device`, WARP
+  remembers it in the cache file (`<unique_identifier>/refused-masque-device`) and takes a pool
+  device, so the cache file matters for such configs too. ray2sing sets `unique_identifier` from
+  the link's device id, else a hash of its key or endpoints, so renaming the profile keeps its
+  devices. Only a link to another MASQUE server stays a `masque` outbound, and needs its key.
 - **WARP over MASQUE in the warp endpoint.** A `warp` endpoint can now run MASQUE instead of
   WireGuard: `"masque": {"enabled": true}`, or any MASQUE setting (`vhttp`, `server_name`,
   `use_ipv6`, `tls`, …). Prefer this to a separate `masque` outbound: one endpoint handles

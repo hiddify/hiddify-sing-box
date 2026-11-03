@@ -21,9 +21,9 @@ import (
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
+	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
-	"github.com/sagernet/sing/service"
 	"github.com/stretchr/testify/require"
 )
 
@@ -129,32 +129,23 @@ func (l *hErrorLogger) logged() []string {
 	return append([]string(nil), l.errors...)
 }
 
-type hMASQUECache struct {
-	adapter.CacheFile
-	store map[string]*adapter.SavedBinary
-	loads []string
-}
-
-func (c *hMASQUECache) StoreMASQUEConfig() bool { return true }
-
-func (c *hMASQUECache) LoadBinary(tag string) *adapter.SavedBinary {
-	c.loads = append(c.loads, tag)
-	return c.store[tag]
-}
-
 func hNewOutbound(t *testing.T, ctx context.Context, logger log.ContextLogger, options option.MASQUEOutboundOptions) *Outbound {
 	created, err := NewOutbound(ctx, nil, logger, "masque-out", options)
 	require.NoError(t, err)
 	return created.(*Outbound)
 }
 
-func hCachedContext(t *testing.T, config Config) (context.Context, *hMASQUECache) {
-	content, err := json.Marshal(config)
+// hConfigOutbound is an outbound with the device config, as the warp endpoint creates it.
+func hConfigOutbound(t *testing.T, ctx context.Context, logger log.ContextLogger, options option.MASQUEOutboundOptions, config Config) *Outbound {
+	out, err := newWARPOutbound(ctx, logger, "masque-out", options, &config, M.Socksaddr{}, "")
 	require.NoError(t, err)
-	cache := &hMASQUECache{store: map[string]*adapter.SavedBinary{"masque-out": {Content: content}}}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	t.Cleanup(cancel)
-	return service.ContextWith[adapter.CacheFile](ctx, cache), cache
+	return out
+}
+
+// hDevice is a device of a masque:// link, with a new key.
+func hDevice(t *testing.T) *option.MASQUEDeviceOptions {
+	_, privateB64, _ := hECKeys(t)
+	return &option.MASQUEDeviceOptions{PrivateKey: privateB64, IPv4: "172.16.0.2", EndpointV4: "127.0.0.1"}
 }
 
 func TestH_OutboundStartHandlerFailureModes(t *testing.T) {
@@ -175,13 +166,13 @@ func TestH_OutboundStartHandlerFailureModes(t *testing.T) {
 			config := valid
 			var options option.MASQUEOutboundOptions
 			testCase.mutate(&config, &options)
-			ctx, cache := hCachedContext(t, config)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
 			logger := &hErrorLogger{ContextLogger: log.NewNOPFactory().NewLogger("masque")}
-			out := hNewOutbound(t, ctx, logger, options)
+			out := hConfigOutbound(t, ctx, logger, options, config)
 			require.NoError(t, htest.Start(out, adapter.StartStatePostStart))
 			_, err := out.DialContext(ctx, N.NetworkTCP, M.ParseSocksaddr("1.1.1.1:80"))
 			require.ErrorContains(t, err, "tunnel not initialized")
-			require.Equal(t, []string{"masque-out"}, cache.loads)
 			logged := logger.logged()
 			require.Len(t, logged, 1)
 			require.Contains(t, logged[0], testCase.expected)
@@ -189,24 +180,18 @@ func TestH_OutboundStartHandlerFailureModes(t *testing.T) {
 	}
 }
 
-func TestH_OutboundMalformedCache(t *testing.T) {
-	cache := &hMASQUECache{store: map[string]*adapter.SavedBinary{"masque-out": {Content: []byte("{")}}}
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
-	defer cancel()
-	ctx = service.ContextWith[adapter.CacheFile](ctx, cache)
-	logger := &hErrorLogger{ContextLogger: log.NewNOPFactory().NewLogger("masque")}
-	// a broken saved device is replaced by a new one; the missing detour keeps the test off the network
-	out := hNewOutbound(t, ctx, logger, option.MASQUEOutboundOptions{Profile: option.CloudflareProfile{Detour: "missing"}})
-	out.startHandler()
-	require.Contains(t, logger.logged()[0], "registering a new one")
-	require.Equal(t, adapter.StatusFailed, out.Status(), "closed before it registered")
-	_, err := out.ListenPacket(context.Background(), M.ParseSocksaddr("1.1.1.1:53"))
-	require.ErrorContains(t, err, "tunnel not initialized")
-	require.NoError(t, out.Close(), "nothing to close")
+// A masque outbound does not register WARP devices: without a device it fails the config, and
+// says to use the warp endpoint.
+func TestH_OutboundNeedsADevice(t *testing.T) {
+	_, err := NewOutbound(context.Background(), nil, log.NewNOPFactory().NewLogger("masque"), "masque-out", option.MASQUEOutboundOptions{
+		Profile: option.CloudflareProfile{Detour: "direct"},
+	})
+	require.ErrorIs(t, err, errNoDevice)
+	require.ErrorContains(t, err, "warp endpoint with mode masque")
 }
 
 func TestH_OutboundWaitsForStartup(t *testing.T) {
-	out := hNewOutbound(t, context.Background(), log.NewNOPFactory().NewLogger("masque"), option.MASQUEOutboundOptions{})
+	out := hNewOutbound(t, context.Background(), log.NewNOPFactory().NewLogger("masque"), option.MASQUEOutboundOptions{Device: hDevice(t)})
 	require.Equal(t, C.TypeMASQUE, out.Type())
 	require.Equal(t, "masque-out", out.Tag())
 	require.Equal(t, []string{N.NetworkTCP, N.NetworkUDP, N.NetworkICMP}, out.Network())
@@ -227,14 +212,22 @@ func TestH_RegisterOutbound(t *testing.T) {
 	require.IsType(t, &option.MASQUEOutboundOptions{}, options)
 }
 
-// unique_identifier names the saved profile, so renaming the outbound keeps its device
+// unique_identifier names the scanner scores, so renaming the outbound keeps them
 func TestH_OutboundUniqueIdentifier(t *testing.T) {
-	cache := &hMASQUECache{store: map[string]*adapter.SavedBinary{}}
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond) // registration retries until the context ends
-	defer cancel()
-	ctx = service.ContextWith[adapter.CacheFile](ctx, cache)
-	logger := &hErrorLogger{ContextLogger: log.NewNOPFactory().NewLogger("masque")}
-	out := hNewOutbound(t, ctx, logger, option.MASQUEOutboundOptions{UniqueIdentifier: "device-1", Profile: option.CloudflareProfile{Detour: "missing"}})
-	out.startHandler()
-	require.Equal(t, []string{"device-1"}, cache.loads)
+	logger := log.NewNOPFactory().NewLogger("masque")
+	out := hNewOutbound(t, context.Background(), logger, option.MASQUEOutboundOptions{UniqueIdentifier: "device-1", Device: hDevice(t)})
+	require.Equal(t, "device-1", out.profileKey)
+	out = hNewOutbound(t, context.Background(), logger, option.MASQUEOutboundOptions{Device: hDevice(t)})
+	require.Equal(t, "masque-out", out.profileKey, "the tag without one")
+}
+
+// The warp endpoint is told when Cloudflare refuses the device, to take another one; the outbound
+// itself registers none.
+func TestH_OutboundPassesRejectionOn(t *testing.T) {
+	logger := log.NewNOPFactory().NewLogger("masque")
+	out := hNewOutbound(t, context.Background(), logger, option.MASQUEOutboundOptions{Device: hDevice(t)})
+	var refused error
+	out.SetOnRejected(func(err error) { refused = err })
+	out.onRejected(E.New("403"))
+	require.EqualError(t, refused, "403")
 }

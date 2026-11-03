@@ -7,7 +7,6 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/cloudflare"
 	"github.com/sagernet/sing-box/common/dialer"
 	"github.com/sagernet/sing-box/hiddify/warpscan"
@@ -16,54 +15,7 @@ import (
 	"github.com/sagernet/sing-box/transport/masque"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
-	N "github.com/sagernet/sing/common/network"
-	"github.com/sagernet/sing/service"
-	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
-
-// registerTimeout bounds one attempt to register a device with the WARP API.
-const registerTimeout = 25 * time.Second
-
-// createConfig registers a WARP device, or takes the one in profile, and enrolls a MASQUE key.
-// With profile.detour set, the API is only reached through it: falling back to a direct
-// connection would show the network that the device uses WARP.
-func (w *Outbound) createConfig() (*Config, error) {
-	var detour N.Dialer
-	if w.options.Profile.Detour != "" {
-		outboundManager := service.FromContext[adapter.OutboundManager](w.ctx)
-		if outboundManager == nil {
-			return nil, E.New("missing outbound manager")
-		}
-		outbound, loaded := outboundManager.Outbound(w.options.Profile.Detour)
-		if !loaded {
-			return nil, E.New("outbound detour not found: ", w.options.Profile.Detour)
-		}
-		detour = outbound
-	}
-	ctx, cancel := context.WithTimeout(w.ctx, registerTimeout)
-	defer cancel()
-	api := cloudflare.NewCloudflareApiDetour(detour)
-	var profile *cloudflare.CloudflareProfile
-	var err error
-	if w.options.Profile.AuthToken != "" && w.options.Profile.ID != "" {
-		profile, err = api.GetProfile4471(ctx, w.options.Profile.AuthToken, w.options.Profile.ID)
-	} else {
-		var key wgtypes.Key
-		key, err = wgtypes.GeneratePrivateKey()
-		if err != nil {
-			return nil, err
-		}
-		profile, err = api.CreateProfile(ctx, key.PublicKey().String())
-	}
-	if err != nil {
-		return nil, err
-	}
-	token := profile.Token
-	if token == "" {
-		token = w.options.Profile.AuthToken
-	}
-	return EnrollWARP(ctx, api, token, profile.ID)
-}
 
 // EnrollWARP gives the WARP device id a new MASQUE key and returns its tunnel settings. The
 // device then only works over MASQUE, not WireGuard.

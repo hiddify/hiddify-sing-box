@@ -2,11 +2,9 @@ package masque
 
 import (
 	"context"
-	"encoding/json"
 	"net"
 	"net/netip"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -27,12 +25,6 @@ import (
 	"github.com/sagernet/sing/service"
 )
 
-// The registration of a WARP device is retried with a backoff between these.
-const (
-	registerRetryMin = time.Second
-	registerRetryMax = 30 * time.Second
-)
-
 // detourSettle is the least time between two moves of the tunnel when a group detour moves by
 // itself (a URL test, a balancer). //H
 const detourSettle = 30 * time.Second //H
@@ -41,8 +33,9 @@ func RegisterOutbound(registry *outbound.Registry) {
 	outbound.Register[option.MASQUEOutboundOptions](registry, C.TypeMASQUE, NewOutbound)
 }
 
-// Outbound is a MASQUE tunnel to Cloudflare WARP. It registers a device itself, unless the warp
-// endpoint passes the one it registered (NewWARPOutbound). A self-hosted MASQUE server is
+// Outbound is a MASQUE tunnel to Cloudflare WARP with a device enrolled elsewhere: the one in the
+// config (device), or the one the warp endpoint registered (NewWARPOutbound). It never registers
+// a device itself; the warp endpoint does, with mode masque. A self-hosted MASQUE server is
 // reached with masque-client.
 type Outbound struct {
 	outbound.Adapter
@@ -60,18 +53,10 @@ type Outbound struct {
 	scanStatus   warpscan.Status
 	done         chan struct{}
 	tracker      adapter.StatusTracker
-	registering  atomic.Bool // a device is being registered
 	doneOnce     sync.Once
-	tunnelAccess sync.Mutex //H: tunnel is replaced when Cloudflare refuses the link's device
+	tunnelAccess sync.Mutex //H: currentTunnel reads it while the tunnel is set up or closed
 
-	//H: a link's device Cloudflare refused is replaced by a registered one (h_register.go)
-	recreate       atomic.Bool            // register, do not load the saved device
-	rejected       atomic.Bool            // a rejection is being handled
-	registerAccess sync.Mutex             // lastRegistered, registerWait
-	lastRegistered time.Time              // when a replacement was last registered
-	registerWait   time.Duration          // how long after lastRegistered the next may be
-	register       func() (*Config, bool) // loadOrRegister; tests replace it
-	restart        func(config *Config)   // replaceTunnel; tests replace it
+	onRejected func(err error) //H: told when Cloudflare refuses the device; see SetOnRejected
 
 	await chan struct{}
 
@@ -81,6 +66,9 @@ type Outbound struct {
 }
 
 func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.MASQUEOutboundOptions) (adapter.Outbound, error) {
+	if options.Device == nil { //H: it does not register WARP devices
+		return nil, errNoDevice //H
+	} //H
 	return newWARPOutbound(ctx, logger, tag, options, nil, M.Socksaddr{}, "")
 }
 
@@ -126,24 +114,9 @@ func newWARPOutbound(ctx context.Context, logger log.ContextLogger, tag string, 
 		done:       make(chan struct{}),
 		await:      make(chan struct{}),
 	}
-	outbound.register = outbound.loadOrRegister //H
-	outbound.restart = outbound.replaceTunnel   //H
 	outbound.startHandler = func() {
 		defer close(outbound.await)
-		appConfig := outbound.warpConfig
-		if outbound.registersOnRejection() { //H: the registered replacement of the link's device, when there is one
-			if replacement := outbound.replacementFor(appConfig); replacement != nil { //H
-				appConfig = replacement //H
-			} //H
-		} //H
-		if appConfig == nil {
-			var ok bool
-			appConfig, ok = outbound.loadOrRegister()
-			if !ok {
-				return
-			}
-		}
-		if err := outbound.startTunnel(appConfig); err != nil {
+		if err := outbound.startTunnel(outbound.warpConfig); err != nil {
 			logger.ErrorContext(ctx, err)
 			outbound.setupError.Set(err) //H
 		}
@@ -152,52 +125,6 @@ func newWARPOutbound(ctx context.Context, logger log.ContextLogger, tag string, 
 		}
 	}
 	return outbound, nil
-}
-
-// loadOrRegister returns the saved device, or registers one, retrying until it works or the
-// outbound closes.
-func (w *Outbound) loadOrRegister() (*Config, bool) {
-	cacheFile := service.FromContext[adapter.CacheFile](w.ctx)
-	if !w.options.Profile.Recreate && !w.recreate.Load() && cacheFile != nil && cacheFile.StoreMASQUEConfig() { //H
-		if savedProfile := cacheFile.LoadBinary(w.profileKey); savedProfile != nil {
-			var appConfig *Config
-			if err := json.Unmarshal(savedProfile.Content, &appConfig); err == nil {
-				return appConfig, true
-			} else {
-				w.logger.ErrorContext(w.ctx, E.Cause(err, "load WARP MASQUE device, registering a new one"))
-			}
-		}
-	}
-	w.registering.Store(true)
-	defer w.registering.Store(false)
-	backoff := registerRetryMin
-	for {
-		appConfig, err := w.createConfig()
-		if err == nil {
-			if w.options.Device != nil { //H: the link's device this one replaces
-				appConfig.ReplacedDevice = w.options.Device.PrivateKey //H
-			} //H
-			if cacheFile != nil && cacheFile.StoreMASQUEConfig() {
-				if content, err := json.Marshal(appConfig); err != nil {
-					w.logger.ErrorContext(w.ctx, err)
-				} else {
-					cacheFile.SaveBinary(w.profileKey, &adapter.SavedBinary{LastUpdated: time.Now(), Content: content})
-				}
-			}
-			w.setupError.Set(nil) //H
-			return appConfig, true
-		}
-		w.logger.ErrorContext(w.ctx, E.Cause(err, "register WARP MASQUE device"))
-		w.setupError.Set(E.Cause(err, "register WARP MASQUE device")) //H
-		select {
-		case <-w.ctx.Done():
-			return nil, false
-		case <-w.done:
-			return nil, false
-		case <-time.After(backoff):
-		}
-		backoff = min(backoff*2, registerRetryMax)
-	}
 }
 
 // warpTLS is the TLS of a tunnel to WARP with the device in appConfig: its MASQUE key as a client
@@ -302,8 +229,8 @@ func (w *Outbound) startTunnel(appConfig *Config) error {
 		tunnel.SetFailover(scanner.OnConnected, scanner.NextEndpoint)
 		w.scanner = scanner
 	}
-	if w.registersOnRejection() { //H
-		tunnel.SetOnRejected(w.deviceRejected) //H
+	if w.onRejected != nil { //H
+		tunnel.SetOnRejected(w.onRejected) //H
 	} //H
 	w.tunnelAccess.Lock()   //H
 	w.tunnel = tunnel       //H
@@ -355,25 +282,18 @@ func (w *Outbound) isClosed() bool {
 	}
 }
 
-// Status is registering while a device is registered; ready while the tunnel has a connection
-// to the server, not once it is set up;
+// Status is ready while the tunnel has a connection to the server, not once it is set up;
 // searching while the scanner looks for an endpoint; reconnecting after it was ready; failed
 // when the tunnel could not be set up. //H
 func (w *Outbound) Status() adapter.Status {
 	select {
 	case <-w.await:
 	default:
-		if w.registering.Load() {
-			return adapter.StatusRegistering
-		}
 		if w.scanStatus.IsScanning() {
 			return adapter.StatusSearching
 		}
 		return adapter.StatusConnecting
 	}
-	if w.registering.Load() { //H: replacing a refused device
-		return adapter.StatusRegistering //H
-	} //H
 	tunnel := w.currentTunnel() //H
 	if tunnel == nil {
 		return adapter.StatusFailed
