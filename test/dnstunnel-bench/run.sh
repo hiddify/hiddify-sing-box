@@ -14,6 +14,8 @@
 #   MASTERDNS_EXTRA='"packet_duplication":1' test/dnstunnel-bench/run.sh  # more masterdns fields
 #   POOL_EXTRA='"duplicate":2' test/dnstunnel-bench/run.sh  # more smart_pool fields
 #   DNSTT_EXTRA='"udp-workers":200' test/dnstunnel-bench/run.sh  # more dnstt fields
+#   QUERY_BYTES=50 test/dnstunnel-bench/run.sh   # each query carries about 50 bytes of upload
+#   PARALLEL=all test/dnstunnel-bench/run.sh     # every setup at once (faster, noisier)
 #
 # Output: one markdown table row per run, on stdout. QUICK=1 runs four setups
 # once with small transfers and then checks the pool's behaviour (PASS or FAIL
@@ -49,6 +51,13 @@ SETUPS=${SETUPS:-"one-unlimited one-10ms one-limited three-unlimited three-limit
 # whose code did not change need not be run again. CACHE= turns that off.
 CACHE=${CACHE-1}
 BASE_PORT=${BASE_PORT:-27100}
+# QUERY_BYTES bounds the upload a query carries (a resolver that limits the
+# name length does the same): DNSTT's max-qname-len (base32: 8 characters
+# per 5 bytes, plus the client ID and the domain), MasterDNS's max_upload_mtu.
+QUERY_BYTES=${QUERY_BYTES:-}
+# PARALLEL=all runs every setup at once; by default the setups without a rate
+# limit run one after another, since they are bound by the machine.
+PARALLEL=${PARALLEL:-}
 
 # Resolvers of each setup, as qps:mode[:latency[:loss]]; qps 0 = unlimited,
 # mode refuse (REFUSED over the limit), drop (no answer) or dead.
@@ -101,11 +110,11 @@ check_quick() {
 			down[setup, ap] = $5
 			n = split($9, sh, "/")
 			for (i = 1; i <= 3; i++) share[setup, ap, i] = (i <= n) ? sh[i] + 0 : 0
-			if ($5 !~ /^[0-9]+$/ || $7 !~ /^[0-9]+$/) bad = bad " " setup "/" ap
+			if (ap ~ /-pool$/ && ($5 !~ /^[0-9]+$/ || $7 !~ /^[0-9]+$/)) bad = bad " " setup "/" ap
 			seen[setup] = 1
 		}
 		END {
-			check(bad == "", "every transfer completed" (bad == "" ? "" : ", failed:" bad))
+			check(bad == "", "every transfer through a pool completed" (bad == "" ? "" : ", failed:" bad))
 			if ("three-unlimited" in seen) for (t = 1; t <= 2; t++) {
 				ap = t == 1 ? "dnstt-pool" : "masterdns-pool"
 				check(has("three-unlimited", ap) && share["three-unlimited", ap, 1] >= 20 && share["three-unlimited", ap, 2] >= 20 && share["three-unlimited", ap, 3] >= 20, ap " spreads three equal resolvers evenly (each at least 20%: " share["three-unlimited", ap, 1] "/" share["three-unlimited", ap, 2] "/" share["three-unlimited", ap, 3] ")")
@@ -211,11 +220,14 @@ client_config() {
 	case $ap in *-pool) pool=${POOL_EXTRA:+"{\"enabled\":true,$POOL_EXTRA}"} pool=${pool:-true} ;; esac
 	# *-nodup: every packet sent once, MasterDnsVPN's duplication off
 	case $ap in *-nodup) extra="\"packet_duplication\":1${extra:+,$extra}" ;; esac
+	[ -n "$QUERY_BYTES" ] && extra="\"max_upload_mtu\":$QUERY_BYTES${extra:+,$extra}"
 	# *-first: the setup's first resolver only, no multi-resolver
 	case $ap in *-first) res=$(echo "$res" | sed 's/^\[\("[^"]*"\).*/[\1]/') ;; esac
 	case $ap in
 	dnstt-*)
-		tunnel="{\"type\":\"dnstt\",\"tag\":\"tunnel\",\"domain\":\"t.bench.example\",\"pubkey\":\"$(cat vay.pub)\",\"resolvers\":$res,\"max-qname-len\":200,\"smart_pool\":$pool${DNSTT_EXTRA:+,$DNSTT_EXTRA}}"
+		local qname=200
+		[ -n "$QUERY_BYTES" ] && qname=$((QUERY_BYTES * 8 / 5 + 40))
+		tunnel="{\"type\":\"dnstt\",\"tag\":\"tunnel\",\"domain\":\"t.bench.example\",\"pubkey\":\"$(cat vay.pub)\",\"resolvers\":$res,\"max-qname-len\":$qname,\"smart_pool\":$pool${DNSTT_EXTRA:+,$DNSTT_EXTRA}}"
 		;;
 	masterdns-*)
 		tunnel="{\"type\":\"masterdns\",\"tag\":\"tunnel\",\"domains\":[\"v.bench.example\"],\"resolvers\":$res,\"encryption\":\"xor\",\"key\":\"$(cat mdns.key)\",\"mode\":\"tcp\",\"log_level\":\"error\",\"smart_pool\":$pool${extra:+,$extra}}"
@@ -397,7 +409,7 @@ main() {
 	else
 		downs="$(setup_sizes one-limited | awk '{printf "%d and %d KiB", $1/1024, $2/1024}') through rate-limited resolvers (these setups run at the same time), $(setup_sizes one-unlimited | awk '{printf "%d and %d KiB", $1/1024, $2/1024}') otherwise"
 	fi
-	echo "Ready: seconds from start until a first request goes through. Download and upload, once ready, in kilobits a second (1 kbps = 1000 bit/s): $downs. Queries/s: DNS queries a second the tunnel sent to all resolvers during the transfer, answered or not. Download share: each resolver's part of those queries during the download, in the setup's order."
+	echo "Ready: seconds from start until a first request goes through. Download and upload, once ready, in kilobits a second (1 kbps = 1000 bit/s): $downs.${QUERY_BYTES:+ Each query carries about $QUERY_BYTES bytes of upload.}${PARALLEL:+ Every setup ran at the same time.} Queries/s: DNS queries a second the tunnel sent to all resolvers during the transfer, answered or not. Download share: each resolver's part of those queries during the download, in the setup's order."
 	echo
 	echo "| Setup | Approach | Round | Ready (s) | Download (kbps) | Download (queries/s) | Upload (kbps) | Upload (queries/s) | Download share (%) |"
 	echo "|---|---|---|---|---|---|---|---|---|"
@@ -406,12 +418,15 @@ main() {
 	local n=0 jobs=() setup
 	for setup in $SETUPS; do
 		n=$((n + 1))
-		limited "$setup" || { (run_setup "$setup" "$n") >"$WORK/rows-$setup.md"; cache_rows "$setup"; }
+		if [ "$PARALLEL" != all ] && ! limited "$setup"; then
+			(run_setup "$setup" "$n") >"$WORK/rows-$setup.md"
+			cache_rows "$setup"
+		fi
 	done
 	n=0
 	for setup in $SETUPS; do
 		n=$((n + 1))
-		if limited "$setup"; then
+		if [ "$PARALLEL" = all ] || limited "$setup"; then
 			{ run_setup "$setup" "$n" >"$WORK/rows-$setup.md"; cache_rows "$setup"; } &
 			jobs+=($!)
 			PIDS+=($!)

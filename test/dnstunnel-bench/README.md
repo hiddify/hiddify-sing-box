@@ -24,7 +24,8 @@ passes. `QUICK=1` runs four setups (`three-unlimited`, `three-uneven-latency`, `
 and short transfers, then prints a PASS or FAIL line for each check and exits with status 1 on a
 failure:
 
-- every transfer completes;
+- every transfer through a pool completes (a baseline, DNSTT direct through a resolver limited to
+  20 queries a second, can stall on its own);
 - three equal resolvers each get at least 20% of a pool's queries;
 - with uneven latency the 250 ms resolver gets at most 5% (for DNSTT the 60 ms one too: its
   ordered stream stalls on a slow answer; MasterDNS may send its copies there);
@@ -95,7 +96,11 @@ or without the pool), `MASTERDNS_EXTRA`, `DNSTT_EXTRA`
 and `POOL_EXTRA` (more fields for every `masterdns` or `dnstt` outbound or `smart_pool` object,
 such as `'"balancing":"round_robin"'` or `'"duplicate":2'`), `CLIENT_EXTRA` (more top-level
 fields of the client configuration, such as `'"experimental":{"debug":{"listen":"127.0.0.1:9999"}}'`
-for a CPU profile), `BASE_PORT` (27100), `WORK` (a
+for a CPU profile), `QUERY_BYTES` (bounds the
+upload a query carries, as a resolver that limits the name length does: DNSTT's `max-qname-len`
+and MasterDNS's `max_upload_mtu` are set for about that many bytes; try 50, 100 and 128),
+`PARALLEL=all` (every setup at once, faster and noisier; by default the setups without a rate
+limit run one after another, being bound by the machine), `BASE_PORT` (27100), `WORK` (a
 new temporary directory; its logs, binaries and row cache stay there).
 
 The library itself has a benchmark that needs no tunnel: `go run ./cmd/hmrdbench bench` in

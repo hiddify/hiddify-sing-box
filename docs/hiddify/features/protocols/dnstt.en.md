@@ -86,7 +86,7 @@ connection goes.
 | `record-type` | string | `"txt"` | Record type of the answers that carry data back from the server: `txt`, `cname`, `a`, `aaaa`, `mx`, `ns` or `srv`. It must match the server. Another value uses TXT. Each record type keeps its own saved resolver history. |
 | `utls` | string | `""` | TLS fingerprint for DoH and DoT, for example `"Chrome"`, `"Firefox"`, `"iOS"` or `"random"`. Empty uses Go's own TLS. |
 | `single-resolver` | bool | `false` | One tunnel per resolver instead of one tunnel over all of them. |
-| `smart_pool` | bool or object | `false` | Send queries through the outbound's own resolver pool, as described above: `true`, or an object with `load_balance`, `deadline`, `per_attempt`, `probe_interval` and `down_after` (see [Smart resolver pool](../dns/smart-dns-pool.en.md)). |
+| `smart_pool` | bool or object | `false`; on by itself with several resolvers | Send queries through the outbound's own resolver pool, as described above: `true`, or an object with `load_balance`, `deadline`, `per_attempt`, `probe_interval`, `down_after` and `duplicate` (see [Smart resolver pool](../dns/smart-dns-pool.en.md)). A tunnel runs over one resolver, so with more than one the pool is on whatever this says. |
 | `dnstt-compat` | bool | `false` | Use the original DNSTT wire format, for an original DNSTT server. |
 | `clientid-size` | int | `2` | Client ID size in bytes. Ignored with `dnstt-compat`, which uses 8. Must match the server. |
 | `max-qname-len` | int | `101` (`253` with `dnstt-compat`) | Longest query name to send. |

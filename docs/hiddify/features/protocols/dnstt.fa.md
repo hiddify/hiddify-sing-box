@@ -89,7 +89,7 @@ Noise رمز می‌شوند، پس نه resolver و نه فیلتر نمی‌ت
 | `record-type` | string | `"txt"` | نوع رکورد پاسخ‌هایی که داده را از سرور برمی‌گردانند: `txt`، `cname`، `a`، `aaaa`، `mx`، `ns` یا `srv`. باید با سرور یکی باشد. مقدار دیگر از TXT استفاده می‌کند. هر نوع رکورد سابقهٔ ذخیره‌شدهٔ resolverهای خودش را دارد. |
 | `utls` | string | `""` | اثرانگشت TLS برای DoH و DoT، مثلاً `"Chrome"`، `"Firefox"`، `"iOS"` یا `"random"`. خالی یعنی TLS خود Go. |
 | `single-resolver` | bool | `false` | یک تونل برای هر resolver، به‌جای یک تونل روی همهٔ آن‌ها. |
-| `smart_pool` | bool یا object | `false` | پرسش‌ها را از مجموعهٔ resolver خود خروجی بفرست، همان‌طور که بالا گفته شد: `true`، یا یک شیء با `load_balance`، `deadline`، `per_attempt`، `probe_interval` و `down_after` ([مجموعهٔ هوشمند resolver](../dns/smart-dns-pool.fa.md) را ببینید). |
+| `smart_pool` | bool یا object | `false`؛ با چند resolver خودبه‌خود روشن | پرسش‌ها را از مجموعهٔ resolver خود خروجی بفرست، همان‌طور که بالا گفته شد: `true`، یا یک شیء با `load_balance`، `deadline`، `per_attempt`، `probe_interval`، `down_after` و `duplicate` ([مجموعهٔ هوشمند resolver](../dns/smart-dns-pool.fa.md) را ببینید). یک تونل روی یک resolver کار می‌کند، پس با بیش از یکی مجموعه روشن است، این فیلد هر چه باشد. |
 | `dnstt-compat` | bool | `false` | قالب سیمی اصلی DNSTT، برای سرور اصلی DNSTT. |
 | `clientid-size` | int | `2` | اندازهٔ شناسهٔ کلاینت به بایت. با `dnstt-compat` نادیده گرفته می‌شود و ۸ است. باید با سرور یکی باشد. |
 | `max-qname-len` | int | `101` (با `dnstt-compat`، `253`) | بیشترین طول نام پرسش. |

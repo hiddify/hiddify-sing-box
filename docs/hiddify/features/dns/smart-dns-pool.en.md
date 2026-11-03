@@ -78,8 +78,10 @@ throttled or blocked, by spreading the load and leaving out the ones that stop w
   about as fast as the best when it does not, since the query is then most likely held. A
   resolver that lost packets lately also has its unanswered queries sent to a second resolver
   sooner; a healthy one is never hedged.
-- With `duplicate` (MasterDNS: its `packet_duplication`, else 3), each query is sent up to that
-  many times. The MasterDNS server answers every query it gets with the next packet it has, so a query
+- With `duplicate` (DNSTT: 2; MasterDNS: its `packet_duplication`, else 3), each query is sent
+  up to that many times. The DNSTT server answers each query with the packets it has queued too,
+  and the VayDNS client queues every answer a kept socket reads, so copies carry data there as
+  well (40 Mbit/s against 33 on one resolver 10 ms away). The MasterDNS server answers every query it gets with the next packet it has, so a query
   sent twice fetches two packets, and the tunnel keeps more in flight than its client does. A
   copy goes to the resolver without a rate limit whose packet comes back soonest and surest, the
   lowest latency weighed by loss, which may be the one the first send went to (MasterDnsVPN's
@@ -135,7 +137,7 @@ throttled or blocked, by spreading the load and leaving out the ones that stop w
 | `per_attempt` | duration | `2s` | Longest time for one try at one resolver; once its latency is known, a try gets its mean latency plus four deviations, at most this. |
 | `probe_interval` | duration | `5s` | How often a down resolver is checked. |
 | `down_after` | int | `8` | Timeouts or network errors in a row before a resolver is down. |
-| `duplicate` | int | `1`; masterdns: its `packet_duplication`, else `3` | How many times each query may be sent, copies included; the pool sends as many as carry data. The copies go only to resolvers without a rate limit, and every answer reaches the tunnel. Keep 1 for DNSTT: its client cannot read a second answer. |
+| `duplicate` | int | dnstt: `2`; masterdns: its `packet_duplication`, else `3` | How many times each query may be sent, copies included; the pool sends as many as carry data. The copies go only to resolvers without a rate limit, and every answer reaches the tunnel. |
 
 The resolvers themselves are the outbound's `resolvers`: `host:port` or `host` for UDP,
 `tcp://host:port`, `dot://host:853`, `https://host/dns-query`, and `auto`.
