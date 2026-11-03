@@ -89,7 +89,9 @@ each approach's median download and upload.
 | `three-lossy` | `0:refuse 0:refuse:0:0.1 0:refuse:0:0.3` |
 
 Other variables: `ROUNDS` (1; with more than one, or with the cache, a median table follows the
-rows), `MAX_TIME` (60 s per transfer), `MASTERDNS_EXTRA`, `DNSTT_EXTRA`
+rows), `MAX_TIME` (60 s per transfer; `UP_MAX_TIME` for uploads alone, 15 s in the quick check,
+which does not judge them: DNSTT's upload through refusing resolvers can crawl at 1 kbps, with
+or without the pool), `MASTERDNS_EXTRA`, `DNSTT_EXTRA`
 and `POOL_EXTRA` (more fields for every `masterdns` or `dnstt` outbound or `smart_pool` object,
 such as `'"balancing":"round_robin"'` or `'"duplicate":2'`), `CLIENT_EXTRA` (more top-level
 fields of the client configuration, such as `'"experimental":{"debug":{"listen":"127.0.0.1:9999"}}'`

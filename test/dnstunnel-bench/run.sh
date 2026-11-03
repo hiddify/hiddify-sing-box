@@ -27,6 +27,10 @@ WORK=${WORK:-$(mktemp -d "${TMPDIR:-/tmp}/dnstunnel-bench.XXXXXX")}
 ROUNDS=${ROUNDS:-1}
 MAX_TIME=${MAX_TIME:-60}
 QUICK=${QUICK:-}
+# The quick check does not judge uploads, and DNSTT's upload through refusing
+# resolvers can crawl at 1 kbps (its KCP window collapses under refusals, with
+# or without the pool), so its uploads get a short limit
+UP_MAX_TIME=${UP_MAX_TIME:-$([ -n "$QUICK" ] && echo 15 || echo "$MAX_TIME")}
 # Downloads without a rate limit run for DOWN_SECONDS, whatever the approach's
 # speed: long enough for a pool to learn which resolvers lose (a loss shows only
 # after a timeout), and the same for every approach; 0 downloads a fixed size
@@ -266,7 +270,7 @@ transfer() {
 	elif [ "$1" = down ]; then
 		curl -s -x "$2" -o /dev/null -w '%{size_download} %{time_total}' --max-time "$MAX_TIME" "$3/down?bytes=$4" || true
 	else
-		head -c "$4" /dev/urandom | curl -s -x "$2" -o /dev/null -w '%{size_upload} %{time_total}' --max-time "$MAX_TIME" --data-binary @- "$3/up" || true
+		head -c "$4" /dev/urandom | curl -s -x "$2" -o /dev/null -w '%{size_upload} %{time_total}' --max-time "$UP_MAX_TIME" --data-binary @- "$3/up" || true
 	fi
 }
 
