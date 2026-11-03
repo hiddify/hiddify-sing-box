@@ -84,6 +84,9 @@ func (m *OutboundMonitoring) applyInterim(task *testTask, state *outboundState, 
 	}
 	state.history.Delay = history.Delay
 	state.history.Time = history.Time
+	if !tentative { // the URL test answered: the error of an earlier test is gone with it
+		state.history.Error = ""
+	}
 	state.from_cache = false
 	state.tentative = tentative
 	if !tentative {
@@ -117,4 +120,13 @@ func (m *OutboundMonitoring) confirmed(groupTag, outboundTag string, his *adapte
 	last := state.confirmed
 	last.IsFromCache = state.from_cache
 	return &last
+}
+
+// testError is the error a URL test failed with, as the history keeps it for the app; empty when
+// the test worked.
+func testError(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }

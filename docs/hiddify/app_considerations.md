@@ -263,6 +263,12 @@ do about it. Items marked **Required** break or misbehave until they are handled
   Security · Selectable` or `🔓 Unblocker · Selectable`; its tag ends in `§hide§` like every chain
   hop, so do not hide it) whose items are `Lowest → <hop>` (the
   default, a lowest-delay balancer) and each WARP tunnel and Psiphon, moved with `SelectOutbound`.
+- **Why a proxy failed.** The URL test history keeps the error of a failed test (`Error`), and an
+  outbound that is not ready says why through `adapter.StatusError` (WARP and MASQUE: a refused
+  registration, a tunnel that does not connect, with the tunnel's last connect error). hiddify-core
+  passes either to the app as `OutboundInfo.error`, for the proxy's details. A result loaded from
+  the cache keeps its error only until the next test. See
+  [Monitoring](features/groups/monitoring.en.md).
 - **Fake DNS rule.** The DNS rules hiddify-core generates set `strategy`, which keeps sing-box in
   legacy DNS mode. A `query_type` (or `ip_version`) matcher in any DNS rule then makes the router
   refuse to start, with "Legacy `strategy` DNS rule action option is deprecated", and the app

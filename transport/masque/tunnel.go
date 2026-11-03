@@ -44,6 +44,8 @@ type Tunnel struct {
 	http2Step      int
 	activeHTTP2    atomic.Bool // the current connection is HTTP/2
 	connected      atomic.Bool // H: a connection to the server is up; read without the lock, which a connect holds
+
+	lastError atomic.Pointer[error] // H: why the last connect failed, nil once one worked; see LastError
 }
 
 // IsConnected reports whether the tunnel has a connection to the server. //H
@@ -209,6 +211,7 @@ func (e *Tunnel) getIpConn() (*connectip.Conn, error) {
 			e.ipConn = conn.ipConn
 			e.activeHTTP2.Store(conn.http2)
 			e.connected.Store(true) //H
+			e.lastError.Store(nil)  //H
 			e.logger.InfoContext(e.ctx, "connected to MASQUE server over ", map[bool]string{true: "HTTP/2", false: "HTTP/3"}[conn.http2])
 			return conn.ipConn, nil
 		}
@@ -216,6 +219,7 @@ func (e *Tunnel) getIpConn() (*connectip.Conn, error) {
 			return nil, e.ctx.Err()
 		}
 		e.logger.ErrorContext(e.ctx, E.Cause(err, "connect MASQUE tunnel"))
+		e.lastError.Store(&err) //H
 		timer.Reset(e.options.ReconnectDelay)
 		select {
 		case <-e.ctx.Done():

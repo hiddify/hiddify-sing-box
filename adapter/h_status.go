@@ -101,3 +101,42 @@ func (t *StatusTracker) Status(ready bool) Status {
 	}
 	return StatusConnecting
 }
+
+// StatusErrorer is an outbound or an endpoint that can say why it is not ready: the error that
+// failed it, or the one its last attempt to connect ended with.
+type StatusErrorer interface {
+	StatusError() error
+}
+
+// StatusError is why outbound is not ready; nil when it is ready or does not say.
+func StatusError(outbound Outbound) error {
+	if outbound.Status() == StatusReady {
+		return nil
+	}
+	if errorer, ok := outbound.(StatusErrorer); ok {
+		return errorer.StatusError()
+	}
+	return nil
+}
+
+// LastError keeps the last error of something that retries. The zero value is ready to use.
+type LastError struct {
+	err atomic.Pointer[error]
+}
+
+// Set keeps err; nil clears it.
+func (l *LastError) Set(err error) {
+	if err == nil {
+		l.err.Store(nil)
+		return
+	}
+	l.err.Store(&err)
+}
+
+// Get is the error kept, or nil.
+func (l *LastError) Get() error {
+	if err := l.err.Load(); err != nil {
+		return *err
+	}
+	return nil
+}

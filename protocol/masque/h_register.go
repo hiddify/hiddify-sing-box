@@ -130,7 +130,9 @@ func (w *Outbound) replaceTunnel(config *Config) {
 	if w.isClosed() {
 		return
 	}
-	if err := w.startTunnel(config); err != nil {
+	err := w.startTunnel(config)
+	w.setupError.Set(err)
+	if err != nil {
 		w.logger.ErrorContext(w.ctx, err)
 	}
 	if w.isClosed() { // closed while the tunnel was set up

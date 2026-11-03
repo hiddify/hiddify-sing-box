@@ -76,6 +76,8 @@ type Outbound struct {
 	await chan struct{}
 
 	ownerFollowsDetour bool //H: see followDetour
+
+	setupError adapter.LastError //H: why the device or the tunnel could not be set up; see StatusError
 }
 
 func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.MASQUEOutboundOptions) (adapter.Outbound, error) {
@@ -143,6 +145,7 @@ func newWARPOutbound(ctx context.Context, logger log.ContextLogger, tag string, 
 		}
 		if err := outbound.startTunnel(appConfig); err != nil {
 			logger.ErrorContext(ctx, err)
+			outbound.setupError.Set(err) //H
 		}
 		if outbound.isClosed() { // closed while the tunnel was set up
 			outbound.closeTunnel()
@@ -181,9 +184,11 @@ func (w *Outbound) loadOrRegister() (*Config, bool) {
 					cacheFile.SaveBinary(w.profileKey, &adapter.SavedBinary{LastUpdated: time.Now(), Content: content})
 				}
 			}
+			w.setupError.Set(nil) //H
 			return appConfig, true
 		}
 		w.logger.ErrorContext(w.ctx, E.Cause(err, "register WARP MASQUE device"))
+		w.setupError.Set(E.Cause(err, "register WARP MASQUE device")) //H
 		select {
 		case <-w.ctx.Done():
 			return nil, false

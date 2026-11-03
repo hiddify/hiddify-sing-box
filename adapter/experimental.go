@@ -35,6 +35,8 @@ type URLTestHistory struct {
 	IPv6 *bool `json:"ipv6,omitempty"` //H
 	// IPv6FromCache: IPv6 is the answer of a previous run, not verified in this one yet. //H
 	IPv6FromCache bool `json:"ipv6_from_cache,omitempty"` //H
+	// Error: why the last URL test failed; empty when it worked. //H
+	Error string `json:"error,omitempty"` //H
 }
 
 type URLTestHistoryStorage interface {

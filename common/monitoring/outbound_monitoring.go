@@ -883,6 +883,7 @@ func (m *OutboundMonitoring) applyResult(outcome testOutcome) *adapter.URLTestHi
 	}
 	state.history.Delay = outcome.history.Delay
 	state.history.Time = outcome.history.Time
+	state.history.Error = testError(outcome.err) //H
 	state.from_cache = false
 	state.tentative = false //H
 	if outcome.history.IpInfo != nil {

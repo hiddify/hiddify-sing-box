@@ -91,6 +91,11 @@ any test. It stays marked as from the cache (`IpInfoFromCache`) until an IP look
 succeeds; a failed test does not change it. The exit IP of WARP, Psiphon or a rotating proxy can
 change between runs, so the app should show such an IP as not confirmed yet.
 
+A failed test keeps its error in the result (`Error`), so the app can say why the proxy failed:
+a refused handshake, a timeout, a DNS failure. A test that answers clears it. An outbound that is
+not ready is not tested, so it has no test error; WARP and MASQUE say why they are not ready
+through `adapter.StatusError` instead (a refused registration, a tunnel that does not connect).
+
 Groups that subscribe to monitoring get one update for a burst of results, after
 `debounce_window`.
 

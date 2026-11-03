@@ -54,6 +54,7 @@ type WARPEndpoint struct {
 	scanStatus    warpscan.Status // H: the WireGuard scanner, for the display type
 	scanStatusOf  func() *warpscan.Status
 	failed        atomic.Bool           // H: see Status
+	failError     adapter.LastError     // H: why it failed; see StatusError
 	tracker       adapter.StatusTracker // H
 	registering   atomic.Bool           // H: a device is being registered
 	failedModes   sync.Map              // H: auto mode: the tunnels that did not connect
@@ -230,6 +231,7 @@ func (w *WARPEndpoint) Status() adapter.Status {
 // fail logs err, after which the endpoint shows as failed: it cannot work as configured. //H
 func (w *WARPEndpoint) fail(err error) {
 	w.logger.ErrorContext(w.ctx, err)
+	w.failError.Set(err) //H
 	w.failed.Store(true)
 }
 func (w *WARPEndpoint) Start(stage adapter.StartStage, scope *adapter.Scope) error {
