@@ -9,6 +9,8 @@
 #   SETUPS="three-limited" ROUNDS=3 test/dnstunnel-bench/run.sh
 #   APPROACHES="masterdns-own masterdns-pool" test/dnstunnel-bench/run.sh
 #   WORK=dir SKIP_BUILD=1 test/dnstunnel-bench/run.sh  # reuse the binaries a run built in dir
+#   WORK=dir APPROACHES="masterdns-pool" test/dnstunnel-bench/run.sh  # rerun one approach; the
+#       tables take the other approaches' rows from dir's cache of earlier runs
 #   MASTERDNS_EXTRA='"packet_duplication":1' test/dnstunnel-bench/run.sh  # more masterdns fields
 #   POOL_EXTRA='"duplicate":2' test/dnstunnel-bench/run.sh  # more smart_pool fields
 #   DNSTT_EXTRA='"udp-workers":200' test/dnstunnel-bench/run.sh  # more dnstt fields
@@ -35,8 +37,13 @@ if [ -n "$QUICK" ]; then
 	APPROACHES=${APPROACHES:-"dnstt-first dnstt-pool masterdns-first masterdns-pool"}
 	SETUPS=${SETUPS:-"three-unlimited three-uneven-latency three-lossy three-limited"}
 fi
-APPROACHES=${APPROACHES:-"dnstt-first dnstt-pool masterdns-first masterdns-own masterdns-own-nodup masterdns-pool"}
+ALL_APPROACHES="dnstt-first dnstt-pool masterdns-first masterdns-own masterdns-own-nodup masterdns-pool"
+APPROACHES=${APPROACHES:-$ALL_APPROACHES}
 SETUPS=${SETUPS:-"one-unlimited one-10ms one-limited three-unlimited three-limited three-limited-one-dead three-uneven-latency three-lossy"}
+# Every (setup, approach) measured is also kept in $WORK/cache, and the tables
+# at the end show, for each setup run, every approach in the cache: an approach
+# whose code did not change need not be run again. CACHE= turns that off.
+CACHE=${CACHE-1}
 BASE_PORT=${BASE_PORT:-27100}
 
 # Resolvers of each setup, as qps:mode[:latency[:loss]]; qps 0 = unlimited,
@@ -289,7 +296,7 @@ measure() { # measure <setup> <round> <approach> <resolver json list>
 	client_config "$ap" "$res" >"client-$setup-$ap.json"
 	local start
 	start=$(date +%s)
-	./sing-box run -c "client-$setup-$ap.json" >"client-$setup-$ap.log" 2>&1 &
+	./sing-box run -c "client-$setup-$ap.json" >"client-$setup-$ap-r$round.log" 2>&1 &
 	local pid=$!
 	wait_port "$CLIENT_PORT" || true
 	local proxy="socks5h://127.0.0.1:$CLIENT_PORT" url="http://127.0.0.1:$HTTP_PORT"
@@ -345,6 +352,32 @@ run_setup() {
 	trap - EXIT
 }
 
+# cache_rows <setup>: keep the setup's rows of this run in the cache, one file
+# per approach, replacing that approach's earlier rows
+cache_rows() {
+	[ -n "$CACHE" ] || return 0
+	local ap
+	mkdir -p "$WORK/cache/$1"
+	for ap in $APPROACHES; do
+		grep "^| $1 | $ap | " "$WORK/rows-$1.md" >"$WORK/cache/$1/$ap.md" || true
+	done
+}
+
+# table_rows <setup>: the rows the tables use: this run's, plus the cache's for
+# the approaches not run, each with the age of its measurement in minutes
+table_rows() {
+	cat "$WORK/rows-$1.md"
+	[ -n "$CACHE" ] || return 0
+	local f ap now
+	now=$(date +%s)
+	for f in "$WORK/cache/$1"/*.md; do
+		[ -e "$f" ] || continue
+		ap=$(basename "$f" .md)
+		case " $APPROACHES " in *" $ap "*) continue ;; esac
+		sed "s/ |\$/ | cached $(( (now - $(stat -f %m "$f" 2>/dev/null || stat -c %Y "$f")) / 60 )) min ago |/" "$f"
+	done
+}
+
 main() {
 	for port in $SOCKS_PORT $HTTP_PORT $((BASE_PORT + 101)) $RES_PORT; do
 		if nc -z 127.0.0.1 "$port" 2>/dev/null; then
@@ -369,41 +402,50 @@ main() {
 	local n=0 jobs=() setup
 	for setup in $SETUPS; do
 		n=$((n + 1))
-		limited "$setup" || (run_setup "$setup" "$n") >"$WORK/rows-$setup.md"
+		limited "$setup" || { (run_setup "$setup" "$n") >"$WORK/rows-$setup.md"; cache_rows "$setup"; }
 	done
 	n=0
 	for setup in $SETUPS; do
 		n=$((n + 1))
 		if limited "$setup"; then
-			run_setup "$setup" "$n" >"$WORK/rows-$setup.md" &
+			{ run_setup "$setup" "$n" >"$WORK/rows-$setup.md"; cache_rows "$setup"; } &
 			jobs+=($!)
 			PIDS+=($!)
 		fi
 	done
 	for j in ${jobs[@]+"${jobs[@]}"}; do wait "$j" || true; done
-	for setup in $SETUPS; do cat "$WORK/rows-$setup.md"; done
-	if [ "$ROUNDS" -gt 1 ]; then
+	for setup in $SETUPS; do table_rows "$setup"; done
+	if [ "$ROUNDS" -gt 1 ] || [ -n "$CACHE" ]; then
 		echo
-		echo "Median of $ROUNDS rounds, in kbps:"
+		echo "Median of the rounds, in kbps:"
 		echo
 		echo "| Setup | Approach | Download (kbps) | Upload (kbps) |"
 		echo "|---|---|---|---|"
-		for setup in $SETUPS; do cat "$WORK/rows-$setup.md"; done | awk -F' [|] ' '
+		for setup in $SETUPS; do table_rows "$setup"; done | awk -F' [|] ' -v order="$ALL_APPROACHES" '
 			function median(list,   n, v, i, j, t) {
 				n = split(list, v, " ")
 				for (i = 1; i <= n; i++) for (j = i + 1; j <= n; j++) if (v[j] + 0 < v[i] + 0) { t = v[i]; v[i] = v[j]; v[j] = t }
 				return n % 2 ? v[(n + 1) / 2] : (v[n / 2] + v[n / 2 + 1]) / 2
 			}
+			BEGIN { n = split(order, o, " "); for (i = 1; i <= n; i++) rank[o[i]] = i }
 			{
-				key = $1 " | " $2
-				sub(/^[|] /, "", key)
-				if (!(key in down)) order[++keys] = key
+				setup = $1; sub(/^[|] /, "", setup)
+				if (!(setup in seen)) { seen[setup] = 1; setups[++ns] = setup }
+				key = setup " | " $2
+				if (!(key in down)) { aps[setup] = aps[setup] " " $2 }
 				d = ($5 ~ /^[0-9]+$/) ? $5 : 0
 				u = ($7 ~ /^[0-9]+$/) ? $7 : 0
 				down[key] = down[key] " " d
 				up[key] = up[key] " " u
+				if ($NF ~ /cached/) note[key] = " (" $NF ")"; else if (!(key in note)) note[key] = ""
 			}
-			END { for (k = 1; k <= keys; k++) printf "| %s | %d | %d |\n", order[k], median(down[order[k]]), median(up[order[k]]) }'
+			END {
+				for (s = 1; s <= ns; s++) {
+					m = split(aps[setups[s]], a, " ")
+					for (i = 1; i <= m; i++) for (j = i + 1; j <= m; j++) if ((a[j] in rank ? rank[a[j]] : 99) < (a[i] in rank ? rank[a[i]] : 99)) { t = a[i]; a[i] = a[j]; a[j] = t }
+					for (i = 1; i <= m; i++) { key = setups[s] " | " a[i]; printf "| %s%s | %d | %d |\n", key, note[key], median(down[key]), median(up[key]) }
+				}
+			}'
 	fi
 	log "logs in $WORK"
 	if [ -n "$QUICK" ]; then

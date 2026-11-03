@@ -8,8 +8,15 @@ Everything runs on the loopback: no internet, no root.
 QUICK=1 test/dnstunnel-bench/run.sh                # a check that the pool works, about 2 minutes
 test/dnstunnel-bench/run.sh                        # every setup once, about 15 minutes
 SETUPS="three-limited" ROUNDS=3 test/dnstunnel-bench/run.sh
-APPROACHES="masterdns-own masterdns-pool" test/dnstunnel-bench/run.sh
+WORK=/tmp/bench APPROACHES="dnstt-pool masterdns-pool" test/dnstunnel-bench/run.sh
 ```
+
+The last form is the one to use while working on the pool: `WORK` keeps every row an earlier run
+measured, by setup and approach, and the tables at the end show, for each setup run, the
+approaches run now next to the cached rows of the others, marked with their age. An approach
+whose code did not change (`dnstt-first`, `masterdns-own`, ...) is not run again. `SKIP_BUILD=1`
+reuses the binaries in `WORK` too, for a `sing-box` built against a local hmrd checkout. `CACHE=`
+turns the cache off.
 
 Run the quick check first after a change to the pool or a tunnel, and the full benchmark once it
 passes. `QUICK=1` runs four setups (`three-unlimited`, `three-uneven-latency`, `three-lossy`,
@@ -81,13 +88,13 @@ each approach's median download and upload.
 | `three-uneven-latency` | `0:refuse:10ms 0:refuse:60ms 0:refuse:250ms` |
 | `three-lossy` | `0:refuse 0:refuse:0:0.1 0:refuse:0:0.3` |
 
-Other variables: `ROUNDS` (1), `MAX_TIME` (60 s per transfer), `MASTERDNS_EXTRA`, `DNSTT_EXTRA`
+Other variables: `ROUNDS` (1; with more than one, or with the cache, a median table follows the
+rows), `MAX_TIME` (60 s per transfer), `MASTERDNS_EXTRA`, `DNSTT_EXTRA`
 and `POOL_EXTRA` (more fields for every `masterdns` or `dnstt` outbound or `smart_pool` object,
 such as `'"balancing":"round_robin"'` or `'"duplicate":2'`), `CLIENT_EXTRA` (more top-level
 fields of the client configuration, such as `'"experimental":{"debug":{"listen":"127.0.0.1:9999"}}'`
 for a CPU profile), `BASE_PORT` (27100), `WORK` (a
-new temporary directory; its logs stay there), `SKIP_BUILD` (set it to reuse the binaries an
-earlier run left in `WORK`, for example a `sing-box` built against a local hmrd checkout).
+new temporary directory; its logs, binaries and row cache stay there).
 
 The library itself has a benchmark that needs no tunnel: `go run ./cmd/hmrdbench bench` in
 [hmrd_multi_resolver_dns](https://github.com/hiddify/hmrd_multi_resolver_dns).

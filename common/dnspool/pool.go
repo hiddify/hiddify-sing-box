@@ -25,6 +25,11 @@ type PoolOptions struct {
 	ProbeInterval time.Duration
 	DownAfter     int
 	Duplicate     int // resolvers each query is sent to, copies included (see multidns.Options)
+	// FailFast answers a query that finds every resolver at its rate cap with SERVFAIL at once
+	// instead of holding it up to 300 ms for a token (multidns.Options.PacingMaxWait). For a
+	// tunnel whose client times its own retransmissions by the round trip (DNSTT's KCP) a held
+	// query inflates the round trip and shrinks its window; a failed one is retransmitted.
+	FailFast bool
 }
 
 // PoolOptionsFrom reads an outbound's smart_pool block; nil means the defaults.
@@ -49,8 +54,17 @@ func managerOptions(logger log.ContextLogger, tag string, options PoolOptions) m
 		ProbeInterval:          options.ProbeInterval,
 		DownAfterFailures:      options.DownAfter,
 		LoadBalance:            LBFromString(options.LoadBalance),
+		PacingMaxWait:          pacingMaxWait(options.FailFast),
 		Logger:                 NewLoggerAdapter(logger, tag),
 	}
+}
+
+// pacingMaxWait is multidns' wait for capacity: its default, or none.
+func pacingMaxWait(failFast bool) time.Duration {
+	if failFast {
+		return -1
+	}
+	return 0
 }
 
 // DialFunc returns the dial function the pool's resolver sockets use: a

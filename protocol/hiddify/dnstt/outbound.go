@@ -132,7 +132,12 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 		if err != nil {
 			return nil, err
 		}
-		pool, err := dnspool.StartPool(logger, tag, dnspool.PoolOptionsFrom(options.SmartPool), dial)
+		poolOptions := dnspool.PoolOptionsFrom(options.SmartPool)
+		// DNSTT's KCP times its retransmissions by the round trip and loses more from a query
+		// held for capacity than from one failed at once: measured on one resolver limited to 30
+		// queries a second, 82 kbps held against 173 failing fast
+		poolOptions.FailFast = true
+		pool, err := dnspool.StartPool(logger, tag, poolOptions, dial)
 		if err != nil {
 			return nil, err
 		}
