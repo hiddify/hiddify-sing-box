@@ -21,7 +21,7 @@ func TestH_XrayXDrive(t *testing.T) {
 		}
 		decryption, encryption := hVLESSEncryptionPair(t, "native")
 		t.Run(version+"/sing-box-client", func(t *testing.T) {
-			folder := t.TempDir()
+			folder := xdriveFolder(t)
 			hStartXray(t, binary, `{
 				"log": {"loglevel": "warning"},
 				"inbounds": [{"listen": "127.0.0.1", "port": `+strconv.Itoa(hFreeTCPPort(t))+`, "protocol": "vless",
@@ -40,7 +40,7 @@ func TestH_XrayXDrive(t *testing.T) {
 			hVLESSRoundTrip(t, mixedPort, target)
 		})
 		t.Run(version+"/xray-client", func(t *testing.T) {
-			folder := t.TempDir()
+			folder := xdriveFolder(t)
 			hStartInteropBox(t, `{
 				"log": {"disabled": true},
 				"inbounds": [{"type": "vless", "listen": "127.0.0.1", "listen_port": `+strconv.Itoa(hFreeTCPPort(t))+`,

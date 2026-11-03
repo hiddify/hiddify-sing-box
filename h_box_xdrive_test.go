@@ -6,6 +6,7 @@ import (
 	"context"
 	"io"
 	"net"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -24,7 +25,7 @@ import (
 // "local" service): the client announces a session there and the server picks it up.
 func TestH_XDriveLocalRoundTrip(t *testing.T) {
 	echo := startEchoServer(t)
-	folder := t.TempDir()
+	folder := xdriveFolder(t)
 	transport := `{"type": "xdrive", "service": "local", "remote_folder": "` + folder + `", "poll_interval_ms": 20, "flush_interval_ms": 5}`
 	config := `{
 		"log": {"level": "warn"},
@@ -67,6 +68,27 @@ func TestH_XDriveLocalRoundTrip(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, payload, got)
 	}
+}
+
+// xdriveFolder is a storage folder for one test. Closing the boxes only cancels the xdrive
+// sessions: their storage goroutines (the watermark acknowledgement among them) still put a file or
+// two in the folder for a moment, so t.TempDir's one removal could find it not empty and fail the
+// test; this one waits for the storage to go quiet.
+func xdriveFolder(t *testing.T) string {
+	folder, err := os.MkdirTemp("", "xdrive")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		deadline := time.Now().Add(10 * time.Second)
+		for {
+			err := os.RemoveAll(folder)
+			if err == nil || time.Now().After(deadline) {
+				require.NoError(t, err)
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	})
+	return folder
 }
 
 func TestH_XDriveOptions(t *testing.T) {
