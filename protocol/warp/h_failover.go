@@ -74,8 +74,10 @@ func (w *WARPEndpoint) connect(done <-chan struct{}, config *C.WARPConfig) {
 		if err != nil {
 			w.logger.WarnContext(w.ctx, "WARP scanner: ", err)
 		} else {
+			w.mtx.Lock()
 			w.failover = failover
-			results, err := w.scan(nil)
+			w.mtx.Unlock()
+			results, err := w.scanWith(failover, nil)
 			if err != nil {
 				w.logger.WarnContext(w.ctx, err, ", using the profile's endpoint")
 			} else {
@@ -223,10 +225,11 @@ func (w *WARPEndpoint) innerOptions() option.WARPEndpointOptions {
 	if w.activeMode() != modeAWG {
 		options.AWG = nil // the WireGuard endpoint refuses an awg block; auto mode has one
 	}
-	if w.failover == nil {
+	failover := w.currentFailover()
+	if failover == nil {
 		return options
 	}
-	if preset, found := warpscan.NoisePresetByName(w.failover.currentNoise()); found {
+	if preset, found := warpscan.NoisePresetByName(failover.currentNoise()); found {
 		if w.activeMode() == modeAWG {
 			options.AWG = preset.AWG(options.AWG)
 		} else {
@@ -253,8 +256,7 @@ func (w *WARPEndpoint) probeNoise(presetName string) hiddify.NoiseOptions {
 	return w.options.Noise
 }
 
-func (w *WARPEndpoint) probe(presetName string) (warpscan.Probe, error) {
-	failover := w.failover
+func (w *WARPEndpoint) probe(failover *warpFailover, presetName string) (warpscan.Probe, error) {
 	failover.noiseAccess.Lock()
 	defer failover.noiseAccess.Unlock()
 	if probe, loaded := failover.probes[presetName]; loaded {
@@ -276,12 +278,12 @@ func (f *warpFailover) currentNoise() string {
 
 // noiseCandidates are the noises a scan tries on network, in order: with search_noise, the one
 // that got through there before; the configured one; then the presets.
-func (w *WARPEndpoint) noiseCandidates(networkName string) []string {
+func (w *WARPEndpoint) noiseCandidates(failover *warpFailover, networkName string) []string {
 	scanner := w.options.Scanner
 	if scanner == nil || !scanner.SearchNoise {
 		return []string{""}
 	}
-	candidates := []string{w.failover.book.Noise(networkName), ""}
+	candidates := []string{failover.book.Noise(networkName), ""}
 	presets := []string(scanner.NoisePresets)
 	if len(presets) == 0 {
 		for _, preset := range warpscan.NoisePresets {
@@ -300,11 +302,21 @@ func (w *WARPEndpoint) noiseCandidates(networkName string) []string {
 	return unique
 }
 
-// scan looks for endpoints on the current network, without exclude, and saves the scores. With
-// search_noise, when none answers with the noise in use, it tries the others (noiseCandidates)
-// and keeps the first that gets an answer; the next inner endpoint uses it.
+// scan looks for endpoints on the current network, without exclude, with the failover in use.
 func (w *WARPEndpoint) scan(exclude []netip.AddrPort) ([]warpscan.Result, error) {
-	failover := w.failover
+	failover := w.currentFailover()
+	if failover == nil {
+		return nil, errNoFailover
+	}
+	return w.scanWith(failover, exclude)
+}
+
+// scanWith looks for endpoints on the current network, without exclude, and saves the scores.
+// With search_noise, when none answers with the noise in use, it tries the others
+// (noiseCandidates) and keeps the first that gets an answer; the next inner endpoint uses it.
+// It works on failover to the end: a restart clears the endpoint's while a scan of the start that
+// ends still runs.
+func (w *WARPEndpoint) scanWith(failover *warpFailover, exclude []netip.AddrPort) ([]warpscan.Result, error) {
 	defaults := warpscan.Defaults{CIDRs: warpscan.WireGuardCIDRs, Ports: warpscan.WireGuardPorts}
 	if ports := failover.config.Peers[0].Endpoint.Ports; len(ports) > 0 {
 		defaults.Ports = make([]uint16, 0, len(ports))
@@ -315,8 +327,8 @@ func (w *WARPEndpoint) scan(exclude []netip.AddrPort) ([]warpscan.Result, error)
 	network := failover.currentNetwork()
 	w.scanStatus.Begin()
 	var lastErr error
-	for i, noise := range w.noiseCandidates(network.Name) {
-		probe, err := w.probe(noise)
+	for i, noise := range w.noiseCandidates(failover, network.Name) {
+		probe, err := w.probe(failover, noise)
 		if err != nil {
 			lastErr = err
 			continue
@@ -352,17 +364,27 @@ func (w *WARPEndpoint) scan(exclude []netip.AddrPort) ([]warpscan.Result, error)
 				w.logger.InfoContext(w.ctx, "WARP scanner: noise ", noise, " gets through")
 			}
 		}
-		w.saveScores()
+		w.saveScores(failover)
 		w.scanStatus.Found(results[0].AddrPort)
 		return results, nil
 	}
-	w.saveScores()
+	w.saveScores(failover)
 	w.scanStatus.NotFound()
 	return nil, lastErr
 }
 
-func (w *WARPEndpoint) saveScores() {
-	if err := warpscan.Save(service.FromContext[adapter.CacheFile](w.ctx), w.uniqueID, w.failover.book); err != nil {
+// currentFailover is the scanner's failover of the start in use, or nil: a restart clears it, so
+// a check reads it once and keeps it.
+func (w *WARPEndpoint) currentFailover() *warpFailover {
+	w.mtx.Lock()
+	defer w.mtx.Unlock()
+	return w.failover
+}
+
+var errNoFailover = E.New("WARP scanner: not set up")
+
+func (w *WARPEndpoint) saveScores(failover *warpFailover) {
+	if err := warpscan.Save(service.FromContext[adapter.CacheFile](w.ctx), w.uniqueID, failover.book); err != nil {
 		w.logger.WarnContext(w.ctx, "WARP scanner: save scores: ", err)
 	}
 }
@@ -377,7 +399,8 @@ func (w *WARPEndpoint) InterfaceUpdated(ctx context.Context) {
 	if listener, isListener := inner.(adapter.InterfaceUpdateListener); isListener {
 		listener.InterfaceUpdated(ctx)
 	}
-	if w.failover == nil {
+	failover := w.currentFailover()
+	if failover == nil {
 		return
 	}
 	done := w.session()
@@ -387,7 +410,7 @@ func (w *WARPEndpoint) InterfaceUpdated(ctx context.Context) {
 		case <-done:
 			return
 		}
-		w.failover.detectNetwork(w.ctx)
+		failover.detectNetwork(w.ctx)
 		w.check(done, true)
 	}()
 }
@@ -411,7 +434,10 @@ func (w *WARPEndpoint) watch(done <-chan struct{}) {
 // endpoint when it no longer answers: always checked after a network change, otherwise only
 // when traffic goes out without a recent handshake.
 func (w *WARPEndpoint) check(done <-chan struct{}, networkChanged bool) {
-	failover := w.failover
+	failover := w.currentFailover()
+	if failover == nil { // the start ended, and the next has none yet
+		return
+	}
 	if !failover.access.TryLock() {
 		return
 	}
@@ -430,14 +456,14 @@ func (w *WARPEndpoint) check(done <-chan struct{}, networkChanged bool) {
 	if !failover.recorded && lastHandshake.After(failover.connectedAt) {
 		failover.recorded = true
 		failover.book.Success(network, failover.current, 0, time.Now())
-		w.saveScores()
+		w.saveScores(failover)
 	}
 	stuck := tx > failover.lastTx && (lastHandshake.IsZero() || time.Since(lastHandshake) > staleHandshake)
 	failover.lastTx = tx
 	if !networkChanged && !stuck {
 		return
 	}
-	probe, err := w.probe(failover.currentNoise())
+	probe, err := w.probe(failover, failover.currentNoise())
 	if err != nil {
 		w.logger.ErrorContext(w.ctx, err)
 		return
@@ -448,7 +474,7 @@ func (w *WARPEndpoint) check(done <-chan struct{}, networkChanged bool) {
 		cancel()
 		if err == nil {
 			failover.book.Success(network, failover.current, rtt, time.Now())
-			w.saveScores()
+			w.saveScores(failover)
 			return
 		}
 		if w.ctx.Err() != nil {
@@ -457,7 +483,7 @@ func (w *WARPEndpoint) check(done <-chan struct{}, networkChanged bool) {
 	}
 	w.logger.WarnContext(w.ctx, "WARP: endpoint ", failover.current, " does not answer, looking for another")
 	failover.book.Failure(network, failover.current, time.Now())
-	results, err := w.scan([]netip.AddrPort{failover.current})
+	results, err := w.scanWith(failover, []netip.AddrPort{failover.current})
 	if err != nil {
 		w.logger.WarnContext(w.ctx, err, ", keeping ", failover.current)
 		return

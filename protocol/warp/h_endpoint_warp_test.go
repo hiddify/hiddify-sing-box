@@ -427,10 +427,10 @@ func TestH_WARPSearchNoise(t *testing.T) {
 	require.Equal(t, "dns-google", ep.failover.book.Noise("wifi/IR"), "remembered for the network")
 	dns, _ := warpscan.NoisePresetByName("dns-google")
 	require.Equal(t, dns.WireGuard(), ep.innerOptions().Noise, "the next inner endpoint sends it")
-	require.Equal(t, []string{"dns-google", "", "xray-random"}, ep.noiseCandidates("wifi/IR")[:3], "tried first next time")
+	require.Equal(t, []string{"dns-google", "", "xray-random"}, ep.noiseCandidates(ep.failover, "wifi/IR")[:3], "tried first next time")
 
 	ep.options.Scanner.SearchNoise = false
-	require.Equal(t, []string{""}, ep.noiseCandidates("wifi/IR"), "only the configured noise without search_noise")
+	require.Equal(t, []string{""}, ep.noiseCandidates(ep.failover, "wifi/IR"), "only the configured noise without search_noise")
 }
 
 func TestH_WARPNoisePresetOption(t *testing.T) {
