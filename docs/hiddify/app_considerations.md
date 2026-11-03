@@ -263,6 +263,12 @@ do about it. Items marked **Required** break or misbehave until they are handled
   Security · Selectable` or `🔓 Unblocker · Selectable`; its tag ends in `§hide§` like every chain
   hop, so do not hide it) whose items are `Lowest → <hop>` (the
   default, a lowest-delay balancer) and each WARP tunnel and Psiphon, moved with `SelectOutbound`.
+- **Fake DNS rule.** The DNS rules hiddify-core generates set `strategy`, which keeps sing-box in
+  legacy DNS mode. A `query_type` (or `ip_version`) matcher in any DNS rule then makes the router
+  refuse to start, with "Legacy `strategy` DNS rule action option is deprecated", and the app
+  stays on Connecting. The fake IP rule therefore matches every query with `bypass_if_failed`;
+  queries other than A and AAAA fail at the fake IP server, at debug level only, and go on to
+  the remote rule. See [bypass_if_failed](features/dns/dns-bypass-if-failed.en.md).
 - **DNS predefined answers.** In legacy DNS mode, A/AAAA records in 10.0.0.0/8 and
   2001:4188:2:600::/64 are removed from `predefined` answers (`dns/blocked_checker.go`). This is
   deliberate and tested, but a predefined answer in those ranges returns nothing; keep it in mind

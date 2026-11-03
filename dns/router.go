@@ -1177,6 +1177,8 @@ func (r *Router) exchangeLegacy(ctx context.Context, exchangeCtx *dnsExchangeCon
 			} else if errors.Is(err, ErrResponseRejected) {
 				rejected = true
 				r.logger.DebugContext(ctx, E.Cause(err, "response rejected for ", FormatQuestion(message.Question[0].String())))
+			} else if len(message.Question) > 0 && rule != nil && rule.BypassIfFailed() && ruleIndex != -1 { //H: the next rule answers, so not an error
+				r.logger.DebugContext(ctx, E.Cause(err, "exchange failed for ", FormatQuestion(message.Question[0].String())), ", trying the next rule") //H
 			} else if len(message.Question) > 0 {
 				r.logger.ErrorContext(ctx, E.Cause(err, "exchange failed for ", FormatQuestion(message.Question[0].String())))
 			} else {

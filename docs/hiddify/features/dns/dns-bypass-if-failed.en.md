@@ -28,6 +28,7 @@ It does not. It only lets the next rule try another server when one is blocked.
   outbound), an empty answer also counts as a failure.
 - If the query is canceled, it stops; the next rule is not tried.
 - Several rules in a row can each have `bypass_if_failed`.
+- A failure that the next rule takes over is logged at debug level, not as an error.
 
 ### Limit: legacy DNS rule mode only
 
@@ -39,6 +40,11 @@ sing-box uses the legacy mode when at least one DNS rule matches on the answer's
 its action, and no rule needs the new mode (for example `match_response`, `query_type`,
 `ip_version`, or the `evaluate` or `respond` actions). Upstream marks these legacy fields as
 deprecated, so sing-box logs a warning for them.
+
+A config that mixes the two (a `strategy` in one rule and a `query_type` in another, for example)
+is rejected at startup. In the legacy mode, a fake IP rule therefore cannot match
+`query_type: [A, AAAA]`. Give it `bypass_if_failed` instead: the fake IP server fails every other
+query type, and the next rule answers it.
 
 ## Configuration
 
