@@ -3,8 +3,9 @@
 [فارسی](smart-dns-pool.fa.md) · [All Hiddify features](../../index.md)
 
 The smart resolver pool is the resolver handling that every DNS tunnel outbound shares: the
-[DNSTT](../protocols/dnstt.en.md) and [MasterDNS](../protocols/masterdns.en.md) outbounds each
-run their own pool when their `smart_pool` field is set. The pool spreads the tunnel's queries
+[DNSTT](../protocols/dnstt.en.md), [MasterDNS](../protocols/masterdns.en.md) and
+[Soar](../protocols/soar.en.md) outbounds each run their own pool when their `smart_pool` field
+is set (Soar's is on unless set to `false`). The pool spreads the tunnel's queries
 over many resolvers, moves to another when one is slow, rate-limited or down, and checks the
 down ones in the background until they answer again. It is not a separate server or service:
 it lives inside the outbound, and every outbound has its own.
@@ -15,8 +16,11 @@ A DNS tunnel sends a lot of queries, and public resolvers soon start to limit or
 With the pool, the tunnel client sees one local resolver, and the pool keeps the queries flowing
 over all the resolvers that work.
 
-The same code also gives every DNS tunnel the same resolver features: `auto` (the built-in list
-of about 58,000 public resolvers), a saved score for each resolver so the ones that worked
+The same code also gives every DNS tunnel the same resolver features: `auto` (the candidates of
+[Soar](../protocols/soar.en.md)'s resolver discovery, from its own code: the device's resolvers,
+the bundled list of the country in `discovery.country`, global public resolvers and, with
+`discovery.sample_ranges`, addresses of the country's ranges; then the built-in list of about
+58,000 public resolvers), a saved score for each resolver so the ones that worked
 before are tried first, and a plain-query check before a resolver is used. DoT and DoH resolvers
 work for every tunnel through the pool, even for a client that only speaks plain UDP.
 
@@ -30,7 +34,10 @@ throttled or blocked, by spreading the load and leaving out the ones that stop w
 - At start, the outbound opens a pool on a free local port and gives its client that address as
   the only resolver. Then it checks the resolvers in `resolvers`, the ones with the best saved
   score first, and adds each one that passes; DNSTT also opens a real tunnel through it,
-  MasterDNS sends the plain query of `pretest_domain`. Checking stops once ten are in the pool.
+  MasterDNS and Soar send the plain query of `pretest_domain`. Checking pauses once ten work, and
+  MasterDNS and Soar check again every 15 seconds: when resolvers in the pool have gone down and
+  fewer than ten work, the next resolvers in the list are checked, like Soar's own discovery
+  does for its paths.
 - The pool relays the tunnel's queries over one long-lived socket per resolver, so it adds almost
   nothing to a query's time. Toward the pool, DNSTT runs 300 workers (`udp-workers` sets another
   number), each keeping one query out on a socket of its own, instead of 100 workers that open a
@@ -138,6 +145,7 @@ throttled or blocked, by spreading the load and leaving out the ones that stop w
 | `probe_interval` | duration | `5s` | How often a down resolver is checked. |
 | `down_after` | int | `8` | Timeouts or network errors in a row before a resolver is down. |
 | `duplicate` | int | dnstt: `2`; masterdns: its `packet_duplication`, else `3` | How many times each query may be sent, copies included; the pool sends as many as carry data. The copies go only to resolvers without a rate limit, and every answer reaches the tunnel. |
+| `discovery` | object | | How "auto" resolvers are found, the same for DNSTT, MasterDNS and Soar: `country` (ISO code of the device's network; hiddify-core fills it from the app's region), `sample_ranges` (addresses of the country's ranges to try last, default 0), `want` (working resolvers to keep: 10 for the pool, 16 for Soar's client), `concurrency` (tests at once: 100 for the pool, 16 for Soar's client), `pace` (least gap between two tests: none for the pool, `20ms` for Soar's client). |
 
 The resolvers themselves are the outbound's `resolvers`: `host:port` or `host` for UDP,
 `tcp://host:port`, `dot://host:853`, `https://host/dns-query`, and `auto`.

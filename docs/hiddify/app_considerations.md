@@ -125,7 +125,28 @@ do about it. Items marked **Required** break or misbehave until they are handled
   `masterdns://` links, `slipnet://` links (SlipNet profiles for DNSTT, NoizDNS and VayDNS) as
   `dnstt` outbounds with a `socks` or `ssh` outbound in front, and `dnst://` links (the dnst URL
   spec, github.com/net2share/dnst-url-spec) for the dnstt, vaydns and masterdns transports.
-- **Smart resolver pool, per outbound.** `dnstt` and `masterdns` take `smart_pool`, `true` or an
+- **Soar outbound.** `"type": "soar"` (display name `Soar`) is a new outbound type for Soar
+  servers (`github.com/getlantern/soar`): `domain`, `public_key`, `resolvers` and tuning fields,
+  see [Soar](features/protocols/soar.en.md). TCP only, no outbound behind it. The resolvers
+  written go through its smart pool, on by default; `auto` or no resolvers runs Soar's own
+  discovery. The session
+  opens at the first connection, so the status is CONNECTING until then. ray2sing reads
+  `soar://` links: WhiteDNS's profile link (base64url JSON, schema `whitedns.profile`) and a URL
+  form. The JSON editor offers a `soar` template.
+- **Links turn the masterdns smart pool on.** ray2sing gives a `masterdns://` or `dnst://`
+  masterdns outbound `smart_pool` unless the link says `smart_pool=0` or lists an address range,
+  and a link without resolvers gets `auto`. It also reads WhiteDNS's `masterdns://` profile link.
+- **Shared resolver discovery.** `smart_pool.discovery` (`country`, `sample_ranges`, `want`,
+  `concurrency`, `pace`) is the same block for `dnstt`, `masterdns` and `soar`: their `auto`
+  starts with the candidates of Soar's discovery (device resolvers, the country's bundled list,
+  global resolvers), then the built-in list. hiddify-core fills `discovery.country` from the
+  app's region when it is empty. Links take `country`, `sample_ranges`, `discovery_want`,
+  `discovery_concurrency` and `discovery_pace`.
+- **Soar fork.** `replace/soar` (module `github.com/getlantern/soar`, to be forked as
+  `github.com/hiddify/soar`, branch `hiddify`) adds `Discovery.List()`, so the pool takes Soar's
+  discovery candidates from Soar's own code. hiddify-core's `go.mod` needs
+  `replace github.com/getlantern/soar => ./hiddify-sing-box/replace/soar`, like the other forks.
+- **Smart resolver pool, per outbound.** `dnstt`, `masterdns` and `soar` take `smart_pool`, `true` or an
   object (`load_balance`, `deadline`, `per_attempt`, `probe_interval`, `down_after`); the
   resolver list, scores, probe and pool of every DNS tunnel are one shared package,
   `common/dnspool`, and each outbound runs its own pool. With it, `auto`, DoT and DoH resolvers

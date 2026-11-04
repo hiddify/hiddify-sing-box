@@ -51,7 +51,8 @@ resolver is blocked and the domestic ones do not forward.
 - **Smart pool.** With `smart_pool`, the client sees one resolver: the outbound's own
   [smart resolver pool](../dns/smart-dns-pool.en.md), the same code as [DNSTT](dnstt.en.md)'s. Each
   resolver in `resolvers` is first sent a plain query (`pretest_domain`, `pretest_record_type`),
-  the ones that worked before first, and the first 10 that answer join the pool. The pool spreads
+  the ones that worked before first, and those that answer join the pool until 10 work; when
+  some go down, the next ones are checked. The pool spreads
   the tunnel's queries over them, slows down for a resolver that rate-limits, and skips one that
   stops answering. Resolvers may then also be DoT (`dot://host:853`), DoH
   (`https://host/dns-query`) or `auto`, the built-in list of public resolvers. Each resolver's
@@ -128,8 +129,10 @@ The client's own resolver finder (`client_resolvers.txt` with ranges) is replace
 hiddify-core's ray2sing reads two links into this outbound: `masterdns://`, which carries the same
 fields, and the `dnst://` URL of the dnst URL spec (`dnst://v.example.com/masterdns/socks?mkey=…&encryption=5`),
 where the `socks` backend is this outbound alone and any other backend sets `mode: tcp` with that
-outbound in front. A `dnst://` link names no resolvers, so a list of well-known public resolvers
-is used unless the link adds `resolvers=`.
+outbound in front. It also reads the `masterdns://` profile link of WhiteDNS (base64url JSON,
+schema `whitedns.profile`). A link turns `smart_pool` on unless it says `smart_pool=0` or lists
+an address range, and a link without resolvers (a `dnst://` link names none) uses `auto`
+through the pool, or a list of well-known public resolvers without it.
 
 ## Notes
 

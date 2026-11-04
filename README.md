@@ -47,6 +47,7 @@ its changes small and close to upstream so it can follow every sing-box release.
   [Psiphon](docs/hiddify/features/protocols/psiphon.en.md),
   [DNSTT](docs/hiddify/features/protocols/dnstt.en.md),
   [MasterDNS](docs/hiddify/features/protocols/masterdns.en.md),
+  [Soar](docs/hiddify/features/protocols/soar.en.md),
   [GooseRelay](docs/hiddify/features/protocols/gooserelay.en.md),
   [Call tunnel](docs/hiddify/features/protocols/call.en.md),
   [Tunnel](docs/hiddify/features/protocols/tunnel.en.md),
@@ -141,6 +142,7 @@ Besides sing-box, this fork takes work from other forks and projects. Thank you 
 - [Psiphon-Labs](https://github.com/Psiphon-Labs): Psiphon.
 - [net2share/vaydns](https://github.com/net2share/vaydns): DNSTT.
 - [masterking32/MasterDnsVPN](https://github.com/masterking32/MasterDnsVPN): MasterDNS.
+- [getlantern/soar](https://github.com/getlantern/soar): Soar.
 - [kianmhz/GooseRelayVPN](https://github.com/kianmhz/GooseRelayVPN): GooseRelay.
 - [GFW-knocker](https://github.com/GFW-knocker): the WireGuard noise packets.
 - [XTLS/Xray-core](https://github.com/XTLS/Xray-core): XHTTP, mKCP, XDRIVE, finalmask, VLESS
