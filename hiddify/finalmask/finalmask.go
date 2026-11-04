@@ -94,6 +94,8 @@ func newMaskConfig(maskType string, tcp bool) any {
 			return new(FragmentMask)
 		case "merge":
 			return new(MergeMask)
+		case "mirage":
+			return new(MirageMask)
 		case "oob":
 			return new(OOBMask)
 		case "sudoku":

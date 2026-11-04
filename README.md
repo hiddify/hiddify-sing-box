@@ -149,6 +149,7 @@ Besides sing-box, this fork takes work from other forks and projects. Thank you 
   encryption and REALITY, which the matching features here follow and are tested against.
 - [patterniha/Xray-core](https://github.com/patterniha/xray-core): the `merge` finalmask and the
   `oob` dial mode.
+- [PoriyaVali/mirage](https://github.com/PoriyaVali/mirage): the `mirage` finalmask (MIT).
 
 ## License
 
