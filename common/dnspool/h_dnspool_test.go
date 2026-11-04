@@ -3,7 +3,6 @@ package dnspool
 import (
 	"context"
 	"net"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -34,16 +33,39 @@ func TestH_DnspoolExpand(t *testing.T) {
 
 	for _, auto := range []string{"auto", "AUTO", ""} {
 		require.True(t, HasAuto([]string{"1.1.1.1", auto}))
-		candidates = Expand([]string{auto, "4.4.4.4:53"})
-		require.Len(t, candidates, len(builtin)+1)
+		// Soar's discovery candidates first, then every built-in resolver, each once; "auto"
+		// written twice adds them once
+		candidates = Expand([]string{auto, "4.4.4.4:53", auto})
+		seen := map[string]bool{}
+		tier := TierDiscovery
 		for _, c := range candidates[:len(candidates)-1] {
 			require.True(t, c.Auto)
-			ip := strings.TrimSuffix(c.Address, ":53")
-			_, known := builtin[ip]
-			require.True(t, known, c.Address)
+			require.False(t, seen[c.Address], c.Address)
+			seen[c.Address] = true
+			require.GreaterOrEqual(t, c.Tier, tier)
+			tier = c.Tier
 		}
+		for ip := range builtin {
+			require.True(t, seen[ip+":53"], ip)
+		}
+		require.True(t, seen["1.1.1.1:53"])
+		require.Equal(t, TierDiscovery, candidates[0].Tier)
 		require.Equal(t, Candidate{Address: "4.4.4.4:53"}, candidates[len(candidates)-1])
 	}
+
+	// a country puts its bundled resolvers among the discovery candidates
+	plain := ExpandWith([]string{"auto"}, option.ResolverDiscoveryOptions{})
+	iran := ExpandWith([]string{"auto"}, option.ResolverDiscoveryOptions{Country: "IR", SampleRanges: 10})
+	countTier := func(cs []Candidate) int {
+		n := 0
+		for _, c := range cs {
+			if c.Tier == TierDiscovery {
+				n++
+			}
+		}
+		return n
+	}
+	require.Greater(t, countTier(iran), countTier(plain)+10)
 	require.Empty(t, Expand(nil))
 }
 
@@ -99,6 +121,11 @@ func TestH_DnspoolHistory(t *testing.T) {
 	require.Equal(t, "good", candidates[2].Address)
 	require.Equal(t, "new", candidates[3].Address)
 	require.Equal(t, "bad", candidates[4].Address)
+
+	// among equal scores, the discovery candidates before the rest of the built-in list
+	candidates = []Candidate{{Address: "b1", Auto: true, Tier: TierBuiltin}, {Address: "d1", Auto: true, Tier: TierDiscovery}, {Address: "b2", Auto: true, Tier: TierBuiltin}}
+	h.Sort(candidates)
+	require.Equal(t, "d1", candidates[0].Address)
 }
 
 func TestH_DnspoolQueryType(t *testing.T) {

@@ -12,18 +12,20 @@ import (
 type ResolverS struct {
 	Resolver dnstt.Resolver
 	Auto     bool
+	Tier     int
 }
 
 // getConfigResolvers turns the resolver entries into VayDNS resolvers; "auto" is the built-in
-// list shared by the DNS tunnels (common/dnspool).
+// list shared by the DNS tunnels (common/dnspool), Soar's discovery candidates for
+// smart_pool.discovery first.
 func getConfigResolvers(options option.DnsttOptions) ([]ResolverS, error) {
 	resolvers := []ResolverS{}
-	for _, candidate := range dnspool.Expand(options.Resolvers) {
+	for _, candidate := range dnspool.ExpandWith(options.Resolvers, options.SmartPool.DiscoveryOptions()) {
 		resolver, err := getResolver(options, candidate.Address)
 		if err != nil {
 			return nil, fmt.Errorf("invalid resolver address %s: %w", candidate.Address, err)
 		}
-		resolvers = append(resolvers, ResolverS{Resolver: resolver, Auto: candidate.Auto})
+		resolvers = append(resolvers, ResolverS{Resolver: resolver, Auto: candidate.Auto, Tier: candidate.Tier})
 	}
 	return resolvers, nil
 }

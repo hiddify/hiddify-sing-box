@@ -26,7 +26,6 @@ import (
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
-	"github.com/sagernet/sing/common/batch"
 	"github.com/sagernet/sing/common/control"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
@@ -42,7 +41,8 @@ const (
 
 	// poolHistoryKey names the saved resolver scores in the cache file.
 	poolHistoryKey = "masterdns_resolvers"
-	// poolMaxResolvers is how many resolvers the smart pool takes; checking stops once it has them.
+	// poolMaxResolvers is how many working resolvers the smart pool keeps; probing pauses once it
+	// has them and resumes when fewer work.
 	poolMaxResolvers = 10
 	// defaultPoolDuplicate is the pool's duplicate count without packet_duplication. The pool
 	// sends only the copies that carry data, so more is safe; measured (test/dnstunnel-bench),
@@ -141,7 +141,7 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 	}
 	var candidates []dnspool.Candidate
 	if options.SmartPool.IsEnabled() {
-		candidates = dnspool.Expand(options.Resolvers)
+		candidates = dnspool.ExpandWith(options.Resolvers, options.SmartPool.DiscoveryOptions())
 		for _, candidate := range candidates {
 			if candidate.Auto {
 				continue
@@ -377,55 +377,40 @@ func (h *Outbound) PostStart() error {
 	return nil
 }
 
-// fillPool probes the candidate resolvers, the ones that worked before first, and puts those
-// that answer into the pool, up to poolMaxResolvers. Scores are kept in the cache file, like
-// the dnstt outbound's.
+// fillPool puts the candidate resolvers that answer the probe into the pool, the ones that
+// worked before first, up to smart_pool.discovery.want (poolMaxResolvers) working ones, and
+// probes more whenever fewer work.
+// Scores are kept in the cache file, like the dnstt outbound's.
 func (h *Outbound) fillPool(ctx context.Context) {
 	history := dnspool.LoadHistory(h.cache, poolHistoryKey)
-	defer history.Save(h.cache, poolHistoryKey, h.logger)
 	history.Sort(h.candidates)
-
-	var added int32
-	var addedMu sync.Mutex
-	b, _ := batch.New(ctx, batch.WithConcurrencyNum[any](poolProbeConcurrency))
-	for _, candidate := range h.candidates {
-		if ctx.Err() != nil {
-			break
-		}
-		b.Go(candidate.Address, func() (any, error) {
-			addedMu.Lock()
-			full := added >= poolMaxResolvers
-			addedMu.Unlock()
-			if full || ctx.Err() != nil {
-				return nil, nil
-			}
-			qtype := dnspool.QueryType(h.options.PreTestRecordType)
-			response, err := dnspool.Probe(ctx, h.logger, candidate.Address, h.options.PreTestDomain, qtype, h.options.DialerOptions)
-			if err := dnspool.CheckAnswer(candidate.Address, response, err); err != nil {
-				history.Record(candidate.Address, -3)
-				h.logger.DebugContext(ctx, "resolver ", candidate.Address, " failed: ", err)
-				return nil, nil
-			}
-			if err := h.pool.Add(candidate.Address); err != nil {
-				h.logger.WarnContext(ctx, "resolver ", candidate.Address, " not added: ", err)
-				return nil, nil
-			}
-			history.Record(candidate.Address, 1)
-			addedMu.Lock()
-			added++
-			addedMu.Unlock()
-			h.logger.InfoContext(ctx, "resolver ", candidate.Address, " is working and added to the pool")
-			h.poolOnce.Do(func() {
-				close(h.poolReady)
-				history.Save(h.cache, poolHistoryKey, h.logger)
-			})
-			return nil, nil
-		})
-	}
-	_ = b.Wait()
+	qtype := dnspool.QueryType(h.options.PreTestRecordType)
+	discovery := h.options.SmartPool.DiscoveryOptions()
+	added := h.pool.Fill(ctx, h.logger, dnspool.FillOptions{
+		Candidates: h.candidates,
+		Probe: func(ctx context.Context, address string) error {
+			response, err := dnspool.Probe(ctx, h.logger, address, h.options.PreTestDomain, qtype, h.options.DialerOptions)
+			return dnspool.CheckAnswer(address, response, err)
+		},
+		Want:        orDefault(discovery.Want, poolMaxResolvers),
+		Concurrency: orDefault(discovery.Concurrency, poolProbeConcurrency),
+		Pace:        discovery.Pace.Build(),
+		History:     history,
+		Cache:       h.cache,
+		HistoryKey:  poolHistoryKey,
+		OnFirst:     func() { h.poolOnce.Do(func() { close(h.poolReady) }) },
+	})
 	if ctx.Err() == nil && added == 0 {
 		h.logger.ErrorContext(ctx, "masterdns: none of the ", len(h.candidates), " resolvers answered the probe")
 	}
+}
+
+// orDefault is value, or fallback when value is not set.
+func orDefault(value, fallback int) int {
+	if value > 0 {
+		return value
+	}
+	return fallback
 }
 
 // PoolResolvers is the number of resolvers in the smart pool, 0 without one.

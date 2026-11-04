@@ -98,8 +98,9 @@ func (h *History) Record(address string, delta int) int {
 }
 
 // Sort orders candidates for testing: shuffled, then built-in ones first, then by score from
-// high to low. Resolvers that worked before are tried first; among equals the order is random,
-// so the same few are not hammered every start.
+// high to low, then by tier (Soar's discovery candidates before the rest of the built-in list).
+// Resolvers that worked before are tried first; among equals the order is random, so the same
+// few are not hammered every start.
 func (h *History) Sort(candidates []Candidate) {
 	rand.Shuffle(len(candidates), func(i, j int) {
 		candidates[i], candidates[j] = candidates[j], candidates[i]
@@ -111,6 +112,9 @@ func (h *History) Sort(candidates []Candidate) {
 		if a.Auto != b.Auto {
 			return a.Auto
 		}
-		return h.ResolverRate[a.Address] > h.ResolverRate[b.Address]
+		if sa, sb := h.ResolverRate[a.Address], h.ResolverRate[b.Address]; sa != sb {
+			return sa > sb
+		}
+		return a.Tier < b.Tier
 	})
 }

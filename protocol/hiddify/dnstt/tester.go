@@ -32,20 +32,37 @@ func (h *Outbound) startTestResolver() error {
 	history := h.loadHistory()
 	defer h.saveHistory(history)
 
-	b, _ := batch.New(h.ctx, batch.WithConcurrencyNum[any](100))
+	// smart_pool.discovery: how many resolvers to keep, how many tested at once, and the gap
+	// between two tests
+	discovery := h.options.SmartPool.DiscoveryOptions()
+	want, concurrency := 10, 100
+	if discovery.Want > 0 {
+		want = discovery.Want
+	}
+	if discovery.Concurrency > 0 {
+		concurrency = discovery.Concurrency
+	}
+	b, _ := batch.New(h.ctx, batch.WithConcurrencyNum[any](concurrency))
 
 	// the shared order: built-in resolvers first, then by saved score, equals shuffled
 	ordered := make([]dnspool.Candidate, len(h.candidateResolvers))
 	byAddress := make(map[string]dnstt.Resolver, len(h.candidateResolvers))
 	for i, r := range h.candidateResolvers {
-		ordered[i] = dnspool.Candidate{Address: r.Resolver.ResolverAddr, Auto: r.Auto}
+		ordered[i] = dnspool.Candidate{Address: r.Resolver.ResolverAddr, Auto: r.Auto, Tier: r.Tier}
 		byAddress[r.Resolver.ResolverAddr] = r.Resolver
 	}
 	history.Sort(ordered)
 
-	for _, candidate := range ordered {
+	for i, candidate := range ordered {
 		resolver := byAddress[candidate.Address]
 
+		if discovery.Pace > 0 && i > 0 {
+			select {
+			case <-h.ctx.Done():
+				return h.ctx.Err()
+			case <-time.After(discovery.Pace.Build()):
+			}
+		}
 		select {
 		case <-h.ctx.Done():
 			return h.ctx.Err()
@@ -56,7 +73,7 @@ func (h *Outbound) startTestResolver() error {
 			h.mu.Lock()
 			resCount := len(h.resolvers)
 			h.mu.Unlock()
-			if resCount > 10 {
+			if resCount > want {
 				return nil, nil
 			}
 
