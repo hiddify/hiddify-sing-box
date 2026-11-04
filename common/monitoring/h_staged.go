@@ -2,6 +2,7 @@ package monitoring
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -28,19 +29,28 @@ func onDemandTimeouts(options badoption.Listable[badoption.Duration]) []time.Dur
 
 // stagedURLTest is the URL test of a test asked for: a tap on a proxy, a selection. The first
 // attempt starts at once. When it fails, or has not answered by the first mark, the outbound
-// shows as unavailable for now (tentative, see confirmed); at the first mark a second attempt
-// starts beside the first, and so at every mark but the last, which is the deadline of them all. The first answer from any attempt
-// wins at once, however late, and the others are dropped; when every attempt has failed and no
-// more are due, it is over without waiting for the deadline.
-func (m *OutboundMonitoring) stagedURLTest(parent context.Context, link string, out adapter.Outbound, interim func(adapter.URLTestHistory, bool)) (uint16, error) {
+// shows as unavailable for now (tentative, see confirmed). An attempt that failed is tried again
+// at the next mark, and so at every mark but the last, which is the deadline of them all; an
+// attempt still running at a mark is left to answer, so a slow proxy is pinged once, not three
+// times. The first answer wins at once, however late; when the last attempt has failed and no
+// mark is left to try at, it is over without waiting for the deadline.
+//
+// The first mark is for an outbound nothing is known of: no result of this run, or only the one
+// cached from the previous run, so that the app shows something of it within a second. An
+// outbound that worked in this run (worked) keeps its result past the first mark instead of
+// showing as unavailable after one slow answer, and its stages start at the second mark.
+func (m *OutboundMonitoring) stagedURLTest(parent context.Context, link string, out adapter.Outbound, interim func(adapter.URLTestHistory, bool), worked bool) (uint16, error) {
 	marks := m.onDemand
+	if worked && len(marks) > 1 {
+		marks = marks[1:]
+	}
 	ctx, cancel := context.WithTimeout(parent, marks[len(marks)-1])
 	defer cancel()
 	type result struct {
 		delay uint16
 		err   error
 	}
-	results := make(chan result, len(marks))
+	results := make(chan result, 1)
 	attempt := func() {
 		go func() {
 			delay, err := urltest.URLTest(ctx, link, out)
@@ -48,15 +58,17 @@ func (m *OutboundMonitoring) stagedURLTest(parent context.Context, link string, 
 		}()
 	}
 	start := time.Now()
+	m.logger.Info("MONITORING test ", out.Tag(), ": in stages ", fmt.Sprint(marks), " (worked before: ", worked, ")")
 	attempt()
-	launched, failed := 1, 0
-	next := 0 // the mark the next attempt starts at; the last mark starts none
+	running := true
+	next := 0 // the mark the next attempt may start at; the last mark starts none
 	missed := false
-	miss := func() { // unavailable for now: the first attempt failed, or has not answered by the first mark
+	miss := func() { // unavailable for now: the attempt failed, or has not answered by the first mark
 		if missed || interim == nil {
 			return
 		}
 		missed = true
+		m.logger.Info("MONITORING ", out.Tag(), ": no answer after ", time.Since(start).Round(time.Millisecond), ": unavailable for now")
 		interim(adapter.URLTestHistory{Time: time.Now(), Delay: TimeoutDelay}, true)
 	}
 	var (
@@ -86,19 +98,22 @@ func (m *OutboundMonitoring) stagedURLTest(parent context.Context, link string, 
 			if r.err == nil && r.delay > 0 && r.delay < TimeoutDelay {
 				return r.delay, nil
 			}
-			failed++
+			running = false
 			if r.err != nil {
 				err = r.err
 			}
-			if failed == launched && next >= len(marks)-1 {
+			if next >= len(marks)-1 { // no mark left to try at
 				return TimeoutDelay, err
 			}
 			miss()
 		case <-due:
 			timer = nil
 			miss()
-			attempt()
-			launched++
+			if !running { // the attempt failed: another one, at this mark
+				m.logger.Info("MONITORING ", out.Tag(), ": the attempt failed, another at ", marks[next])
+				attempt()
+				running = true
+			}
 			next++
 		}
 	}

@@ -68,7 +68,8 @@ do about it. Items marked **Required** break or misbehave until they are handled
   already). With `interrupt_exist_connections`, the hashing strategies interrupt only when the
   set of usable members changes, not on every test round.
 - **Balancer connections are stable.** `lowest-delay` now honours `tolerance` (50 ms when unset;
-  send 50–100, not 1) and `tolerance_ratio` (a tenth of the selected member's delay when unset),
+  hiddify-core sends 20, with `tolerance_ratio` 0.3, so the rule is mostly relative) and
+  `tolerance_ratio` (a tenth of the selected member's delay when unset),
   and keeps its member until one is faster by more than the larger of the two or it fails a
   test. Connections are closed only for a member that died (its own connections) and once, 30
   seconds after start, for the members the first tests left out. A faster member takes new
@@ -84,7 +85,18 @@ do about it. Items marked **Required** break or misbehave until they are handled
   tested before the first cycle and again when the selection moves; a test asked for runs at
   once beside the cycle, in stages (`experimental.monitoring.on_demand_timeouts`, 1 s, 3 s,
   10 s by default): the app sees the proxy as unavailable after the first mark with no answer,
-  then the first answer from any attempt, however late. The delay is published before the IP
+  then the answer, however late. A proxy is pinged once; only a failed attempt is tried again,
+  at the next mark. A tap while the proxy is being tested joins that test instead of a second
+  ping, and a selection measured in the last 15 s is not tested again. hiddify-core sets the
+  lowest-delay groups' `tolerance` to 20 ms and `tolerance_ratio` to 0.3: an absolute 100 ms
+  kept a 59 ms member over a 25 ms one. The `MONITORING` and `LOWEST` log lines say why each
+  test ran and what the group decided. hiddify-core keeps a profile's proxy tags stable across
+  its updates (an unchanged proxy keeps the tag it had, whatever its new position in the list),
+  so a hot reload after a subscription update keeps the unchanged proxies and their pings and
+  tests only what changed; keep top keeps its pick while every kept proxy is unchanged and none
+  timed out. A proxy that worked in this run skips the first mark: it keeps its ping
+  through a slow answer rather than flicker to unavailable after one second. The delay is
+  published before the IP
   lookup, so the IP arrives after the ping. Nothing to set; the core's defaults are these.
 - **IPv6 for the apps is off by default, and verified per proxy when on.** hiddify-core answers
   the apps with `ipv4_only` DNS rules and rejects every IPv6 destination before the sniff rule

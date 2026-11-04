@@ -42,6 +42,30 @@ func switchThreshold(currentDelay uint16, tolerance uint16, ratio float64) uint3
 	return uint32(tolerance)
 }
 
+// selectedThreshold is how much faster another member must be than the selected one, with the
+// result his, to take the selection: switchThreshold for a real ping, none for one cached from
+// the previous run. A cached ping only orders the members until the real ones arrive, so the
+// tolerance, which keeps a member that answers from jitter, has nothing to keep.
+func selectedThreshold(his *adapter.URLTestHistory, tolerance uint16, ratio float64) uint32 {
+	if his != nil && his.IsFromCache {
+		return 0
+	}
+	return switchThreshold(measuredDelay(his), tolerance, ratio)
+}
+
+// keepsCachedPick says whether a selected member with a cached result (his) stays although best,
+// with a result of this run, has the lowest penalised delay: it stays while it is the faster of
+// the two as measured. A cached pick is left for any real ping that works, however slow, and
+// after a start or a hot reload, when every result is cached, the first member to answer took
+// the selection at 91 ms over the 17 ms one being tested, which took it back a moment later;
+// every move tested the new pick again. A cached pick that fails its test is dead and left.
+func keepsCachedPick(his, best *adapter.URLTestHistory) bool {
+	if his == nil || !his.IsFromCache || best == nil || best.IsFromCache {
+		return false
+	}
+	return measuredDelay(his) < monitoring.TimeoutDelay && measuredDelay(best) >= measuredDelay(his)
+}
+
 // memberDead says whether a member's last test failed. A member that has no result yet is
 // not dead: its connections may be fine, and it is tested soon.
 func memberDead(his *adapter.URLTestHistory) bool {
@@ -60,7 +84,15 @@ func (s *Balancer) memberGroup(tag string) *interrupt.Group {
 // update gives the strategy the new results, closes the connections of the members that
 // died since the last update, and tells monitoring when the selection moved.
 func (s *Balancer) update(history map[string]*adapter.URLTestHistory) {
-	changed := s.strategyFn.UpdateOutboundsInfo(history)
+	changed := false
+	var cycleRunning bool
+	var cycleStart time.Time
+	if s.monitor != nil {
+		cycleRunning, cycleStart = s.monitor.PeriodicCycleRunning(), s.monitor.CycleStartedAt()
+	}
+	if !holdsDuringCycle(cycleRunning, cycleStart, s.strategyFn, history) { // see h_cycle_hold.go
+		changed = s.strategyFn.UpdateOutboundsInfo(history)
+	}
 	for tag, group := range s.members {
 		dead := memberDead(history[tag])
 		if dead && !s.dead[tag] {
@@ -69,9 +101,20 @@ func (s *Balancer) update(history map[string]*adapter.URLTestHistory) {
 		}
 		s.dead[tag] = dead
 	}
-	if changed && s.monitor != nil {
+	if changed && s.monitor != nil && signalsSelection(s.Strategy()) {
 		s.monitor.SignalChange(s.Tag()) //H: what follows the group learns the new member at once
 	}
+}
+
+// signalsSelection reports a strategy whose change of members is worth telling monitoring: one
+// that sends every connection through one member (lowest-delay), so the groups and the chain hop
+// that follow it now use another. A strategy that spreads connections (round robin, the hashing
+// strategies, the pool) changes the members it may use with almost every result while a cycle
+// runs, and each telling tested its parents (the Extra Security hop) and its next pick again:
+// with a large free subscription, dozens of extra tests a minute, and pings that changed every
+// few seconds. Their connections move to the next member anyway.
+func signalsSelection(strategy string) bool {
+	return strategy == StrategyLowestDelay
 }
 
 // settle moves, once, the connections of the members the first tests left out: it closes the

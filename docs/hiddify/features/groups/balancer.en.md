@@ -53,6 +53,25 @@ a working server goes on. Connections are closed in two cases only:
 `interrupt_exist_connections` says whether the connections that came in from inbounds are
 closed too in these cases; connections opened inside sing-box always are.
 
+### During a test cycle
+
+The results of a regular test cycle arrive one by one. `lowest-delay` and `round-robin` do not
+take each as it comes: while a cycle runs, they keep the members they use as long as these
+answer in this run, and choose again with all the results when the cycle ends. A member in use
+that fails, or that has no result of this run yet (at start, the cached or the first member),
+is replaced at once by the best member known so far, until the cycle ends and the best of all is
+chosen. `lowest-delay` holds only until the cycle has tested the member in use: from then on a
+faster member takes the selection at once, as outside a cycle. Holding for the whole cycle kept
+a member chosen while the fast one did not answer (a failed test) long after the fast one
+answered again. Tests outside a cycle, such as a test the user asks for, apply at once.
+
+The first cycle after start, and one after a network change, are not held: there is no selection
+worth keeping yet, and each result is taken as it comes, after the debounce of the group events.
+
+hiddify-core shows a `round-robin` group in the app as its fastest member, and keeps that member
+until another one is faster by more than the larger of 50 ms and a tenth of its delay, or it
+stops answering; during a regular cycle, until it stops answering.
+
 ### Strategies
 
 - **`round-robin`** (default): members are sorted by delay, and connections take turns among
@@ -63,7 +82,12 @@ closed too in these cases; connections opened inside sing-box always are.
   faster by more than `tolerance` and by more than `tolerance_ratio` of the selected member's
   delay, whichever is larger, so the jitter between two close servers does not move the
   group. A member that failed its test is left at once for the fastest live one; when no
-  member is live, the selection stays.
+  member is live, the selection stays. A ping cached from the previous run only orders the
+  members until the real ones arrive: a cached one comes before a real one that failed, and a
+  selected member with a cached ping is left for any faster one, cached or real, with no
+  tolerance. It is not left for a slower real ping: its own test is due, and after a start or
+  a hot reload the first member to answer took the selection over a faster one being tested,
+  which took it back a moment later.
 - **`consistent-hashing`**: the member is chosen from the destination: its registrable domain
   (for example `example.com` for `www.example.com`) or its IP address. The same destination
   always gets the same member while that member is alive. If it is dead, the group tries up to

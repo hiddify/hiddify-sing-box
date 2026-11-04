@@ -3,7 +3,6 @@ package monitoring
 import (
 	"context"
 	"errors"
-	"github.com/sagernet/sing-box/adapter/htest"
 	"io"
 	"net"
 	"net/http"
@@ -12,6 +11,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/sagernet/sing-box/adapter/htest"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/hiddify/ipinfo"
@@ -95,6 +96,34 @@ func (c *fakeCache) SaveBinary(tag string, set *adapter.SavedBinary) error {
 	defer c.access.Unlock()
 	c.data[tag] = set
 	return nil
+}
+
+// noContentServer is a local URL test target answering 204, closed with the test: its URL, and
+// the address a fake outbound's dial must go to.
+func noContentServer(t *testing.T) (string, M.Socksaddr) {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(server.Close)
+	return server.URL + "/generate_204", M.ParseSocksaddr(server.Listener.Addr().String())
+}
+
+// dialTo is a fake outbound's dial: to addr, after before (nil for none) had its say, with any
+// other destination failing.
+func dialTo(addr M.Socksaddr, before func(ctx context.Context) error) func(context.Context, string, M.Socksaddr) (net.Conn, error) {
+	var dialer net.Dialer
+	return func(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
+		if destination != addr {
+			return nil, context.DeadlineExceeded
+		}
+		if before != nil {
+			if err := before(ctx); err != nil {
+				return nil, err
+			}
+		}
+		return dialer.DialContext(ctx, network, destination.String())
+	}
 }
 
 func newTestMonitor(t *testing.T, cache adapter.CacheFile, options option.MonitoringOptions, outbounds ...adapter.Outbound) *OutboundMonitoring {

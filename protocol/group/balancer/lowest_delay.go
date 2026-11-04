@@ -2,9 +2,11 @@ package balancer
 
 import (
 	"sync"
+	"time" //H
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/monitoring"
+	"github.com/sagernet/sing-box/log" //H
 	"github.com/sagernet/sing-box/option"
 	N "github.com/sagernet/sing/common/network"
 )
@@ -13,8 +15,12 @@ type LowestDelay struct {
 	outbounds        map[string][]adapter.Outbound
 	udpOutbounds     []adapter.Outbound
 	selectedOutbound map[string]adapter.Outbound
-	tolerance        uint16  // a member takes the selection when faster by more than this ...
-	toleranceRatio   float64 // ... and than this share of the selected member's delay
+	tolerance        uint16            // a member takes the selection when faster by more than this ...
+	toleranceRatio   float64           // ... and than this share of the selected member's delay
+	logger           log.ContextLogger // H: the LOWEST log, set by the balancer; nil in tests
+	tag              string            // H: the group's tag, for the log
+	heldSince        time.Time         // H: the cycle the hold was last logged for, see logHold
+	lastRival        string            // H: the faster member last logged as rejected, see logKeep
 
 	mu sync.Mutex
 }
@@ -63,10 +69,16 @@ func (s *LowestDelay) UpdateOutboundsInfo(history map[string]*adapter.URLTestHis
 			continue
 		}
 		currentDelay := getTagDelay(current.Tag(), history)
-		threshold := switchThreshold(measuredDelay(history[current.Tag()]), s.tolerance, s.toleranceRatio)
+		threshold := selectedThreshold(history[current.Tag()], s.tolerance, s.toleranceRatio) //H: none for a cached result
 		if currentDelay < monitoring.TimeoutDelay && uint32(delays[net])+threshold >= uint32(currentDelay) {
+			s.logKeep(net, current, best, history, "not faster by more than ", threshold, " ms") //H
 			continue
 		}
+		if keepsCachedPick(history[current.Tag()], history[best.Tag()]) { //H: the faster, until its own result
+			s.logKeep(net, current, best, history, "its cached ping is the faster, its own result is due") //H
+			continue
+		}
+		s.logSwitch(net, current, best, history, currentDelay, delays[net], threshold) //H
 		s.selectedOutbound[net] = best
 		changed = true
 	}

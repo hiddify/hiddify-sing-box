@@ -1,5 +1,7 @@
 package monitoring
 
+import "time"
+
 // selectedOf is the outbound a group's selection leads to: its selected member, through nested
 // groups; "" when nothing is selected yet. A plain outbound is its own selection.
 func (m *OutboundMonitoring) selectedOf(tag string) string {
@@ -21,12 +23,28 @@ func (m *OutboundMonitoring) selectedOf(tag string) string {
 	return ""
 }
 
+// recentResult is how long a result of this run spares the selection a test: a group that moved
+// to a member on the cycle's result tested it again seconds later, and under load that second
+// ping read 2549 ms for a 59 ms member, and the group moved on.
+const recentResult = 15 * time.Second
+
 // testSelected tests, before everything else queued, the outbound a group's selection leads to:
-// its ping is the one the user is looking at.
+// its ping is the one the user is looking at. Not when it was measured in the last recentResult.
 func (m *OutboundMonitoring) testSelected(groupTag string) {
-	if tag := m.selectedOf(groupTag); tag != "" {
-		m.testNow(tag, true)
+	tag := m.selectedOf(groupTag)
+	if tag == "" {
+		return
 	}
+	if state := m.getState(tag); state != nil {
+		state.mu.Lock()
+		recent := state.workedLocked() && time.Since(state.history.Time) < recentResult
+		state.mu.Unlock()
+		if recent {
+			m.logger.Info("MONITORING ", tag, ": not tested again (the selection of ", groupTag, "): measured in the last ", recentResult)
+			return
+		}
+	}
+	m.testNow(tag, true, "the selection of "+groupTag)
 }
 
 // testSelections tests what every group's selection leads to, ahead of the first cycle: the

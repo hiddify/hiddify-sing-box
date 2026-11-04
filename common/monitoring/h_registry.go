@@ -130,11 +130,7 @@ func (m *OutboundMonitoring) Reload() error {
 	}
 	m.logger.Info("reloaded ", len(registry.outbounds), " outbounds and ", len(registry.groups), " groups for monitoring")
 	if m.started {
-		groupTags := make([]string, 0, len(registry.groups))
-		for tag := range registry.groups {
-			groupTags = append(groupTags, tag)
-		}
-		m.emitGroupEvent(groupTags)
+		m.emitAllGroupEvents(registry)
 		m.testChanged(previous, registry)
 	}
 	return nil
@@ -157,6 +153,6 @@ func (m *OutboundMonitoring) testChanged(previous, registry *monitoringRegistry)
 		if old, ok := previous.outbounds[tag]; ok && old.outbound == state.outbound {
 			continue
 		}
-		m.enqueueTask(&testTask{outboundTag: tag, cycleID: cycleID})
+		m.enqueueTask(&testTask{outboundTag: tag, cycleID: cycleID, reason: "replaced by a reload"})
 	}
 }

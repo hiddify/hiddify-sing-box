@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -80,13 +81,52 @@ func TestH_MonitoringTestsTheSelectionFirstAndOnChange(t *testing.T) {
 		"the selected member is tested at once, beside the cycle")
 	require.False(t, m.reg().outbounds["a"].tested(), "the cycle's test of the faster one is still running")
 
-	// the selection moves to a: it is tested again at once, though its result is fresh
+	// the selection moves to a: it is tested again at once, as its result is not of the last
+	// seconds (see recentResult)
 	require.Eventually(t, func() bool { return m.reg().outbounds["a"].tested() }, 5*time.Second, 10*time.Millisecond)
 	before := len(dialed())
 	selector.selected = a
+	ageResult(m, "a")
 	require.NoError(t, m.SignalChange("select"))
 	require.Eventually(t, func() bool {
 		d := dialed()
 		return len(d) > before && d[len(d)-1] == "a"
 	}, 5*time.Second, 10*time.Millisecond, "the new selection is tested on the change")
+}
+
+// A selection measured in the last seconds is not tested again when a group moves to it: under
+// load, the second ping right after the cycle's read a slow value and the group moved on.
+func TestH_MonitoringSelectionMeasuredJustNowIsNotTestedAgain(t *testing.T) {
+	url, addr := noContentServer(t)
+	var dials atomic.Int64
+	b := &fakeOutbound{tag: "b", dial: dialTo(addr, func(context.Context) error { dials.Add(1); return nil })}
+	selector := &fakeGroup{fakeOutbound: fakeOutbound{tag: "select"}, all: []string{"b"}, selected: b}
+	m := newTestMonitor(t, nil, option.MonitoringOptions{
+		Interval: badoption.Duration(time.Hour),
+		Workers:  1,
+		URLs:     []string{url},
+	}, b, selector)
+	require.NoError(t, htest.Start(m, adapter.StartStateInitialize))
+
+	setHistory(m, "b", 40, false, nil) // measured just now
+	m.testSelected("select")
+	time.Sleep(150 * time.Millisecond)
+	require.Equal(t, int64(0), dials.Load(), "measured just now: not again")
+
+	ageResult(m, "b")
+	m.testSelected("select")
+	require.Eventually(t, func() bool { return dials.Load() == 1 }, 2*time.Second, 5*time.Millisecond, "an older result: tested")
+	require.Eventually(t, m.reg().outbounds["b"].tested, 5*time.Second, 5*time.Millisecond)
+
+	setHistory(m, "b", 40, true, nil) // only a cached result, however recent
+	m.testSelected("select")
+	require.Eventually(t, func() bool { return dials.Load() == 2 }, 2*time.Second, 5*time.Millisecond, "cached: tested")
+}
+
+// ageResult makes tag's result older than recentResult, so a selection test of it runs.
+func ageResult(m *OutboundMonitoring, tag string) {
+	state := m.reg().outbounds[tag]
+	state.mu.Lock()
+	state.history.Time = time.Now().Add(-recentResult - time.Second)
+	state.mu.Unlock()
 }

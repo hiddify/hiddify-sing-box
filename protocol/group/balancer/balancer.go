@@ -133,6 +133,10 @@ func (s *Balancer) Start() error {
 	if s.monitor != nil {
 		s.strategyFn.UpdateOutboundsInfo(s.monitor.OutboundsHistory(s.Tag())) // the cached results choose the first member
 	}
+	if lowest, ok := s.strategyFn.(*LowestDelay); ok { //H: the LOWEST log, from here on: the first choice is logged as the start
+		lowest.logger, lowest.tag = s.logger, s.Tag() //H
+		s.logger.Info("LOWEST ", s.Tag(), ": starts on ", lowest.Now())
+	} //H
 
 	return nil
 }

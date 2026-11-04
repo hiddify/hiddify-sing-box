@@ -9,6 +9,22 @@ import (
 
 var errTestNeverReturned = errors.New("URL test did not return: the outbound ignores its deadline")
 
+// workedLocked reports a result of this run that worked; s.mu is held.
+func (s *outboundState) workedLocked() bool {
+	return Worked(s.history.Delay, s.from_cache)
+}
+
+// handResult gives a task's outcome to what waits for it (a cycle's stage), without blocking.
+func (m *OutboundMonitoring) handResult(task *testTask, outcome testOutcome) {
+	if task.resultCh == nil {
+		return
+	}
+	select {
+	case task.resultCh <- outcome:
+	default:
+	}
+}
+
 // testHardLimit is how long a worker waits for one test: the URL test and the IP lookup, each
 // with its own deadline, and one more test after a network reset. An outbound whose dial ignores
 // its deadline would otherwise hold the worker, and the cycle waiting for the result, for good;
@@ -46,13 +62,7 @@ func (m *OutboundMonitoring) settle(task *testTask, state *outboundState, histor
 	if err == nil && !worked { // it works now; what was measured through it did not
 		m.retestDependents(task.outboundTag, make(map[string]bool))
 	}
-	if task.resultCh != nil {
-		select {
-		case task.resultCh <- outcome:
-		case <-m.ctx.Done():
-		default:
-		}
-	}
+	m.handResult(task, outcome)
 }
 
 // settleLate gives up on a test that did not return within testHardLimit: it counts as failed,
@@ -60,7 +70,7 @@ func (m *OutboundMonitoring) settle(task *testTask, state *outboundState, histor
 func (m *OutboundMonitoring) settleLate(task *testTask, state *outboundState) {
 	m.logger.Warn("outbound ", task.outboundTag, " URL test did not return in ", m.testHardLimit(task), ": counted as failed")
 	state.mu.Lock()
-	worked := !state.from_cache && state.history.Delay != 0 && state.history.Delay < TimeoutDelay
+	worked := state.workedLocked()
 	state.mu.Unlock()
 	m.settle(task, state, adapter.URLTestHistory{Time: time.Now(), Delay: TimeoutDelay}, errTestNeverReturned, worked)
 }
@@ -81,6 +91,7 @@ func (m *OutboundMonitoring) applyInterim(task *testTask, state *outboundState, 
 	}
 	if !state.tentative {
 		state.confirmed = state.history
+		state.confirmed.IsFromCache = state.from_cache
 	}
 	state.history.Delay = history.Delay
 	state.history.Time = history.Time
@@ -103,7 +114,11 @@ func (m *OutboundMonitoring) applyInterim(task *testTask, state *outboundState, 
 // confirmed is what a group reads of a member: a staged test's tentative miss is swapped for
 // the member's last confirmed result, so no group takes it for dead, or moves away from it and
 // cuts its connections, on a miss that its next attempt may answer. The catch-all group, which
-// the app reads, sees the miss as it is.
+// the app reads, sees the miss as it is. A member with no result of this run (none, or only the
+// one cached from the previous run) has nothing to keep: the miss is all this run knows of it,
+// and the groups see it, so lowest-delay leaves a cached pick that does not answer for one that
+// does. It used to keep the cached result, marked as fresh, and stay on a member the app showed
+// as not responding while others worked.
 func (m *OutboundMonitoring) confirmed(groupTag, outboundTag string, his *adapter.URLTestHistory) *adapter.URLTestHistory {
 	if groupTag == "" || his == nil {
 		return his
@@ -117,8 +132,11 @@ func (m *OutboundMonitoring) confirmed(groupTag, outboundTag string, his *adapte
 	if !state.tentative {
 		return his
 	}
+	if !Worked(state.confirmed.Delay, state.confirmed.IsFromCache) {
+		return his
+	}
 	last := state.confirmed
-	last.IsFromCache = state.from_cache
+	last.IsFromCache = false
 	return &last
 }
 
