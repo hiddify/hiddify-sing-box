@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# DNS tunnel benchmark: DNSTT and MasterDNS through rate-limited local
+# DNS tunnel benchmark: DNSTT, MasterDNS and Soar through rate-limited local
 # resolvers, with and without the smart resolver pool (common/dnspool, built on
 # github.com/hiddify/hmrd_multi_resolver_dns). Everything runs on the loopback:
 # no internet, no root. See README.md next to this script.
@@ -14,6 +14,7 @@
 #   MASTERDNS_EXTRA='"packet_duplication":1' test/dnstunnel-bench/run.sh  # more masterdns fields
 #   POOL_EXTRA='"duplicate":2' test/dnstunnel-bench/run.sh  # more smart_pool fields
 #   DNSTT_EXTRA='"udp-workers":200' test/dnstunnel-bench/run.sh  # more dnstt fields
+#   SOAR_EXTRA='"max_path_window":64' test/dnstunnel-bench/run.sh  # more soar fields
 #   QUERY_BYTES=50 test/dnstunnel-bench/run.sh   # each query carries about 50 bytes of upload
 #   PARALLEL=all test/dnstunnel-bench/run.sh     # every setup at once (faster, noisier)
 #
@@ -40,10 +41,10 @@ UP_MAX_TIME=${UP_MAX_TIME:-$([ -n "$QUICK" ] && echo 15 || echo "$MAX_TIME")}
 # to deliver anything, so those download a fixed size (setup_sizes).
 DOWN_SECONDS=${DOWN_SECONDS:-$([ -n "$QUICK" ] && echo 2 || echo 5)}
 if [ -n "$QUICK" ]; then
-	APPROACHES=${APPROACHES:-"dnstt-first dnstt-pool masterdns-first masterdns-pool"}
+	APPROACHES=${APPROACHES:-"dnstt-first dnstt-pool masterdns-first masterdns-pool soar-first soar-pool"}
 	SETUPS=${SETUPS:-"three-unlimited three-uneven-latency three-lossy three-limited"}
 fi
-ALL_APPROACHES="dnstt-first dnstt-pool masterdns-first masterdns-own masterdns-own-nodup masterdns-pool"
+ALL_APPROACHES="dnstt-first dnstt-pool masterdns-first masterdns-own masterdns-own-nodup masterdns-pool soar-first soar-own soar-pool"
 APPROACHES=${APPROACHES:-$ALL_APPROACHES}
 SETUPS=${SETUPS:-"one-unlimited one-10ms one-limited three-unlimited three-limited three-limited-one-dead three-uneven-latency three-lossy"}
 # Every (setup, approach) measured is also kept in $WORK/cache, and the tables
@@ -127,9 +128,9 @@ check_quick() {
 				check(has("three-lossy", "dnstt-pool") && share["three-lossy", "dnstt-pool", 2] <= 20 && share["three-lossy", "dnstt-pool", 3] <= 5, "dnstt-pool avoids the lossy resolvers (10% loss at most 20%, 30% at most 5%: " share["three-lossy", "dnstt-pool", 2] "/" share["three-lossy", "dnstt-pool", 3] ")")
 				check(has("three-lossy", "masterdns-pool") && has("three-lossy", "masterdns-first") && share["three-lossy", "masterdns-pool", 1] >= 45 && down["three-lossy", "masterdns-pool"] + 0 >= 0.9 * down["three-lossy", "masterdns-first"], "masterdns-pool sends its queries to the clean resolver and its copies to a free one (clean at least 45%: " share["three-lossy", "masterdns-pool", 1] "; at least 90% of the clean resolver alone: " down["three-lossy", "masterdns-pool"] " against " down["three-lossy", "masterdns-first"] " kbps)")
 			}
-			if ("three-limited" in seen) for (t = 1; t <= 2; t++) {
-				first = t == 1 ? "dnstt-first" : "masterdns-first"
-				ap = t == 1 ? "dnstt-pool" : "masterdns-pool"
+			if ("three-limited" in seen) for (t = 1; t <= 3; t++) {
+				first = t == 1 ? "dnstt-first" : t == 2 ? "masterdns-first" : "soar-first"
+				ap = t == 1 ? "dnstt-pool" : t == 2 ? "masterdns-pool" : "soar-pool"
 				check(has("three-limited", ap) && has("three-limited", first) && down["three-limited", ap] + 0 >= 3 * down["three-limited", first], ap " combines the limited resolvers (at least 3 times " first ", whose resolver allows 20 queries a second of the three'"'"'s 90: " down["three-limited", ap] " against " down["three-limited", first] " kbps)")
 			}
 			if (missing != "") check(0, "a row for every approach the checks need, missing:" missing)
@@ -142,6 +143,7 @@ VAY_PORT=$((BASE_PORT + 2))    # VayDNS (DNSTT) server (UDP)
 SOCKS_PORT=$((BASE_PORT + 3))  # SOCKS server the tunnel servers forward to
 HTTP_PORT=$((BASE_PORT + 4))   # HTTP target
 CLIENT_PORT=$((BASE_PORT + 5)) # client sing-box mixed inbound (setup n: + 100 + n)
+SOAR_PORT=$((BASE_PORT + 6))   # Soar server (UDP)
 RES_PORT=$((BASE_PORT + 10))   # first test resolver (setup n: + 10 n)
 
 PIDS=()
@@ -158,6 +160,7 @@ build() {
 	ldflags=$(cat "$ROOT/release/LDFLAGS")
 	(cd "$ROOT" && go build -tags "$tags" -ldflags "$ldflags" -o "$WORK/sing-box" ./cmd/sing-box)
 	(cd "$ROOT/replace/MasterDnsVPN" && go build -o "$WORK/mdns-server" ./cmd/server)
+	(cd "$ROOT/replace/soar" && go build -o "$WORK/soar-server" ./cmd/soar-server)
 	# the hmrd and VayDNS versions sing-box is built with
 	local hmrd vay
 	hmrd=$(cd "$ROOT" && go list -m -f '{{.Version}}' github.com/hiddify/hmrd_multi_resolver_dns)
@@ -210,6 +213,15 @@ EOF
 	./vaydns-server -udp "127.0.0.1:$VAY_PORT" -privkey-file vay.key -domain t.bench.example \
 		-upstream "127.0.0.1:$SOCKS_PORT" -log-level warning >vaydns.log 2>&1 &
 	PIDS+=($!)
+
+	# Soar server: it connects every stream to its destination, here the SOCKS
+	# server on the loopback, which its defaults (public addresses, ports 80 and
+	# 443) would refuse
+	[ -f soar.key ] || (umask 077; ./soar-server keygen | awk '$1 == "private" { print $2 }' >soar.key)
+	./soar-server pubkey soar.key >soar.pub
+	./soar-server -zone s.bench.example -key-file soar.key -listen "127.0.0.1:$SOAR_PORT" \
+		-allow-ports "$SOCKS_PORT" -allow-private >soar.log 2>&1 &
+	PIDS+=($!)
 	wait_port "$SOCKS_PORT" && wait_port "$HTTP_PORT" || { log "servers did not start"; exit 1; }
 	sleep 1
 }
@@ -218,6 +230,7 @@ EOF
 client_config() {
 	local ap=$1 res=$2 tunnel pool=false extra=${MASTERDNS_EXTRA:-}
 	case $ap in *-pool) pool=${POOL_EXTRA:+"{\"enabled\":true,$POOL_EXTRA}"} pool=${pool:-true} ;; esac
+	# soar's pool is on unless turned off: soar-first and soar-own turn it off
 	# *-nodup: every packet sent once, MasterDnsVPN's duplication off
 	case $ap in *-nodup) extra="\"packet_duplication\":1${extra:+,$extra}" ;; esac
 	[ -n "$QUERY_BYTES" ] && extra="\"max_upload_mtu\":$QUERY_BYTES${extra:+,$extra}"
@@ -231,6 +244,11 @@ client_config() {
 		;;
 	masterdns-*)
 		tunnel="{\"type\":\"masterdns\",\"tag\":\"tunnel\",\"domains\":[\"v.bench.example\"],\"resolvers\":$res,\"encryption\":\"xor\",\"key\":\"$(cat mdns.key)\",\"mode\":\"tcp\",\"log_level\":\"error\",\"smart_pool\":$pool${extra:+,$extra}}"
+		;;
+	soar-*)
+		local qname=""
+		[ -n "$QUERY_BYTES" ] && qname=",\"safe_qname\":$((QUERY_BYTES * 8 / 5 + 40)),\"max_qname\":$((QUERY_BYTES * 8 / 5 + 40))"
+		tunnel="{\"type\":\"soar\",\"tag\":\"tunnel\",\"domain\":\"s.bench.example\",\"public_key\":\"$(cat soar.pub)\",\"resolvers\":$res,\"smart_pool\":$pool$qname${SOAR_EXTRA:+,$SOAR_EXTRA}}"
 		;;
 	*) log "unknown approach $ap"; exit 2 ;;
 	esac
@@ -350,6 +368,7 @@ run_setup() {
 		[ -n "${loss:-}" ] && extra+=(-loss "$loss")
 		"$WORK/hmrdbench" resolver -listen "127.0.0.1:$port" -qps "$qps" -mode "$mode" -stats 100ms \
 			-route "v.bench.example=127.0.0.1:$MDNS_PORT" -route "t.bench.example=127.0.0.1:$VAY_PORT" \
+			-route "s.bench.example=127.0.0.1:$SOAR_PORT" \
 			${extra[@]+"${extra[@]}"} >"$WORK/resolver-$port.log" 2>&1 &
 		rpids+=($!)
 		res="$res,\"127.0.0.1:$port\""

@@ -1,6 +1,6 @@
 # DNS tunnel benchmark
 
-`run.sh` measures the `dnstt` and `masterdns` outbounds through rate-limited local resolvers,
+`run.sh` measures the `dnstt`, `masterdns` and `soar` outbounds through rate-limited local resolvers,
 with and without the [smart resolver pool](../../docs/hiddify/features/dns/smart-dns-pool.en.md).
 Everything runs on the loopback: no internet, no root.
 
@@ -20,7 +20,8 @@ turns the cache off.
 
 Run the quick check first after a change to the pool or a tunnel, and the full benchmark once it
 passes. `QUICK=1` runs four setups (`three-unlimited`, `three-uneven-latency`, `three-lossy`,
-`three-limited`) once, with `dnstt-first`, `dnstt-pool`, `masterdns-first` and `masterdns-pool`
+`three-limited`) once, with `dnstt-first`, `dnstt-pool`, `masterdns-first`, `masterdns-pool`,
+`soar-first` and `soar-pool`
 and short transfers, then prints a PASS or FAIL line for each check and exits with status 1 on a
 failure:
 
@@ -33,18 +34,19 @@ failure:
   loss shows only after a timeout, which held polls make long); MasterDNS sends the clean one at
   least 45% (every first copy; the second goes to another resolver without a rate limit) and
   gets at least 90% of MasterDNS's speed on the clean resolver alone;
-- through three limited resolvers each pool downloads at least 3 times as fast as its tunnel on
+- through three limited resolvers each pool (DNSTT, MasterDNS, Soar) downloads at least 3 times as fast as its tunnel on
   the first resolver alone: that one allows 20 queries a second of the three's 90, so a pool that
   left a resolver out would stay below it.
 
 It needs Go, `curl` and `nc`. It builds `sing-box` from this tree, the MasterDnsVPN server from
-`replace/MasterDnsVPN`, the VayDNS (DNSTT) server and `hmrdbench` at the versions `go.mod` pins,
+`replace/MasterDnsVPN`, the Soar server from `replace/soar`, the VayDNS (DNSTT) server and `hmrdbench` at the versions `go.mod` pins,
 then starts:
 
 - a MasterDnsVPN server in TCP mode and a VayDNS server, both forwarding every stream to a local
-  SOCKS server;
+  SOCKS server, and a Soar server, which connects each stream to its destination, the same SOCKS
+  server (`-allow-private`, `-allow-ports` its port);
 - `hmrdbench http`, the download and upload target;
-- for each setup, one `hmrdbench resolver` per resolver: it forwards the two tunnel domains to
+- for each setup, one `hmrdbench resolver` per resolver: it forwards the three tunnel domains to
   the tunnel servers, and refuses or drops what exceeds its rate.
 
 For each approach it starts a client `sing-box` (a `socks` outbound through the tunnel
@@ -72,6 +74,9 @@ size: 128 and 32 KiB (64 and 8 KiB). `DOWN_SECONDS=0` makes every download fixed
 | `masterdns-own` | MasterDnsVPN with every resolver, through its own multi-resolver balancer; it sends every packet over two resolvers (`packet_duplication` 2, the MasterDnsVPN default) |
 | `masterdns-own-nodup` | The same with every packet sent once (`packet_duplication` 1): the difference to `masterdns-own` is what duplication is worth |
 | `masterdns-pool` | MasterDnsVPN with every resolver, through the pool: MasterDnsVPN sees one resolver and sends each packet once; the pool sends each query to a second resolver without a rate limit (`duplicate`, from `packet_duplication`) and passes both answers on |
+| `soar-first` | Soar with the setup's first resolver only (`smart_pool: false`) |
+| `soar-own` | Soar with every resolver as a path of its own, its own multi-resolver handling (`smart_pool: false`) |
+| `soar-pool` | Soar with every resolver through the pool (the soar default): Soar sees one resolver |
 
 Without a setup list it runs all eight below, one round each. The setups without a rate limit
 run one after another, alone, since they are bound by the machine; then the rate-limited ones
@@ -92,13 +97,14 @@ each approach's median download and upload.
 Other variables: `ROUNDS` (1; with more than one, or with the cache, a median table follows the
 rows), `MAX_TIME` (60 s per transfer; `UP_MAX_TIME` for uploads alone, 15 s in the quick check,
 which does not judge them: DNSTT's upload through refusing resolvers can crawl at 1 kbps, with
-or without the pool), `MASTERDNS_EXTRA`, `DNSTT_EXTRA`
-and `POOL_EXTRA` (more fields for every `masterdns` or `dnstt` outbound or `smart_pool` object,
+or without the pool), `MASTERDNS_EXTRA`, `DNSTT_EXTRA`,
+`SOAR_EXTRA` and `POOL_EXTRA` (more fields for every `masterdns`, `dnstt` or `soar` outbound or `smart_pool` object,
 such as `'"balancing":"round_robin"'` or `'"duplicate":2'`), `CLIENT_EXTRA` (more top-level
 fields of the client configuration, such as `'"experimental":{"debug":{"listen":"127.0.0.1:9999"}}'`
 for a CPU profile), `QUERY_BYTES` (bounds the
-upload a query carries, as a resolver that limits the name length does: DNSTT's `max-qname-len`
-and MasterDNS's `max_upload_mtu` are set for about that many bytes; try 50, 100 and 128),
+upload a query carries, as a resolver that limits the name length does: DNSTT's `max-qname-len`,
+MasterDNS's `max_upload_mtu` and Soar's `safe_qname` and `max_qname` are set for about that many
+bytes; try 50, 100 and 128),
 `PARALLEL=all` (every setup at once, faster and noisier; by default the setups without a rate
 limit run one after another, being bound by the machine), `BASE_PORT` (27100), `WORK` (a
 new temporary directory; its logs, binaries and row cache stay there).
