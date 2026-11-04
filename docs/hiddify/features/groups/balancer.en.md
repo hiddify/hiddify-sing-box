@@ -94,9 +94,9 @@ stops answering; during a regular cycle, until it stops answering.
   always gets the same member while that member is alive. If it is dead, the group tries up to
   `max_retry` other picks from the hash, then the first alive member in the list. If none is
   alive, it uses the hashed member anyway.
-- **`sticky-sessions`**: the member is chosen from the source address and the destination
-  together. A new pair gets a random member, and the group remembers it, for up to 1,000 pairs,
-  for `ttl`. A remembered member that is dead is replaced with another alive member, picked the
+- **`sticky-sessions`**: the member is chosen from what `sticky_hash` names, the source address
+  and the destination unless set. A new key gets a random member, and the group remembers it, for
+  up to 1,000 keys, for `ttl`. A remembered member that is dead is replaced with another alive member, picked the
   same way as above.
 - **`pool`**: a fixed number of slots (`pool`, 3 by default, at most the number of members),
   each held by a working member. A connection goes to the slot picked by a hash of what
@@ -105,11 +105,11 @@ stops answering; during a regular cycle, until it stops answering.
   - A dead member is replaced in its slot by a working member outside the pool. While there is
     none, the slot is skipped: its connections spread over the working slots, the same way each
     time, and come back when the member answers again.
-  - With `pool_tolerance` 0, the slots keep the first working members in config order. With
-    more, a member outside replaces a slot member only when it is faster by more than that many
-    milliseconds.
+  - With `tolerance` unset, the slots keep the first working members in config order. With it,
+    a member outside replaces a slot member only when it is faster by more than `tolerance` and
+    `tolerance_ratio` of the slot member's delay, as for `lowest-delay`.
   - `sticky_hash` is a list of `process`, `domain` (the registrable domain), `source_ip`,
-    `dest_ip` and `dest_port`; the default is `["process", "domain"]`. `["none"]` sends
+    `dest_ip` and `dest_port`; the pool's default is `["process", "domain"]`. `["none"]` sends
     connections round-robin over the working slots.
   - Refilling a slot does not interrupt connections.
 
@@ -130,8 +130,7 @@ stops answering; during a regular cycle, until it stops answering.
 | `outbounds` | list of strings | required | Tags of the members. |
 | `strategy` | string | `"round-robin"` | `round-robin`, `lowest-delay`, `consistent-hashing`, `sticky-sessions` or `pool`. |
 | `pool` | int | `3` | For `pool`: the number of slots. |
-| `pool_tolerance` | int | `0` | For `pool`: how much faster, in milliseconds, a member outside the pool must be to take a slot. At most `15000`. |
-| `sticky_hash` | list of strings | `["process", "domain"]` | For `pool`: what a connection sticks to its slot by. `["none"]` turns sticking off. |
+| `sticky_hash` | list of strings | pool `["process", "domain"]`, sticky-sessions `["source_ip", "domain"]` | For `pool` and `sticky-sessions`: what a connection sticks to its member by. `["none"]` turns sticking off. |
 | `delay_acceptable_ratio` | number | `2` | How much slower than the fastest member a member may be and still be used. `2` means up to twice the fastest delay. Unset or `0` is `2`. |
 | `max_retry` | int | `0` | For `consistent-hashing` and `sticky-sessions`: how many other hash picks to try before going down the list. |
 | `ttl` | duration | `0` (no expiry) | For `sticky-sessions`: how long a pair keeps its member. |

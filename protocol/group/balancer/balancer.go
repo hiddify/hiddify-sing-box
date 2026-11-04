@@ -118,7 +118,11 @@ func (s *Balancer) Start() error {
 	case StrategyConsistentHashing:
 		s.strategyFn = NewConsistentHashing(outbounds, s.options)
 	case StrategyStickySessions:
-		s.strategyFn = NewStickySession(outbounds, s.options)
+		sticky, err := NewStickySession(outbounds, s.options) //H
+		if err != nil {                                       //H
+			return err //H
+		} //H
+		s.strategyFn = sticky //H
 	case StrategyLowestDelay:
 		s.strategyFn = NewLowestDelay(outbounds, s.options)
 	case StrategyPool: //H

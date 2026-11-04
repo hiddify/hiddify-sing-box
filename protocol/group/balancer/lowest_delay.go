@@ -77,17 +77,17 @@ func (s *LowestDelay) UpdateOutboundsInfo(history map[string]*adapter.URLTestHis
 		if best == nil || best.Tag() == current.Tag() || delays[net] >= monitoring.TimeoutDelay {
 			continue
 		}
-		currentHis, bestHis := history[current.Tag()], history[best.Tag()] //H
+		currentHis, bestHis := history[current.Tag()], history[best.Tag()]                 //H
 		currentMeasured, bestMeasured := measuredDelay(currentHis), measuredDelay(bestHis) //H
-		threshold := SelectedThreshold(currentHis, s.tolerance, s.toleranceRatio) //H: none for a cached pick
-		if answers(currentHis) { //H: its real ping answers: only a real ping, faster by the tolerance, after the stay
+		threshold := SelectedThreshold(currentHis, s.tolerance, s.toleranceRatio)          //H: none for a cached pick
+		if answers(currentHis) {                                                           //H: its real ping answers: only a real ping, faster by the tolerance, after the stay
 			if !answers(bestHis) { //H
 				s.logKeep(net, current, best, history, "a cached ping does not take a real one") //H
-				continue //H
+				continue                                                                         //H
 			} //H
 			if since := time.Since(s.switchedAt); !s.switchedAt.IsZero() && since < s.stay { //H
 				s.logKeep(net, current, best, history, "chosen ", since.Round(time.Second), " ago, stays ", s.stay) //H
-				continue //H
+				continue                                                                                            //H
 			} //H
 			if uint32(bestMeasured)+threshold >= uint32(currentMeasured) { //H
 				s.logKeep(net, current, best, history, "not faster by more than ", threshold, " ms") //H

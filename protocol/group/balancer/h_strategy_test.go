@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sagernet/sing/common"
+
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/monitoring"
 	"github.com/sagernet/sing-box/option"
@@ -85,7 +87,8 @@ func TestH_BalancerGetKey(t *testing.T) {
 		Source:      M.ParseSocksaddrHostPort("10.0.0.1", 1234),
 		Destination: M.ParseSocksaddrHostPort("www.example.com", 443),
 	}
-	require.Equal(t, "10.0.0.1example.com", getKeyWithSrcAndDst(md))
+	require.Equal(t, "10.0.0.1|example.com|", stickyKey(md, defaultStickySessionHash), "sticky-sessions sticks by the source and the destination")
+	require.Equal(t, "example.com|", stickyKey(md, []string{stickyHashDomain}))
 }
 
 func TestH_BalancerJumpHash(t *testing.T) {
@@ -265,7 +268,7 @@ func TestH_BalancerConsistentHashingUntestedNotAlive(t *testing.T) {
 
 func TestH_BalancerStickySession(t *testing.T) {
 	o := []*fakeOutbound{newFake("a"), newFake("b"), newFake("c")}
-	s := NewStickySession(outs(o...), option.BalancerOutboundOptions{DelayAcceptableRatio: 2, MaxRetry: 5})
+	s := common.Must1(NewStickySession(outs(o...), option.BalancerOutboundOptions{DelayAcceptableRatio: 2, MaxRetry: 5}))
 	require.Equal(t, "", s.Now())
 	history := map[string]*adapter.URLTestHistory{"a": his(100), "b": his(110), "c": his(120)}
 	require.True(t, s.UpdateOutboundsInfo(history))
@@ -284,7 +287,7 @@ func TestH_BalancerStickySession(t *testing.T) {
 
 func TestH_BalancerStickySessionAvoidsDead(t *testing.T) {
 	a, b := newFake("a"), newFake("b")
-	s := NewStickySession(outs(a, b), option.BalancerOutboundOptions{DelayAcceptableRatio: 2, MaxRetry: 5})
+	s := common.Must1(NewStickySession(outs(a, b), option.BalancerOutboundOptions{DelayAcceptableRatio: 2, MaxRetry: 5}))
 	s.UpdateOutboundsInfo(map[string]*adapter.URLTestHistory{"a": his(100), "b": his(monitoring.TimeoutDelay)})
 	for i := range 500 {
 		md := adapter.InboundContext{
@@ -302,7 +305,7 @@ func TestH_BalancerHashingChangedOnlyOnAliveSet(t *testing.T) {
 	options := option.BalancerOutboundOptions{DelayAcceptableRatio: 2, MaxRetry: 3}
 	for name, s := range map[string]Strategy{
 		"consistent-hashing": NewConsistentHashing(outs(o...), options),
-		"sticky-sessions":    NewStickySession(outs(o...), options),
+		"sticky-sessions":    common.Must1(NewStickySession(outs(o...), options)),
 	} {
 		history := map[string]*adapter.URLTestHistory{"a": his(100), "b": his(120), "c": his(monitoring.TimeoutDelay)}
 		require.True(t, s.UpdateOutboundsInfo(history), name)
@@ -319,4 +322,20 @@ func TestH_BalancerDefaultRatio(t *testing.T) {
 	s.UpdateOutboundsInfo(map[string]*adapter.URLTestHistory{"a": his(100), "b": his(150)})
 	require.True(t, s.Alive(o[0], N.NetworkTCP))
 	require.True(t, s.Alive(o[1], N.NetworkTCP))
+}
+
+// sticky-sessions sticks by what sticky_hash names, as the pool does; the default is the source
+// address and the destination, as before the option.
+func TestH_StickySessionStickyHash(t *testing.T) {
+	a, b := newFake("a"), newFake("b")
+	s := common.Must1(NewStickySession(outs(a, b), option.BalancerOutboundOptions{DelayAcceptableRatio: 2, StickyHash: []string{"dest_port"}}))
+	s.UpdateOutboundsInfo(map[string]*adapter.URLTestHistory{"a": his(50), "b": his(60)})
+	byPort := func(port uint16, src string) string {
+		md := adapter.InboundContext{Source: M.ParseSocksaddrHostPort(src, 1), Destination: M.ParseSocksaddrHostPort("example.com", port)}
+		return s.Select(md, N.NetworkTCP, true).Tag()
+	}
+	first := byPort(443, "10.0.0.1")
+	require.Equal(t, first, byPort(443, "10.0.0.2"), "the same port sticks, whatever the source")
+	_, err := NewStickySession(outs(a, b), option.BalancerOutboundOptions{StickyHash: []string{"user"}})
+	require.Error(t, err, "an unknown field is refused")
 }

@@ -1,8 +1,6 @@
 package balancer
 
 import (
-	"strconv"
-	"strings"
 	"sync"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -17,26 +15,14 @@ import (
 // connection to a slot by a hash of what the connection is (sticky_hash), as lx's round_robin.
 const StrategyPool = "pool"
 
-const (
-	defaultPoolSize     = 3
-	maxPoolTolerance    = 15000
-	stickyHashProcess   = "process"
-	stickyHashDomain    = "domain"
-	stickyHashSourceIP  = "source_ip"
-	stickyHashDestIP    = "dest_ip"
-	stickyHashDestPort  = "dest_port"
-	stickyHashNone      = "none"
-	poolKeyFieldDivider = "|"
-)
-
-var defaultStickyHash = []string{stickyHashProcess, stickyHashDomain}
+const defaultPoolSize = 3
 
 // Pool fills min(pool, members) slots with working members and keeps them there:
 //   - a member stays in its slot while it answers, so the keys of the other slots never move;
 //   - a dead member is replaced in its slot by a working member outside the pool; while none is
 //     available the slot is skipped, its keys spread over the working slots, and they come back
 //     when it answers again;
-//   - with pool_tolerance, a member outside the pool replaces a slot member only when it is
+//   - with tolerance, a member outside the pool replaces a slot member only when it is
 //     faster by more than that many milliseconds; with 0, slots keep the first working members
 //     in config order.
 //
@@ -46,6 +32,7 @@ type Pool struct {
 	outbounds  map[string][]adapter.Outbound
 	size       int
 	tolerance  uint16
+	ratio      float64 // with tolerance: a share of the slot member's delay, see switchThreshold
 	stickyHash []string
 	hash       maphash.Hasher[string]
 
@@ -65,29 +52,19 @@ func NewPool(outbounds []adapter.Outbound, options option.BalancerOutboundOption
 	if size == 0 {
 		size = defaultPoolSize
 	}
-	if options.PoolTolerance > maxPoolTolerance {
-		return nil, E.New("pool_tolerance must be at most ", maxPoolTolerance)
+	stickyHash, err := parseStickyHash(options.StickyHash, defaultStickyHash)
+	if err != nil {
+		return nil, err
 	}
-	stickyHash := []string(options.StickyHash)
-	if len(stickyHash) == 0 {
-		stickyHash = defaultStickyHash
-	}
-	for _, field := range stickyHash {
-		switch field {
-		case stickyHashProcess, stickyHashDomain, stickyHashSourceIP, stickyHashDestIP, stickyHashDestPort:
-		case stickyHashNone:
-			if len(stickyHash) > 1 {
-				return nil, E.New(`sticky_hash "none" cannot be combined with other fields`)
-			}
-			stickyHash = nil
-		default:
-			return nil, E.New("unknown sticky_hash field: ", field)
-		}
+	ratio := options.ToleranceRatio
+	if ratio <= 0 {
+		ratio = defaultToleranceRatio
 	}
 	pool := &Pool{
 		outbounds:  convertOutbounds(outbounds),
 		size:       size,
-		tolerance:  options.PoolTolerance,
+		tolerance:  options.Tolerance,
+		ratio:      ratio,
 		stickyHash: stickyHash,
 		hash:       maphash.NewHasher[string](),
 		slots:      make(map[string][]string),
@@ -150,10 +127,11 @@ func (p *Pool) refill(network string, members []adapter.Outbound) {
 			}
 			continue
 		}
-		if p.tolerance > 0 {
+		if p.tolerance > 0 { // unset: the first working members keep their slots
 			current := p.delays[tag]
+			threshold := switchThreshold(current, p.tolerance, p.ratio)
 			if replacement := takeSpare(func(candidate string) bool {
-				return int(p.delays[candidate])+int(p.tolerance) < int(current)
+				return uint32(p.delays[candidate])+threshold < uint32(current)
 			}); replacement != "" {
 				spare = append(spare, tag)
 				slots[i] = replacement
@@ -164,33 +142,7 @@ func (p *Pool) refill(network string, members []adapter.Outbound) {
 
 // key is what makes connections stick to a slot.
 func (p *Pool) key(metadata *adapter.InboundContext) string {
-	var builder strings.Builder
-	for _, field := range p.stickyHash {
-		switch field {
-		case stickyHashProcess:
-			if metadata.ProcessInfo != nil {
-				if len(metadata.ProcessInfo.ProcessPaths) > 0 {
-					builder.WriteString(metadata.ProcessInfo.ProcessPaths[0])
-				} else if len(metadata.ProcessInfo.PackageNames) > 0 {
-					builder.WriteString(metadata.ProcessInfo.PackageNames[0])
-				}
-			}
-		case stickyHashDomain:
-			builder.WriteString(getKey(metadata))
-		case stickyHashSourceIP:
-			builder.WriteString(metadata.Source.Addr.String())
-		case stickyHashDestIP:
-			if len(metadata.DestinationAddresses) > 0 {
-				builder.WriteString(metadata.DestinationAddresses[0].String())
-			} else {
-				builder.WriteString(metadata.Destination.Addr.String())
-			}
-		case stickyHashDestPort:
-			builder.WriteString(strconv.Itoa(int(metadata.Destination.Port)))
-		}
-		builder.WriteString(poolKeyFieldDivider)
-	}
-	return builder.String()
+	return stickyKey(metadata, p.stickyHash)
 }
 
 func (p *Pool) Select(metadata adapter.InboundContext, network string, touch bool) adapter.Outbound {

@@ -11,10 +11,12 @@ type BalancerOutboundOptions struct {
 	DelayAcceptableRatio      float64            `json:"delay_acceptable_ratio,omitempty"` // members within this times the fastest delay are used; 0 is 2
 	TTL                       badoption.Duration `json:"ttl,omitempty"`
 	MaxRetry                  int                `json:"max_retry,omitempty"` // consistent-hashing and sticky-sessions: other buckets to try before a full search
-	// pool strategy (as lx's round_robin): the number of slots, 3 when 0; how much faster, in ms,
-	// a member outside must be to take a slot (0 keeps the first working members); and what a
-	// connection sticks to its slot by: process, domain, source_ip, dest_ip, dest_port, or none.
-	Pool          int                        `json:"pool,omitempty"`           //H
-	PoolTolerance uint16                     `json:"pool_tolerance,omitempty"` //H
-	StickyHash    badoption.Listable[string] `json:"sticky_hash,omitempty"`    //H
+	// pool strategy (as lx's round_robin): the number of slots, 3 when 0. A member outside the
+	// pool takes a slot when faster by more than tolerance and tolerance_ratio, as for
+	// lowest-delay; with tolerance unset the slots keep the first working members.
+	Pool int `json:"pool,omitempty"` //H
+	// pool and sticky-sessions: what a connection sticks by: process, domain, source_ip, dest_ip,
+	// dest_port, or none. The pool's default is process and domain, sticky-sessions' source_ip
+	// and domain.
+	StickyHash badoption.Listable[string] `json:"sticky_hash,omitempty"` //H
 }

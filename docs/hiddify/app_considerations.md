@@ -76,9 +76,11 @@ do about it. Items marked **Required** break or misbehave until they are handled
   connections only, so `interrupt_exist_connections: true` no longer cuts calls or downloads on
   every test round. The balancer starts from the cached results, and the first cycle tests the
   cached fastest member first.
-- **Balancer `pool` strategy.** `strategy: "pool"` with `pool`, `pool_tolerance` and
-  `sticky_hash` gives a fixed set of slots with sticky keys that do not move when another member
-  dies (lx's `round_robin`).
+- **Balancer `pool` strategy.** `strategy: "pool"` with `pool` and `sticky_hash` gives a fixed
+  set of slots with sticky keys that do not move when another member dies (lx's `round_robin`).
+  `tolerance` and `tolerance_ratio` let a faster member outside take a slot, as for lowest-delay;
+  unset, the first working members keep their slots, so hiddify-core sends them to the
+  lowest-delay group only. `sticky_hash` is `sticky-sessions`' key too.
 - **URL test failover.** A failover member that is more than 2 times slower than the fastest
   other one, twice in a row, is now left for one more than 1.5 times faster.
 - **A tapped or selected proxy answers at once.** The outbound a group's selection leads to is

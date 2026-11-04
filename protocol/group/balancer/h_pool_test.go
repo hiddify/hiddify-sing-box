@@ -90,7 +90,7 @@ func TestH_PoolDeadSlotSpreadsAndComesBack(t *testing.T) {
 }
 
 func TestH_PoolTolerance(t *testing.T) {
-	pool := hPool(t, option.BalancerOutboundOptions{Pool: 1, PoolTolerance: 100}, "a", "b")
+	pool := hPool(t, option.BalancerOutboundOptions{Pool: 1, Tolerance: 100}, "a", "b")
 	pool.UpdateOutboundsInfo(map[string]*adapter.URLTestHistory{"a": his(300), "b": his(250)})
 	require.Equal(t, []string{"a"}, pool.Slots(N.NetworkTCP), "b is faster, but not by more than 100 ms")
 	pool.UpdateOutboundsInfo(map[string]*adapter.URLTestHistory{"a": his(300), "b": his(150)})
@@ -123,7 +123,6 @@ func TestH_PoolStickyHashFields(t *testing.T) {
 func TestH_PoolOptions(t *testing.T) {
 	for _, options := range []option.BalancerOutboundOptions{
 		{Pool: -1},
-		{PoolTolerance: 15001},
 		{StickyHash: []string{"none", "domain"}},
 		{StickyHash: []string{"user"}},
 	} {

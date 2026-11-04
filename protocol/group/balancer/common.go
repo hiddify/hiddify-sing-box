@@ -1,13 +1,13 @@
 package balancer
 
 import (
-	"fmt"
-	"github.com/sagernet/sing-box/option"
 	"math"
 	"net"
 	"net/netip"
 	"sort"
 	"strings"
+
+	"github.com/sagernet/sing-box/option"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/monitoring"
@@ -51,16 +51,6 @@ func getKey(metadata *adapter.InboundContext) string {
 	}
 
 	return destinationAddr.String()
-}
-
-func getKeyWithSrcAndDst(metadata *adapter.InboundContext) string {
-	dst := getKey(metadata)
-	src := ""
-	if metadata != nil {
-		src = metadata.Source.Addr.String()
-	}
-
-	return fmt.Sprintf("%s%s", src, dst)
 }
 
 func jumpHash(key uint64, buckets int32) int32 {

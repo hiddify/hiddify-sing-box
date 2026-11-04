@@ -153,7 +153,6 @@ func TestH_LowestDelayStaysAfterASwitch(t *testing.T) {
 	require.Equal(t, "c", s.Now(), "a failed pick is left at once, stay or not")
 }
 
-
 // representative is the member round robin ranks first, as of the results it took: the fastest,
 // which stays while a cycle runs. A test helper.
 func (s *RoundRobin) representative() string {

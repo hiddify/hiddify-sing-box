@@ -14066,11 +14066,6 @@
             "pool": {
               "type": "integer"
             },
-            "pool_tolerance": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 65535
-            },
             "sticky_hash": {
               "anyOf": [
                 {

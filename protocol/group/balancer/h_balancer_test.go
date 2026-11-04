@@ -3,13 +3,14 @@ package balancer
 import (
 	"context"
 	"errors"
-	"github.com/sagernet/sing-box/adapter/htest"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
 	"testing"
 	"time"
+
+	"github.com/sagernet/sing-box/adapter/htest"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/monitoring"
