@@ -113,20 +113,19 @@ server.
 
 **Status and display type.** The type shown for the endpoint names the tunnel:
 `WARP · WG`, `WARP · AWG` or `WARP · MASQUE`; then, once the scanner has chosen,
-` · 🔍 <address:port>` or ` · 🔍 Not found`; then the mark of its status, as for every outbound
-and endpoint:
+` · 🔍 <address:port>` or ` · 🔍 Not found`. The status is not in the type; the app shows it
+from the status the core sends, as for every outbound and endpoint:
 
-| Status | Mark | When |
-|---|---|---|
-| registering | ` 🔑 Registering...` | A device is being registered. |
-| searching | ` 🔍 Searching...` | The scanner looks for an endpoint that answers. |
-| connecting | ` ⏳ Connecting...` | It has not connected yet. |
-| reconnecting | ` ⏳ Reconnecting...` | It was connected and the peer stopped answering. |
-| failed | ` ❌ Failed` | The config cannot work (a profile without peers, MASQUE not in the build). |
-| ready | | It carries traffic. |
+| Status | When |
+|---|---|
+| registering | A device is being registered. |
+| searching | The scanner looks for an endpoint that answers. |
+| connecting | It has not connected yet. |
+| reconnecting | It was connected and the peer stopped answering. |
+| failed | The config cannot work (a profile without peers, MASQUE not in the build); the type then ends with why, `: <error>`. |
+| ready | It carries traffic. |
 
-The hourglass flips between ⏳ and ⌛ each second. For example
-`WARP · MASQUE · 🔍 162.159.198.1:443`, or `WARP · WG ⏳ Reconnecting...`.
+For example `WARP · MASQUE · 🔍 162.159.198.1:443`, or, failed, `WARP · WG: <error>`.
 
 **Group detour.** When `detour` is a group (a selector, URL test or balancer), WARP follows the
 member it resolves to, through nested groups. The WireGuard or AmneziaWG socket, or the MASQUE

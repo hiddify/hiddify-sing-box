@@ -221,20 +221,19 @@ do about it. Items marked **Required** break or misbehave until they are handled
   `masque` type is WARP only.
 - **Display types.** WARP shows `WARP · WG`, `WARP · AWG` or `WARP · MASQUE`; the `masque`
   outbound shows `WARP · MASQUE`. After them comes the endpoint the scanner chose
-  (` · 🔍 <address:port>`, or ` · 🔍 Not found`), then the status mark. If the app maps display
-  types to icons or labels, match on the prefix.
+  (` · 🔍 <address:port>`, or ` · 🔍 Not found`). If the app maps display types to icons or
+  labels, match on the prefix.
 - **Status, for every outbound and endpoint.** `IsReady() bool` is replaced by
   `Status() adapter.Status`: `StatusReady`, `StatusConnecting`, `StatusReconnecting`,
   `StatusSearching`, `StatusFailed` and `StatusRegistering`; `adapter.IsReady(o)` is the yes/no.
-  `adapter.DisplayType(o)` adds the mark of the status to any outbound or endpoint:
-  ` ⏳ Connecting...`, ` ⏳ Reconnecting...`, ` 🔍 Searching...`, ` ❌ Failed`,
-  ` 🔑 Registering...`, nothing when ready. The hourglass flips between ⏳ and ⌛ with the second
-  (`adapter.HourglassFlip`), so a display that refreshes shows it turning; `adapter.SplitStatus`
-  separates the mark from the rest. hiddify-core must show `adapter.DisplayType(o)`
-  (v2/hcore/proxy_info.go does, uncommitted at the time of writing); calling `DisplayType()`
-  directly loses the mark. The `OutboundInfo` message still has only `is_ready`; a `status`
-  field would let the app show the state without parsing the label. Psiphon no longer shows
-  "✔️ Connected", and SSH shows its last error as `SSH: <error>` before the mark.
+  `adapter.DisplayType(o)` is the type and what the status cannot say, nothing more: the
+  resolvers a DNS tunnel uses (`MasterDNS · 3 resolvers`), the endpoint the WARP scanner chose.
+  It has no status mark (no ` ⏳ Connecting...`, no `✔️`): hiddify-core sends the status on its
+  own (`OutboundInfo.status`) and the app shows it. A failed outbound adds why it failed,
+  `adapter.StatusError(o)`: `Invalid: bad uuid`, `WARP · WG: <error>`. While it is only
+  connecting, the error of its last attempt goes to `OutboundInfo.error` and not to the type
+  (SSH's last connection error, for example). The app's `typeWithoutStatus` still strips the
+  marks an older core sends.
 - **WARP registration fallback.** When registration through `profile.detour` fails, WARP (all
   three tunnels) tries again through every other outbound, direct included. That was already so
   for WireGuard and is kept; it lets a cold detour group not block registration, but it means

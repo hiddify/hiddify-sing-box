@@ -56,8 +56,8 @@ Route UDP to another outbound.
   traffic. When the session drops, it connects again, waiting 1 second after a failure, then
   twice as long after each new failure, up to 1 minute.
 - When it connects, the outbound is tested at once by [monitoring](../groups/monitoring.en.md).
-- While it is not connected, the app shows "Connecting..." or the last error next to the
-  protocol name. Monitoring skips the outbound until it is connected.
+- While it is not connected, the app shows it as connecting, and the last connection error as
+  the proxy's error (not in its type). Monitoring skips the outbound until it is connected.
 - When the app does not ask to keep idle connections, the session closes after its last
   connection ends, and it is not opened again until the next connection.
 
