@@ -71,6 +71,11 @@ func (c *splitPacketConn) readLoop(conn net.PacketConn) {
 }
 
 func (c *splitPacketConn) ReadFrom(p []byte) (int, net.Addr, error) {
+	select { // closed is closed, even with a deadline that passed too
+	case <-c.done:
+		return 0, nil, net.ErrClosed
+	default:
+	}
 	c.deadlineMu.Lock()
 	deadlineCh := c.deadlineCh
 	c.deadlineMu.Unlock()
