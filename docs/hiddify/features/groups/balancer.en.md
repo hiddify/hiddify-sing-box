@@ -82,12 +82,13 @@ stops answering; during a regular cycle, until it stops answering.
   faster by more than `tolerance` and by more than `tolerance_ratio` of the selected member's
   delay, whichever is larger, so the jitter between two close servers does not move the
   group. A member that failed its test is left at once for the fastest live one; when no
-  member is live, the selection stays. A ping cached from the previous run only orders the
-  members until the real ones arrive: a cached one comes before a real one that failed, and a
-  selected member with a cached ping is left for any faster one, cached or real, with no
-  tolerance. It is not left for a slower real ping: its own test is due, and after a start or
-  a hot reload the first member to answer took the selection over a faster one being tested,
-  which took it back a moment later.
+  member is live, the selection stays. A member that took the selection with a real ping stays
+  for 30 s while it answers, whatever faster result comes in, then the best known takes it: the
+  first cycle's results arrive one by one, and the selection hopped at each faster one. A ping
+  cached from the previous run decides nothing and is not shown: it only orders the members
+  until the real pings arrive (the first choice at start, and the order the cycle tests them
+  in). A cached pick is left for a better cached one and for the first real ping that works,
+  however slow; a cached ping never takes a member whose real ping answers.
 - **`consistent-hashing`**: the member is chosen from the destination: its registrable domain
   (for example `example.com` for `www.example.com`) or its IP address. The same destination
   always gets the same member while that member is alive. If it is dead, the group tries up to

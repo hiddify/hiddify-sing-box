@@ -13,6 +13,9 @@ import (
 
 type hHistory = map[string]*adapter.URLTestHistory
 
+// the tests switch at once; TestH_LowestDelayStaysAfterASwitch sets its own stay
+func init() { minStay = 0 }
+
 // step is what Balancer.update does with a strategy: it holds while a cycle runs and the members
 // in use answer, else it takes the results. The cycle is taken to have started after every
 // result given: none is of this cycle.
@@ -34,9 +37,9 @@ func stepSince(s Strategy, cycle bool, since time.Time, history hHistory) {
 func TestH_LowestDelayHoldsDuringCycle(t *testing.T) {
 	s := NewLowestDelay(outs(newFake("a"), newFake("b"), newFake("c"), newFake("d")), option.BalancerOutboundOptions{})
 	step(s, true, hHistory{"a": cached(80), "b": his(400)})
-	require.Equal(t, "a", s.Now(), "the cached member is the faster: kept until its own result")
+	require.Equal(t, "b", s.Now(), "the cached member has no result of this run: the first that answered, for now")
 	step(s, true, hHistory{"a": timeout(), "b": his(400)})
-	require.Equal(t, "b", s.Now(), "its test failed: the first that answered, for now")
+	require.Equal(t, "b", s.Now())
 	step(s, true, hHistory{"a": timeout(), "b": his(400), "c": his(150)})
 	require.Equal(t, "b", s.Now(), "kept during the cycle while it answers")
 	step(s, true, hHistory{"a": timeout(), "b": his(400), "c": his(150), "d": his(90)})
@@ -108,41 +111,48 @@ func TestH_OnlyLowestDelaySignalsItsSelection(t *testing.T) {
 	}
 }
 
-// The tolerance keeps a member whose real ping answers from jitter; a cached ping only orders the
-// members until the real ones arrive, so a selected member with a cached result is left for any
-// faster one, cached too, and for any real ping that works.
-func TestH_LowestDelayNoToleranceForCachedResults(t *testing.T) {
-	s := NewLowestDelay(outs(newFake("a"), newFake("b"), newFake("c")), option.BalancerOutboundOptions{})
-	step(s, false, hHistory{"a": cached(100), "b": cached(120)})
-	require.Equal(t, "a", s.Now())
-	step(s, false, hHistory{"a": cached(100), "b": cached(90)})
-	require.Equal(t, "b", s.Now(), "10 ms faster, both cached: no tolerance")
-	step(s, false, hHistory{"a": cached(100), "b": cached(90), "c": his(300)})
-	require.Equal(t, "b", s.Now(), "a slower real ping does not take a faster cached pick: its own result is due")
-	step(s, false, hHistory{"a": cached(100), "b": cached(90), "c": his(80)})
-	require.Equal(t, "c", s.Now(), "a faster real ping takes a cached pick, with no tolerance")
-	step(s, false, hHistory{"a": his(280), "b": cached(90), "c": his(300)})
-	require.Equal(t, "c", s.Now(), "between real pings, the tolerance holds")
-	step(s, false, hHistory{"a": his(280), "b": timeout(), "c": his(300)})
-	require.Equal(t, "c", s.Now())
+// A ping cached from the previous run decides nothing: it only orders the members until the real
+// pings arrive. A cached pick is left for a better cached one, with no tolerance, and for the
+// first real ping that works, however slow; a cached ping never takes a member whose real ping
+// answers; with no real ping that works, the best cached one is the pick.
+func TestH_LowestDelayCachedResultsOnlyOrder(t *testing.T) {
+	s := NewLowestDelay(outs(newFake("a"), newFake("b"), newFake("c"), newFake("d")), option.BalancerOutboundOptions{})
+	step(s, false, hHistory{"a": cached(100), "b": cached(60)})
+	require.Equal(t, "b", s.Now(), "the best cached")
+	step(s, false, hHistory{"a": cached(100), "b": cached(60), "c": cached(50)})
+	require.Equal(t, "c", s.Now(), "a better cached one, with no tolerance: it is only an order")
+	step(s, false, hHistory{"a": cached(100), "b": cached(60), "c": cached(50), "d": his(300)})
+	require.Equal(t, "d", s.Now(), "the first real ping that works takes a cached pick, however slow")
+	step(s, false, hHistory{"a": his(280), "b": cached(60), "c": cached(50), "d": his(300)})
+	require.Equal(t, "d", s.Now(), "between real pings, the tolerance")
+	step(s, false, hHistory{"a": his(280), "b": cached(5), "c": cached(50), "d": his(300)})
+	require.Equal(t, "d", s.Now(), "a cached ping never takes a real one")
+	step(s, false, hHistory{"a": his(280), "b": cached(5), "c": cached(50), "d": timeout()})
+	require.Equal(t, "a", s.Now(), "the pick failed: the real ping that works")
+	step(s, false, hHistory{"a": timeout(), "b": cached(5), "c": cached(50), "d": timeout()})
+	require.Equal(t, "b", s.Now(), "no real ping works: the best cached")
 }
 
-// After a start or a hot reload every result is cached and the first fresh answer arrives while
-// the cached pick is being tested: the pick stays unless the answer is faster, and it is left
-// when its own test fails.
-func TestH_LowestDelayCachedPickStaysForASlowerFreshAnswer(t *testing.T) {
-	s := NewLowestDelay(outs(newFake("nl"), newFake("pl")), option.BalancerOutboundOptions{})
-	step(s, false, hHistory{"nl": cached(17), "pl": cached(91)})
-	require.Equal(t, "nl", s.Now())
-	step(s, false, hHistory{"nl": cached(17), "pl": his(91)})
-	require.Equal(t, "nl", s.Now(), "the cached pick is faster than the fresh answer: kept")
-	step(s, false, hHistory{"nl": his(19), "pl": his(91)})
-	require.Equal(t, "nl", s.Now())
-	step(s, false, hHistory{"nl": cached(17), "pl": his(91)})
-	require.Equal(t, "nl", s.Now(), "a hot reload: cached again, still kept")
-	step(s, false, hHistory{"nl": timeout(), "pl": his(91)})
-	require.Equal(t, "pl", s.Now(), "its test failed: left")
+// A member that took the selection with a real ping stays for minStay while it answers, whatever
+// faster result comes in, then the best known takes it: one hop, not one per result.
+func TestH_LowestDelayStaysAfterASwitch(t *testing.T) {
+	s := NewLowestDelay(outs(newFake("a"), newFake("b"), newFake("c")), option.BalancerOutboundOptions{})
+	s.stay = 150 * time.Millisecond
+	step(s, false, hHistory{"a": his(439)})
+	require.Equal(t, "a", s.Now())
+	step(s, false, hHistory{"a": his(439), "b": his(170)})
+	require.Equal(t, "b", s.Now(), "the first switch")
+	step(s, false, hHistory{"a": his(439), "b": his(170), "c": his(112)})
+	require.Equal(t, "b", s.Now(), "faster, but b stays for now")
+	step(s, false, hHistory{"a": his(18), "b": his(170), "c": his(112)})
+	require.Equal(t, "b", s.Now())
+	time.Sleep(200 * time.Millisecond)
+	step(s, false, hHistory{"a": his(18), "b": his(170), "c": his(112)})
+	require.Equal(t, "a", s.Now(), "the stay is over: the best known, in one hop")
+	step(s, false, hHistory{"a": timeout(), "b": his(170), "c": his(112)})
+	require.Equal(t, "c", s.Now(), "a failed pick is left at once, stay or not")
 }
+
 
 // representative is the member round robin ranks first, as of the results it took: the fastest,
 // which stays while a cycle runs. A test helper.

@@ -44,9 +44,8 @@ func switchThreshold(currentDelay uint16, tolerance uint16, ratio float64) uint3
 
 // SelectedThreshold is how much faster another member must be than the selected one, with the
 // result his, to take the selection: switchThreshold for a real ping, none for one cached from
-// the previous run. A cached ping only orders the members until the real ones arrive, so the
-// tolerance, which keeps a member that answers from jitter, has nothing to keep. hiddify-core
-// shows a spreading balancer's row by the same rule.
+// the previous run, which decides nothing. hiddify-core shows a spreading balancer's row by the
+// same rule.
 func SelectedThreshold(his *adapter.URLTestHistory, tolerance uint16, ratio float64) uint32 {
 	if his != nil && his.IsFromCache {
 		return 0
@@ -54,23 +53,17 @@ func SelectedThreshold(his *adapter.URLTestHistory, tolerance uint16, ratio floa
 	return switchThreshold(measuredDelay(his), tolerance, ratio)
 }
 
+// minStay is how long a member that took the selection with a real ping stays while it answers,
+// whatever faster result comes in: the first cycle's results arrive one by one, fastest last as
+// often as not, and the selection hopped four times in forty seconds, 439 ms to 170 to 112 to 41
+// to 18. Now it hops once, to the best known when the stay is over. A pick from the cache does not
+// stay: the first real ping that works takes it.
+var minStay = 30 * time.Second // a variable for the tests, which switch at once
+
 // Rank orders members by their results, as lowest-delay does: a real ping that works, then a
 // cached one (its delay plus a penalty), then TimeoutDelay for none or a failed one.
 func Rank(his *adapter.URLTestHistory) uint16 {
 	return getModifiedDelay(his)
-}
-
-// keepsCachedPick says whether a selected member with a cached result (his) stays although best,
-// with a result of this run, has the lowest penalised delay: it stays while it is the faster of
-// the two as measured. A cached pick is left for any real ping that works, however slow, and
-// after a start or a hot reload, when every result is cached, the first member to answer took
-// the selection at 91 ms over the 17 ms one being tested, which took it back a moment later;
-// every move tested the new pick again. A cached pick that fails its test is dead and left.
-func keepsCachedPick(his, best *adapter.URLTestHistory) bool {
-	if his == nil || !his.IsFromCache || best == nil || best.IsFromCache {
-		return false
-	}
-	return measuredDelay(his) < monitoring.TimeoutDelay && measuredDelay(best) >= measuredDelay(his)
 }
 
 // memberDead says whether a member's last test failed. A member that has no result yet is

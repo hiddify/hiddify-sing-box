@@ -50,7 +50,7 @@ func (s *LowestDelay) logSwitch(net string, current, best adapter.Outbound, hist
 	case his.Delay >= monitoring.TimeoutDelay:
 		why = []any{"the selected one failed its test"}
 	case his.IsFromCache:
-		why = []any{"a faster ping than the selected one's cached ping, which has no tolerance"}
+		why = []any{"a real ping takes a cached pick: a cached ping only orders the members"}
 	default:
 		why = []any{"faster by ", currentDelay - bestDelay, " ms, more than the tolerance of ", threshold, " ms"}
 	}

@@ -21,6 +21,8 @@ type LowestDelay struct {
 	tag              string            // H: the group's tag, for the log
 	heldSince        time.Time         // H: the cycle the hold was last logged for, see logHold
 	lastRival        string            // H: the faster member last logged as rejected, see logKeep
+	switchedAt       time.Time         // H: when a member with a real ping took the selection, see minStay
+	stay             time.Duration     // H: how long that member stays while it answers, minStay
 
 	mu sync.Mutex
 }
@@ -43,6 +45,7 @@ func NewLowestDelay(outbounds []adapter.Outbound, options option.BalancerOutboun
 		},
 		tolerance:      tolerance,
 		toleranceRatio: ratio,
+		stay:           minStay, //H
 	}
 }
 
@@ -55,11 +58,17 @@ func (s *LowestDelay) Now() string {
 	return s.selectedOutbound[N.NetworkTCP].Tag()
 }
 
-// UpdateOutboundsInfo keeps the selected member while it answers, unless another one is faster
-// by more than the tolerance and than tolerance_ratio of the selected member's delay. A selected member that failed its test is left for the fastest
-// live one; when no member is live, the selection stays.
+// UpdateOutboundsInfo keeps the selected member while its real ping answers, unless another real
+// ping is faster by more than the tolerance and than tolerance_ratio of the selected member's
+// delay. A member that took the selection with a real ping stays for minStay while it answers,
+// whatever comes in: the first cycle's results arrive one by one, and the selection hopped at
+// each faster one. A selected member that failed its test is left for the fastest live one; when
+// no member is live, the selection stays. A ping cached from the previous run decides nothing: it
+// only orders the members until the real pings arrive, so a cached pick is left for the first real
+// ping that works, however slow, and for a better cached one, and a cached ping never takes a
+// member whose real ping answers.
 func (s *LowestDelay) UpdateOutboundsInfo(history map[string]*adapter.URLTestHistory) bool {
-	min, delays := getMinDelay(s.outbounds, history)
+	min, delays := getMinDelay(s.outbounds, history) // real pings first, then cached ones
 
 	s.mu.Lock()
 	changed := false
@@ -68,18 +77,28 @@ func (s *LowestDelay) UpdateOutboundsInfo(history map[string]*adapter.URLTestHis
 		if best == nil || best.Tag() == current.Tag() || delays[net] >= monitoring.TimeoutDelay {
 			continue
 		}
-		currentDelay := getTagDelay(current.Tag(), history)
-		threshold := SelectedThreshold(history[current.Tag()], s.tolerance, s.toleranceRatio) //H: none for a cached result
-		if currentDelay < monitoring.TimeoutDelay && uint32(delays[net])+threshold >= uint32(currentDelay) {
-			s.logKeep(net, current, best, history, "not faster by more than ", threshold, " ms") //H
-			continue
-		}
-		if keepsCachedPick(history[current.Tag()], history[best.Tag()]) { //H: the faster, until its own result
-			s.logKeep(net, current, best, history, "its cached ping is the faster, its own result is due") //H
-			continue
-		}
-		s.logSwitch(net, current, best, history, currentDelay, delays[net], threshold) //H
+		currentHis, bestHis := history[current.Tag()], history[best.Tag()] //H
+		currentMeasured, bestMeasured := measuredDelay(currentHis), measuredDelay(bestHis) //H
+		threshold := SelectedThreshold(currentHis, s.tolerance, s.toleranceRatio) //H: none for a cached pick
+		if answers(currentHis) { //H: its real ping answers: only a real ping, faster by the tolerance, after the stay
+			if !answers(bestHis) { //H
+				s.logKeep(net, current, best, history, "a cached ping does not take a real one") //H
+				continue //H
+			} //H
+			if since := time.Since(s.switchedAt); !s.switchedAt.IsZero() && since < s.stay { //H
+				s.logKeep(net, current, best, history, "chosen ", since.Round(time.Second), " ago, stays ", s.stay) //H
+				continue //H
+			} //H
+			if uint32(bestMeasured)+threshold >= uint32(currentMeasured) { //H
+				s.logKeep(net, current, best, history, "not faster by more than ", threshold, " ms") //H
+				continue
+			}
+		} //H
+		s.logSwitch(net, current, best, history, currentMeasured, bestMeasured, threshold) //H
 		s.selectedOutbound[net] = best
+		if answers(bestHis) && net == N.NetworkTCP { //H: a real ping: it stays a while
+			s.switchedAt = time.Now() //H
+		} //H
 		changed = true
 	}
 	s.mu.Unlock()

@@ -87,7 +87,10 @@ do about it. Items marked **Required** break or misbehave until they are handled
   10 s by default): the app sees the proxy as unavailable after the first mark with no answer,
   then the answer, however late. A proxy is pinged once; only a failed attempt is tried again,
   at the next mark. A tap while the proxy is being tested joins that test instead of a second
-  ping, and a selection measured in the last 15 s is not tested again. hiddify-core sets the
+  ping, and a selection measured in the last 15 s is not tested again. A ping cached from the
+  previous run decides nothing and is not shown: it orders the members until the real pings
+  arrive, and the app's proxy list sorts by `sort_delay`, which carries it, while
+  `url_test_delay` stays 0 for it. hiddify-core sets the
   lowest-delay groups' `tolerance` to 20 ms and `tolerance_ratio` to 0.3: an absolute 100 ms
   kept a 59 ms member over a 25 ms one. The `MONITORING` and `LOWEST` log lines say why each
   test ran and what the group decided. hiddify-core keeps a profile's proxy tags stable across
