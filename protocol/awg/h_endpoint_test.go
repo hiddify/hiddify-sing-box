@@ -250,7 +250,7 @@ func TestH_EndpointNewPacketConnectionRewritesLocalAddress(t *testing.T) {
 func TestH_EndpointReadinessAndDialValidation(t *testing.T) {
 	ep := hTestEndpoint(&hRecordingRouter{})
 	require.False(t, adapter.IsReady(ep))
-	hRequireConnecting(t, "Awg", adapter.DisplayType(ep))
+	hRequireDisplay(t, "Awg", adapter.DisplayType(ep))
 	ep.started = true
 	require.True(t, adapter.IsReady(ep))
 	require.Equal(t, "Awg", ep.DisplayType())
@@ -341,9 +341,8 @@ func TestH_GenIpcConfigMasqueradePreset(t *testing.T) {
 	}
 }
 
-func hRequireConnecting(t *testing.T, base string, display string, message ...any) {
+// hRequireDisplay checks a display type: only the type and its details, the status is shown on its own.
+func hRequireDisplay(t *testing.T, base string, display string, message ...any) {
 	t.Helper()
-	gotBase, mark := adapter.SplitStatus(display)
-	require.Equal(t, base, gotBase, message...)
-	require.NotEmpty(t, mark, message...)
+	require.Equal(t, base, display, message...)
 }

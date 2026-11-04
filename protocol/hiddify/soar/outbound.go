@@ -416,16 +416,16 @@ func (h *Outbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (n
 }
 
 func (h *Outbound) DisplayType() string {
-	str := C.ProxyDisplayName(h.Type()) // adapter.DisplayType adds the status mark
-	client := h.currentClient()
-	if client == nil || !client.Established() {
+	// the status is shown on its own; the resolvers in use are not, also while connecting
+	str := C.ProxyDisplayName(h.Type())
+	active := h.PoolResolvers()
+	if client := h.currentClient(); client != nil {
+		active += verifiedPaths(client)
+	}
+	if active == 0 {
 		return str
 	}
-	active := verifiedPaths(client)
-	if h.pool != nil {
-		active += h.PoolResolvers() - 1 // the pool is one path
-	}
-	return fmt.Sprint(str, " ✔️ ", active, " resolvers")
+	return fmt.Sprint(str, " · ", active, " resolvers")
 }
 
 func (h *Outbound) Close() error {

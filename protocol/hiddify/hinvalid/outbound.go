@@ -48,9 +48,15 @@ func (h *Outbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (n
 	return nil, syscall.EPERM
 }
 
-func (h *Outbound) DisplayType() string {
-	if h.InvalidOptions.Err == nil {
-		return C.ProxyDisplayName(h.Type())
+// Status is failed when the configuration could not be read: it never carries traffic.
+func (h *Outbound) Status() adapter.Status {
+	if h.InvalidOptions.Err != nil {
+		return adapter.StatusFailed
 	}
-	return C.ProxyDisplayName(h.Type()) + " " + h.InvalidOptions.Err.Error()
+	return adapter.StatusReady
+}
+
+// StatusError is why the configuration could not be read; the display type shows it.
+func (h *Outbound) StatusError() error {
+	return h.InvalidOptions.Err
 }

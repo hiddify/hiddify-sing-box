@@ -484,15 +484,10 @@ func (s *Outbound) Status() adapter.Status {
 	return s.tracker.Status(s.ready.Load())
 }
 
-// DisplayType is the protocol name, with the last connection error while not connected;
-// adapter.DisplayType adds the status mark.
-func (s *Outbound) DisplayType() string {
-	name := C.ProxyDisplayName(s.Type())
-	if s.ready.Load() {
-		return name
-	}
-	if connectionErr := s.connectionErr.Load(); connectionErr != "" {
-		return name + ": " + connectionErr // the status mark follows
-	}
-	return name
-}
+// StatusError is why the last connection to the server failed, while it is not ready. //H
+func (s *Outbound) StatusError() error { //H
+	if connectionErr := s.connectionErr.Load(); connectionErr != "" && !s.ready.Load() { //H
+		return E.New(connectionErr) //H
+	} //H
+	return nil //H
+} //H

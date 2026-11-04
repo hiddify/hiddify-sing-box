@@ -492,15 +492,16 @@ func (h *Outbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (n
 }
 
 func (h *Outbound) DisplayType() string {
-	str := C.ProxyDisplayName(h.Type()) // adapter.DisplayType adds the status mark
-	if !h.client.Ready() {
-		return str
-	}
+	// the status is shown on its own; the resolvers in use are not, also while connecting
+	str := C.ProxyDisplayName(h.Type())
 	active, _ := h.client.Resolvers()
 	if h.pool != nil {
 		active = h.PoolResolvers()
 	}
-	return fmt.Sprint(str, " ✔️ ", active, " resolvers")
+	if active == 0 {
+		return str
+	}
+	return fmt.Sprint(str, " · ", active, " resolvers")
 }
 
 func (h *Outbound) Close() error {

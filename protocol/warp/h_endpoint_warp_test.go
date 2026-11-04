@@ -211,7 +211,7 @@ func TestH_WARPStartFailureLeavesEndpointUninitialized(t *testing.T) {
 	ep.startHandler()
 
 	require.False(t, adapter.IsReady(ep))
-	hRequireConnecting(t, "WARP · WG", adapter.DisplayType(ep))
+	hRequireDisplay(t, "WARP · WG", adapter.DisplayType(ep))
 	_, err := ep.DialContext(context.Background(), N.NetworkTCP, M.ParseSocksaddr("1.1.1.1:80"))
 	require.ErrorContains(t, err, "endpoint not initialized")
 	_, err = ep.ListenPacket(context.Background(), M.ParseSocksaddr("1.1.1.1:53"))
@@ -344,11 +344,11 @@ func TestH_WARPMASQUEAndAWGConflict(t *testing.T) {
 }
 
 func TestH_WARPDisplayTypeByTunnel(t *testing.T) {
-	hRequireConnecting(t, "WARP · WG", adapter.DisplayType(hNewWARP(t, hTestContext(t), option.WARPEndpointOptions{})))
-	hRequireConnecting(t, "WARP · AWG", adapter.DisplayType(hNewWARP(t, hTestContext(t), option.WARPEndpointOptions{AWG: &option.AwgOptions{Jc: 4}})))
-	hRequireConnecting(t, "WARP · MASQUE", adapter.DisplayType(hNewWARP(t, hTestContext(t), option.WARPEndpointOptions{MASQUE: &option.WARPMASQUEOptions{Enabled: true}})))
-	hRequireConnecting(t, "WARP · MASQUE", adapter.DisplayType(hNewWARP(t, hTestContext(t), option.WARPEndpointOptions{MASQUE: &option.WARPMASQUEOptions{VHTTP: "h2"}})), "any setting turns it on")
-	hRequireConnecting(t, "WARP · WG", adapter.DisplayType(hNewWARP(t, hTestContext(t), option.WARPEndpointOptions{MASQUE: &option.WARPMASQUEOptions{}})), "an empty block is not MASQUE")
+	hRequireDisplay(t, "WARP · WG", adapter.DisplayType(hNewWARP(t, hTestContext(t), option.WARPEndpointOptions{})))
+	hRequireDisplay(t, "WARP · AWG", adapter.DisplayType(hNewWARP(t, hTestContext(t), option.WARPEndpointOptions{AWG: &option.AwgOptions{Jc: 4}})))
+	hRequireDisplay(t, "WARP · MASQUE", adapter.DisplayType(hNewWARP(t, hTestContext(t), option.WARPEndpointOptions{MASQUE: &option.WARPMASQUEOptions{Enabled: true}})))
+	hRequireDisplay(t, "WARP · MASQUE", adapter.DisplayType(hNewWARP(t, hTestContext(t), option.WARPEndpointOptions{MASQUE: &option.WARPMASQUEOptions{VHTTP: "h2"}})), "any setting turns it on")
+	hRequireDisplay(t, "WARP · WG", adapter.DisplayType(hNewWARP(t, hTestContext(t), option.WARPEndpointOptions{MASQUE: &option.WARPMASQUEOptions{}})), "an empty block is not MASQUE")
 }
 
 // The box closes the endpoint's scope, not the endpoint: its background work (port rotation,
@@ -370,11 +370,10 @@ func TestH_WARPStopsWithItsScope(t *testing.T) {
 	}
 }
 
-func hRequireConnecting(t *testing.T, base string, display string, message ...any) {
+// hRequireDisplay checks a display type: only the type and its details, the status is shown on its own.
+func hRequireDisplay(t *testing.T, base string, display string, message ...any) {
 	t.Helper()
-	gotBase, mark := adapter.SplitStatus(display)
-	require.Equal(t, base, gotBase, message...)
-	require.NotEmpty(t, mark, message...)
+	require.Equal(t, base, display, message...)
 }
 
 // While the device is registered, WARP shows as registering; a config it cannot use is failed.
@@ -389,8 +388,9 @@ func TestH_WARPStatusRegisteringAndFailed(t *testing.T) {
 	broken := hNewWARP(t, hShortContext(t), option.WARPEndpointOptions{WARPConfig: &C.WARPConfig{PrivateKey: "key"}})
 	broken.startHandler()
 	require.Equal(t, adapter.StatusFailed, broken.Status(), "a config without peers cannot work")
-	_, mark := adapter.SplitStatus(adapter.DisplayType(broken))
-	require.Equal(t, "❌ Failed", mark)
+	// the display type says why
+	require.Error(t, adapter.StatusError(broken))
+	require.Equal(t, "WARP · WG: "+adapter.StatusError(broken).Error(), adapter.DisplayType(broken))
 }
 
 // With search_noise, a network where the configured noise gets no answer tries the presets: the

@@ -172,8 +172,7 @@ func (b *hWARPBox) requireNeverConnected(t *testing.T, period time.Duration) {
 		require.False(t, b.traceOK(), "traffic got through without the detour")
 		require.False(t, b.ready(), "ready without a working detour")
 		require.True(t, b.variant.display == "auto" || strings.HasPrefix(b.displayType(), b.variant.display), b.displayType())
-		_, mark := adapter.SplitStatus(b.displayType())
-		require.NotEmpty(t, mark, "a status mark while not connected: %q", b.displayType())
+		require.NotEqual(t, adapter.StatusReady, b.warp().Status(), "ready without a working detour")
 		time.Sleep(2 * time.Second)
 	}
 }

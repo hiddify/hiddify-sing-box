@@ -216,6 +216,16 @@ func (h *Outbound) Status() adapter.Status {
 	return adapter.StatusConnecting
 }
 
+// StatusError is why it failed: no endpoint answered the check. //H
+func (h *Outbound) StatusError() error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.started < 0 {
+		return E.New("all ", len(h.options.ScriptKeys), " endpoints failed the check")
+	}
+	return nil
+}
+
 func (h *Outbound) isReady() bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -249,10 +259,10 @@ func (h *Outbound) DisplayType() string {
 	h.mu.Lock()
 	state := h.started
 	h.mu.Unlock()
-	if state <= 0 { // adapter.DisplayType adds the status mark
+	if state <= 0 { // the status is shown on its own
 		return str
 	}
-	return fmt.Sprint(str, " ✔️ ", len(h.options.ScriptKeys), " endpoints")
+	return fmt.Sprint(str, " · ", len(h.options.ScriptKeys), " endpoints")
 }
 
 func (h *Outbound) Close() error {

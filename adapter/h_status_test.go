@@ -8,34 +8,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestH_StatusMarks(t *testing.T) {
-	require.Empty(t, adapter.StatusReady.Mark())
+func TestH_StatusString(t *testing.T) {
 	for status, text := range map[adapter.Status]string{
-		adapter.StatusConnecting:   "Connecting...",
-		adapter.StatusReconnecting: "Reconnecting...",
-		adapter.StatusSearching:    "🔍 Searching...",
-		adapter.StatusFailed:       "❌ Failed",
-		adapter.StatusRegistering:  "🔑 Registering...",
+		adapter.StatusReady:        "ready",
+		adapter.StatusConnecting:   "connecting",
+		adapter.StatusReconnecting: "reconnecting",
+		adapter.StatusSearching:    "searching",
+		adapter.StatusFailed:       "failed",
+		adapter.StatusRegistering:  "registering",
 	} {
-		mark := status.Mark()
-		require.Contains(t, mark, text, status.String())
-		base, got := adapter.SplitStatus("WARP · WG · 🔍 1.1.1.1:2408" + mark)
-		require.Equal(t, "WARP · WG · 🔍 1.1.1.1:2408", base, status.String())
-		require.Equal(t, mark[1:], got, status.String())
+		require.Equal(t, text, status.String())
 	}
-	base, mark := adapter.SplitStatus("WARP · WG")
-	require.Equal(t, "WARP · WG", base)
-	require.Empty(t, mark)
-}
-
-func TestH_StatusHourglassFlips(t *testing.T) {
-	marks := map[string]bool{}
-	for _, hourglass := range adapter.HourglassFlip {
-		base, _ := adapter.SplitStatus("SSH " + hourglass + " Connecting...")
-		require.Equal(t, "SSH", base, "both frames are recognised")
-		marks[hourglass] = true
-	}
-	require.Len(t, marks, 2)
 }
 
 func TestH_StatusTracker(t *testing.T) {

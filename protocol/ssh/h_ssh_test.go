@@ -366,7 +366,8 @@ func TestH_SSHOutboundProxyDisplayName(t *testing.T) {
 	t.Parallel()
 	f := startInbound(t, nil)
 	out := newTestOutbound(t, f, nil)
-	require.Contains(t, adapter.DisplayType(out), "Connecting")
+	require.Equal(t, adapter.StatusConnecting, out.Status())
+	require.Equal(t, "SSH", adapter.DisplayType(out), "the status is shown on its own")
 }
 
 func TestH_SSHOutboundUDPOverTCP(t *testing.T) {
@@ -481,12 +482,16 @@ func TestH_SSHOutboundUnreachableServer(t *testing.T) {
 	})
 	require.NoError(t, err)
 	ssh := out.(*Outbound)
-	require.Contains(t, adapter.DisplayType(ssh), "Connecting")
+	require.Equal(t, adapter.StatusConnecting, ssh.Status())
+	require.NoError(t, adapter.StatusError(ssh))
 	require.NoError(t, ssh.PostStart())
+	// the connection error goes to the app as the status error; the display type stays the
+	// type, as the outbound is still connecting, not failed
 	require.Eventually(t, func() bool {
-		display := adapter.DisplayType(ssh)
-		return strings.Contains(display, "refused") && strings.HasSuffix(display, "Connecting...")
-	}, 5*time.Second, 20*time.Millisecond, "the connection error is not shown: %q", adapter.DisplayType(ssh))
+		err := adapter.StatusError(ssh)
+		return err != nil && strings.Contains(err.Error(), "refused")
+	}, 5*time.Second, 20*time.Millisecond, "the connection error is not kept: %v", adapter.StatusError(ssh))
+	require.Equal(t, "SSH", adapter.DisplayType(ssh))
 	require.False(t, adapter.IsReady(ssh))
 	require.NoError(t, htest.Close(ssh)) // stops the background retries
 }

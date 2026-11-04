@@ -156,14 +156,15 @@ func TestH_DnsttNotStarted(t *testing.T) {
 	_, err = out.ListenPacket(context.Background(), M.ParseSocksaddr("1.1.1.1:53"))
 	require.ErrorContains(t, err, "not started")
 
-	require.Contains(t, adapter.DisplayType(out), "Connecting")
+	require.Equal(t, "DNSTT", adapter.DisplayType(out), "the status is shown on its own")
 	out.started = -1
 	require.Equal(t, adapter.StatusFailed, out.Status())
-	require.Contains(t, adapter.DisplayType(out), "Failed")
+	require.Regexp(t, `^DNSTT: none of the \d+ resolvers passed the test$`, adapter.DisplayType(out), "a failed one says why")
 	out.started = 1
 	out.resolvers = make([]dnstt.Resolver, 3)
 	require.True(t, adapter.IsReady(out))
-	require.Contains(t, out.DisplayType(), "3 resolvers")
+	require.Equal(t, "DNSTT · 3 resolvers", adapter.DisplayType(out))
+	require.NoError(t, adapter.StatusError(out))
 
 	_, err = out.ListenPacket(context.Background(), M.ParseSocksaddr("1.1.1.1:53"))
 	require.ErrorContains(t, err, "UoT is not enabled")
