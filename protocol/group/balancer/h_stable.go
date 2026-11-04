@@ -42,15 +42,22 @@ func switchThreshold(currentDelay uint16, tolerance uint16, ratio float64) uint3
 	return uint32(tolerance)
 }
 
-// selectedThreshold is how much faster another member must be than the selected one, with the
+// SelectedThreshold is how much faster another member must be than the selected one, with the
 // result his, to take the selection: switchThreshold for a real ping, none for one cached from
 // the previous run. A cached ping only orders the members until the real ones arrive, so the
-// tolerance, which keeps a member that answers from jitter, has nothing to keep.
-func selectedThreshold(his *adapter.URLTestHistory, tolerance uint16, ratio float64) uint32 {
+// tolerance, which keeps a member that answers from jitter, has nothing to keep. hiddify-core
+// shows a spreading balancer's row by the same rule.
+func SelectedThreshold(his *adapter.URLTestHistory, tolerance uint16, ratio float64) uint32 {
 	if his != nil && his.IsFromCache {
 		return 0
 	}
 	return switchThreshold(measuredDelay(his), tolerance, ratio)
+}
+
+// Rank orders members by their results, as lowest-delay does: a real ping that works, then a
+// cached one (its delay plus a penalty), then TimeoutDelay for none or a failed one.
+func Rank(his *adapter.URLTestHistory) uint16 {
+	return getModifiedDelay(his)
 }
 
 // keepsCachedPick says whether a selected member with a cached result (his) stays although best,

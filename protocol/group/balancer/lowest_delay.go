@@ -69,7 +69,7 @@ func (s *LowestDelay) UpdateOutboundsInfo(history map[string]*adapter.URLTestHis
 			continue
 		}
 		currentDelay := getTagDelay(current.Tag(), history)
-		threshold := selectedThreshold(history[current.Tag()], s.tolerance, s.toleranceRatio) //H: none for a cached result
+		threshold := SelectedThreshold(history[current.Tag()], s.tolerance, s.toleranceRatio) //H: none for a cached result
 		if currentDelay < monitoring.TimeoutDelay && uint32(delays[net])+threshold >= uint32(currentDelay) {
 			s.logKeep(net, current, best, history, "not faster by more than ", threshold, " ms") //H
 			continue
