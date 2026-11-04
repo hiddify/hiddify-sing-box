@@ -178,6 +178,48 @@ func TestH_MasterDNSOptions(t *testing.T) {
 	require.True(t, md.UDPOverTCP.Enabled)
 }
 
+func TestH_SoarOptions(t *testing.T) {
+	t.Parallel()
+	so := hRoundTrip[SoarOptions](t, `{"domain":"t.example.com","public_key":"k","resolvers":"8.8.8.8","tcp":"auto","safe_qname":101,"max_answer":512,"hold":"1s","max_path_window":16,"stream_window":262144,"session_idle":"60s","connect_timeout":"30s"}`)
+	require.Equal(t, "t.example.com", so.Domain)
+	require.Equal(t, []string{"8.8.8.8"}, []string(so.Resolvers))
+	require.Equal(t, time.Second, time.Duration(so.Hold))
+	require.Equal(t, 262144, so.StreamWindow)
+	// the pool is on unless turned off
+	require.Nil(t, so.SmartPool)
+	require.True(t, so.SmartPool.IsEnabledOr(true))
+	so = hRoundTrip[SoarOptions](t, `{"domain":"t.example.com","smart_pool":false}`)
+	require.False(t, so.SmartPool.IsEnabledOr(true))
+	so = hRoundTrip[SoarOptions](t, `{"domain":"t.example.com","smart_pool":{"enabled":true,"load_balance":"weighted"}}`)
+	require.True(t, so.SmartPool.IsEnabledOr(false))
+	require.False(t, (*SmartPoolOptions)(nil).IsEnabledOr(false))
+}
+
+// The discovery block of smart_pool, the same for every DNS tunnel.
+func TestH_SmartPoolDiscoveryOptions(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, ResolverDiscoveryOptions{}, (*SmartPoolOptions)(nil).DiscoveryOptions())
+	require.Equal(t, ResolverDiscoveryOptions{}, (&SmartPoolOptions{Enabled: true}).DiscoveryOptions())
+	for _, content := range []string{
+		`{"smart_pool":{"enabled":true,"discovery":{"country":"ir","sample_ranges":8,"want":4,"concurrency":2,"pace":"100ms"}}}`,
+	} {
+		md := hRoundTrip[MasterDNSOptions](t, content)
+		so := hRoundTrip[SoarOptions](t, content)
+		dn := hRoundTrip[DnsttOptions](t, content)
+		for _, pool := range []*SmartPoolOptions{md.SmartPool, so.SmartPool, dn.SmartPool} {
+			discovery := pool.DiscoveryOptions()
+			require.Equal(t, "ir", discovery.Country)
+			require.Equal(t, 8, discovery.SampleRanges)
+			require.Equal(t, 4, discovery.Want)
+			require.Equal(t, 2, discovery.Concurrency)
+			require.Equal(t, 100*time.Millisecond, time.Duration(discovery.Pace))
+		}
+	}
+	so := hRoundTrip[SoarOptions](t, `{"smart_pool":{"enabled":false,"discovery":{"country":"cn"}}}`)
+	require.False(t, so.SmartPool.IsEnabledOr(true))
+	require.Equal(t, "cn", so.SmartPool.DiscoveryOptions().Country)
+}
+
 func TestH_DNSServerOptionsHiddify(t *testing.T) {
 	t.Parallel()
 	sdns := hRoundTrip[SDNSDNSServerOptions](t, `{"server":"1.1.1.1","stamp":"sdns://AgcAAAAAAAAABzEuMC4wLjEAEmRucy5jbG91ZGZsYXJlLmNvbQovZG5zLXF1ZXJ5"}`)

@@ -29,6 +29,7 @@ import (
 	"github.com/sagernet/sing-box/protocol/hiddify/gooserelay"
 	"github.com/sagernet/sing-box/protocol/hiddify/hinvalid"
 	"github.com/sagernet/sing-box/protocol/hiddify/masterdns"
+	"github.com/sagernet/sing-box/protocol/hiddify/soar" //H
 	"github.com/sagernet/sing-box/protocol/hiddify/xray"
 	"github.com/sagernet/sing-box/protocol/http"
 	"github.com/sagernet/sing-box/protocol/masque"
@@ -126,6 +127,7 @@ func OutboundRegistry() *outbound.Registry {
 	dnstt.RegisterOutbound(registry)
 	gooserelay.RegisterOutbound(registry)
 	masterdns.RegisterOutbound(registry)
+	soar.RegisterOutbound(registry) //H
 	balancer.RegisterLoadBalance(registry)
 	group.RegisterFallback(registry) //H
 	registerSudokuOutbound(registry) //H
