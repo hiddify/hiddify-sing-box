@@ -24,6 +24,8 @@ replace github.com/kianmhz/GooseRelayVPN => github.com/hiddify/GooseRelayVPN v0.
 
 replace masterdnsvpn-go => ../replace/MasterDnsVPN
 
+replace github.com/getlantern/soar => ../replace/soar
+
 replace github.com/sagernet/sing-vmess => ../replace/sing-vmess
 
 replace github.com/Diniboy1123/connect-ip-go => github.com/shtorm-7/connect-ip-go v1.0.0-extended-1.1.1
@@ -110,6 +112,7 @@ require (
 	github.com/dunglas/httpsfv v1.0.2 // indirect
 	github.com/ebitengine/purego v0.10.0 // indirect
 	github.com/enfein/mieru/v3 v3.38.2 // indirect
+	github.com/getlantern/soar v0.2.4 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/florianl/go-nfqueue/v2 v2.1.0 // indirect
 	github.com/flynn/noise v1.1.0 // indirect

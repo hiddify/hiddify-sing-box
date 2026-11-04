@@ -34,3 +34,7 @@
 	path = replace/MasterDnsVPN
 	url = https://github.com/hiddify/MasterDnsVPN
 	branch = hiddify
+[submodule "replace/soar"]
+	path = replace/soar
+	url = https://github.com/hiddify/soar
+	branch = hiddify
