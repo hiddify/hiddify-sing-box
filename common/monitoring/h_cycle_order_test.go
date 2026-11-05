@@ -22,5 +22,20 @@ func TestH_MonitoringCycleTestsCachedFastestFirst(t *testing.T) {
 	for _, tag := range []string{"a", "b", "c", "d"} {
 		m.reg().outbounds[tag].invalid = true
 	}
-	require.Equal(t, []string{"c", "d", "b", "a"}, m.collectCycleTargets())
+	require.Equal(t, []string{"c", "a", "d", "b"}, m.collectCycleTargets(), "untested a after the fastest")
+}
+
+// A large subscription whose new members were all tested last waited a whole cycle of timeouts
+// for them: they take every other place among the members that answered, by their delay, and
+// the ones that failed come last.
+func TestH_CycleOrderInterleavesUntested(t *testing.T) {
+	t.Parallel()
+	delays := map[string]uint16{"A": 10, "B": 12, "C": 15, "D": TimeoutDelay, "E": 0, "F": 0, "G": 0, "H": 0}
+	require.Equal(t,
+		[]string{"A", "E", "B", "F", "C", "G", "H", "D"},
+		cycleOrder([]string{"D", "C", "E", "B", "F", "A", "G", "H"}, delays))
+	require.Equal(t,
+		[]string{"A", "E", "B", "C", "D"},
+		cycleOrder([]string{"D", "C", "E", "B", "A"}, delays), "more answered than untested")
+	require.Equal(t, []string{"x", "y"}, cycleOrder([]string{"x", "y"}, map[string]uint16{}), "all untested keep their order")
 }

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -965,17 +964,11 @@ func (m *OutboundMonitoring) collectCycleTargets() []string {
 		if state.invalid || time.Since(state.history.Time) >= m.mainInterval {
 			tags = append(tags, tag)
 			delays[tag] = state.history.Delay
-			if delays[tag] == 0 { // untested: after every member with a result, cached or not
-				delays[tag] = TimeoutDelay
-			}
 		}
 		state.mu.Unlock()
 	}
 
-	sort.SliceStable(tags, func(i, j int) bool {
-		return delays[tags[i]] < delays[tags[j]]
-	})
-	return tags
+	return cycleOrder(tags, delays) //H: untested members from the 10th, see cycleOrder
 }
 
 func (m *OutboundMonitoring) Touch() {

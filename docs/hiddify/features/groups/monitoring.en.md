@@ -42,9 +42,10 @@ It does not. It finds out which outbounds work, so groups can avoid the blocked 
   pick, a balancer's current member, through nested groups) is tested ahead of everything else:
   the ping the user looks at shows at once. Then tests run in cycles every `interval`. Each
   cycle tests the outbounds whose result is older than `interval` or marked for testing, fastest
-  first (by the last result, cached or not), then the untested ones, `workers` at a time. So the
-  first cycle tests last run's fastest member first, and a group on that member confirms it
-  before the others arrive.
+  first (by the last result, cached or not), `workers` at a time. The members never tested take
+  every other place among the ones that answered (10 ms, new, 12 ms, new, ...), and the ones
+  that failed come last. So the first cycle tests last run's fastest member first, and a group on that member confirms it before the others arrive,
+  and a large subscription's new members are not left until after a cycle of timeouts.
 - When no connection has gone through sing-box for `idle_timeout`, testing stops. The next
   connection starts it again.
 - An outbound that is not ready yet, for example Psiphon still connecting, or whose detour has no
