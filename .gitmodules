@@ -38,3 +38,7 @@
 	path = replace/soar
 	url = https://github.com/hiddify/soar
 	branch = hiddify
+[submodule "replace/sing"]
+	path = replace/sing
+	url = https://github.com/hiddify/sing.git
+	branch = v5
