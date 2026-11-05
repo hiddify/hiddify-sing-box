@@ -45,6 +45,7 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 	if err != nil {
 		return nil, fmt.Errorf("failed to build mieru client config: %w", err)
 	}
+	config.Resolver = newMieruResolver(ctx, outboundDialer) //H
 	c := mieruclient.NewClient()
 	if err := c.Store(config); err != nil {
 		return nil, fmt.Errorf("failed to store mieru client config: %w", err)
