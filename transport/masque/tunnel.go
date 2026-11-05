@@ -203,7 +203,7 @@ func (e *Tunnel) getIpConn() (*connectip.Conn, error) {
 	}
 	timer := time.NewTimer(0)
 	defer timer.Stop()
-	for {
+	for failures := 1; ; failures++ { //H
 		conn, err := e.connect()
 		if err == nil {
 			e.udpConn = conn.udpConn
@@ -219,8 +219,8 @@ func (e *Tunnel) getIpConn() (*connectip.Conn, error) {
 			return nil, e.ctx.Err()
 		}
 		e.logger.ErrorContext(e.ctx, E.Cause(err, "connect MASQUE tunnel"))
-		e.lastError.Store(&err) //H
-		timer.Reset(e.options.ReconnectDelay)
+		e.lastError.Store(&err)                                           //H
+		timer.Reset(reconnectBackoff(e.options.ReconnectDelay, failures)) //H
 		select {
 		case <-e.ctx.Done():
 			return nil, e.ctx.Err()

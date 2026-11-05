@@ -10,6 +10,7 @@ import (
 	"errors"
 	"net"
 	"os"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -208,15 +209,20 @@ func TestH_ConnectTunnelListenError(t *testing.T) {
 	require.Equal(t, M.ParseSocksaddr("192.0.2.1:443"), dialer.listened.Unwrap())
 }
 
+// hFailingDialer fails every dial at once, as a detour does when its own server cannot be
+// resolved, and counts the attempts.
 type hFailingDialer struct {
 	listened M.Socksaddr
+	dials    atomic.Int32
 }
 
 func (d *hFailingDialer) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
+	d.dials.Add(1)
 	return nil, errors.New("dial refused")
 }
 
 func (d *hFailingDialer) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
+	d.dials.Add(1)
 	d.listened = destination
 	return nil, errors.New("listen refused")
 }
