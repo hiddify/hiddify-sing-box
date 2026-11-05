@@ -36,6 +36,20 @@ var (
 		netip.MustParsePrefix("188.114.99.0/24"),
 		netip.MustParsePrefix("2606:4700:d0::/64"),
 		netip.MustParsePrefix("2606:4700:d1::/64"),
+		// wider ranges WARP endpoints were seen in; the scanner picks a range first, so the
+		// narrower ones above, which answer most, keep most of the tries
+		netip.MustParsePrefix("162.159.192.0/21"),
+		netip.MustParsePrefix("188.114.96.0/20"),
+		netip.MustParsePrefix("8.6.112.0/24"),
+		netip.MustParsePrefix("8.34.70.0/24"),
+		netip.MustParsePrefix("8.34.146.0/24"),
+		netip.MustParsePrefix("8.35.211.0/24"),
+		netip.MustParsePrefix("8.39.125.0/24"),
+		netip.MustParsePrefix("8.39.204.0/24"),
+		netip.MustParsePrefix("8.39.214.0/24"),
+		netip.MustParsePrefix("8.47.69.0/24"),
+		netip.MustParsePrefix("2606:4700:100::/48"),
+		netip.MustParsePrefix("2606:4700:d0::/48"),
 	}
 )
 

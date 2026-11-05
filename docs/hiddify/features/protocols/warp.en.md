@@ -339,7 +339,12 @@ The probe sends what the device sends: the configured noise, or with `awg` its j
 packets.
 
 The default ranges are `162.159.192.0/24`, `162.159.193.0/24`, `162.159.195.0/24`,
-`188.114.96.0/24` to `188.114.99.0/24`, `2606:4700:d0::/64` and `2606:4700:d1::/64`.
+`188.114.96.0/24` to `188.114.99.0/24`, `2606:4700:d0::/64` and `2606:4700:d1::/64`, then the
+wider ranges WARP endpoints were also seen in: `162.159.192.0/21`, `188.114.96.0/20`,
+`8.6.112.0/24`, `8.34.70.0/24`, `8.34.146.0/24`, `8.35.211.0/24`, `8.39.125.0/24`,
+`8.39.204.0/24`, `8.39.214.0/24`, `8.47.69.0/24`, `2606:4700:100::/48` and `2606:4700:d0::/48`.
+The scanner picks a range first and then an address in it, so the narrow ranges, which answer
+most, keep most of the tries.
 
 Notes:
 
