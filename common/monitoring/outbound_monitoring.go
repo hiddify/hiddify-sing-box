@@ -702,6 +702,7 @@ func (m *OutboundMonitoring) tester(parent context.Context, tag string, interim 
 	}
 
 	idx := m.currentLinkIndex.Load()
+	factor := m.timeoutFactor(out.outbound) //H
 
 	var ( //H
 		delay uint16
@@ -710,7 +711,7 @@ func (m *OutboundMonitoring) tester(parent context.Context, tag string, interim 
 	if staged { //H
 		delay, err = m.stagedURLTest(parent, m.urls[idx], out.outbound, interim, worked)
 	} else {
-		ctx, cancel := context.WithTimeout(parent, m.urlTestTimeout)
+		ctx, cancel := context.WithTimeout(parent, factor*m.urlTestTimeout) //H
 		defer cancel()
 		delay, err = urltest.URLTest(ctx, m.urls[idx], out.outbound)
 	}
@@ -737,7 +738,7 @@ func (m *OutboundMonitoring) tester(parent context.Context, tag string, interim 
 	} //H
 	if out.history.IpInfo == nil || out.history.IpInfoFromCache { //H: until looked up in this run
 
-		ctx, cancel2 := context.WithTimeout(parent, m.urlTestTimeout)
+		ctx, cancel2 := context.WithTimeout(parent, factor*m.urlTestTimeout) //H
 		defer cancel2()
 
 		newip, t, err := ipinfo.GetIpInfo(m.logger, ctx, out.outbound, m.ipInfoURL)

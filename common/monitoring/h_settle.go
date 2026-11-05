@@ -34,7 +34,11 @@ func (m *OutboundMonitoring) testHardLimit(task *testTask) time.Duration {
 	if task.staged {
 		test = m.onDemand[len(m.onDemand)-1]
 	}
-	return 2*test + m.urlTestTimeout + 2*networkResetWait
+	factor := time.Duration(1)
+	if state, ok := m.reg().outbounds[task.outboundTag]; ok {
+		factor = m.timeoutFactor(state.outbound)
+	}
+	return factor * (2*test + m.urlTestTimeout + 2*networkResetWait)
 }
 
 // settle records a test's result, once: the first of its result and of giving up on it counts,

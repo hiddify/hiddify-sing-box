@@ -44,6 +44,9 @@ func (m *OutboundMonitoring) stagedURLTest(parent context.Context, link string, 
 	if worked && len(marks) > 1 {
 		marks = marks[1:]
 	}
+	if factor := m.timeoutFactor(out); factor != 1 {
+		marks = scaleMarks(marks, factor)
+	}
 	ctx, cancel := context.WithTimeout(parent, marks[len(marks)-1])
 	defer cancel()
 	type result struct {
@@ -117,4 +120,13 @@ func (m *OutboundMonitoring) stagedURLTest(parent context.Context, link string, 
 			next++
 		}
 	}
+}
+
+// scaleMarks is marks, each factor times as long.
+func scaleMarks(marks []time.Duration, factor time.Duration) []time.Duration {
+	scaled := make([]time.Duration, len(marks))
+	for i, mark := range marks {
+		scaled[i] = factor * mark
+	}
+	return scaled
 }

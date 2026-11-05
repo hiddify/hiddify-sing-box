@@ -86,6 +86,11 @@ It does not. It finds out which outbounds work, so groups can avoid the blocked 
   whose dial ignores its deadline, as one into a native library may) counts as failed, and its
   worker goes on. Otherwise a few such outbounds would hold every worker, and the cycle, for
   good, and nothing would be tested again.
+- A DNS tunnel (`dnstt`, `masterdns`, `soar`) gets three times every limit: `url_test_timeout`,
+  the marks of a test asked for, and the time before a test that has not returned counts as
+  failed. So does a group that selects one, and an outbound that dials through one. Its requests
+  go inside DNS queries through recursive resolvers, and its server looks up the test URL's host,
+  so a working one can take longer than a proxy's test may.
 
 ### URLs
 
