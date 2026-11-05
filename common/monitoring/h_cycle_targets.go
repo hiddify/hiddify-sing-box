@@ -4,7 +4,7 @@ import "slices"
 
 // cycleOrder orders the cycle's targets: the ones that answered, fastest first by their last
 // delay, with the members never tested (delay 0) taking every other place among them, then the
-// ones that failed. With 10, 12 and 15 ms, a failed one and four untested: 10, new, 12, new, 15,
+// ones that failed, in this run or the last one. With 10, 12 and 15 ms, a failed one and four untested: 10, new, 12, new, 15,
 // new, new, failed. The fastest of the last run are tested first, and a large subscription's new
 // members do not wait for all of them, nor for a cycle of timeouts. delays is each target's last
 // delay, cached or of this run.

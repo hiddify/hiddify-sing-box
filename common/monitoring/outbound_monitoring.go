@@ -1285,9 +1285,7 @@ func (m *OutboundMonitoring) loadHistory() *History {
 			if _, ok := m.reg().groups[tag]; ok {
 				continue
 			}
-			if his.Delay >= TimeoutDelay {
-				his.Delay = 0
-			}
+			// H: a cached timeout stays one, so the cycle tests it last (cycleOrder)
 			state.mu.Lock()
 			state.history = *his
 			state.history.IpInfoFromCache = his.IpInfo != nil //H

@@ -44,7 +44,7 @@ It does not. It finds out which outbounds work, so groups can avoid the blocked 
   cycle tests the outbounds whose result is older than `interval` or marked for testing, fastest
   first (by the last result, cached or not), `workers` at a time. The members never tested take
   every other place among the ones that answered (10 ms, new, 12 ms, new, ...), and the ones
-  that failed come last. So the first cycle tests last run's fastest member first, and a group on that member confirms it before the others arrive,
+  that failed, in this run or the last one, come last. So the first cycle tests last run's fastest member first, and a group on that member confirms it before the others arrive,
   and a large subscription's new members are not left until after a cycle of timeouts.
 - When no connection has gone through sing-box for `idle_timeout`, testing stops. The next
   connection starts it again.

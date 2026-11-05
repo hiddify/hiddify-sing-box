@@ -343,7 +343,7 @@ func TestH_MonitoringSaveLoadHistory(t *testing.T) {
 	require.Equal(t, uint16(77), ha.Delay)
 	require.True(t, ha.IsFromCache)
 	require.Equal(t, "US", ha.IpInfo.CountryCode)
-	require.Equal(t, uint16(0), m2.getUrlTest("b").Delay, "cached timeouts are reset to untested")
+	require.Equal(t, TimeoutDelay, m2.getUrlTest("b").Delay, "a cached timeout stays one")
 
 	cache.data["outbound_monitoring_history"] = &adapter.SavedBinary{Content: []byte("{garbage")}
 	m3 := newTestMonitor(t, cache, option.MonitoringOptions{}, a, b, grp)
