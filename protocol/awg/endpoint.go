@@ -48,6 +48,9 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 	if options.MTU == 0 {
 		options.MTU = 1408
 	}
+	if options.Detour != "" && options.ListenPort != 0 { //H: a server listens itself, as WireGuard's
+		return nil, E.New("`listen_port` is conflict with `detour`") //H
+	} //H
 
 	options.UDPFragmentDefault = true
 	reserved, err := reservedOptions(options) //H
@@ -125,6 +128,7 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 		Reserved:         reserved,                                             //H
 		MTUDiscovery:     options.MTUDiscovery == nil || *options.MTUDiscovery, //H
 		Fallback:         fallback,                                             //H
+		ListenPort:       options.ListenPort,                                   //H
 	})
 	if err != nil {
 		return nil, err

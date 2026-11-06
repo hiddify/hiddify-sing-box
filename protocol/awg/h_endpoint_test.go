@@ -346,3 +346,13 @@ func hRequireDisplay(t *testing.T, base string, display string, message ...any) 
 	t.Helper()
 	require.Equal(t, base, display, message...)
 }
+
+// A server listens on its own port; through a detour it could not, as with WireGuard.
+func TestH_EndpointListenPortConflictsWithDetour(t *testing.T) {
+	_, err := NewEndpoint(context.Background(), nil, log.NewNOPFactory().NewLogger("awg"), "awg", option.AwgEndpointOptions{
+		DialerOptions: option.DialerOptions{Detour: "proxy"},
+		PrivateKey:    "uN6S8oN9gV0F8b4yQ5yHqJm5H1n7cPq0p1Yy9Hj2bWk=",
+		ListenPort:    51820,
+	})
+	require.ErrorContains(t, err, "`listen_port` is conflict with `detour`")
+}

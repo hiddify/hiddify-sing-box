@@ -88,7 +88,7 @@ blocked or throttled. The encryption is the same as in WireGuard.
 | `private_key` | string | required | Your WireGuard private key, base64. |
 | `address` | list of prefixes | required | Addresses of this side inside the tunnel, such as `10.8.0.2/32`. |
 | `mtu` | number | `1408` | MTU of the tunnel. |
-| `listen_port` | number | random | UDP port to listen on. Set it when peers connect to you. |
+| `listen_port` | number | random | UDP port to listen on. Set it when peers connect to you. Not with `detour`: a server listens itself. |
 | `useIntegratedTun` | bool | `false` | Create a real system TUN interface for the tunnel instead of the built-in user-space network stack. |
 | `awg` | object | none | Obfuscation values. See below. |
 | `peers` | list | none | The peers. See below. |

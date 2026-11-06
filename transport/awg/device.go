@@ -32,6 +32,8 @@ type DeviceOpts struct {
 	// MTUDiscovery and Fallback, the peer's other addresses: see h_path.go. //H
 	MTUDiscovery bool             //H
 	Fallback     []netip.AddrPort //H
+	// ListenPort, set on a server, is the port its peers send to: see h_listen.go. //H
+	ListenPort uint16 //H
 }
 
 type Device struct {
@@ -72,7 +74,7 @@ func NewDevice(ctx context.Context, logger logger.ContextLogger, dial network.Di
 
 	return &Device{
 		tun:       tun,
-		bind:      newBind(ctx, dial, opts.Peer, opts.Reserved),
+		bind:      newDeviceBind(ctx, dial, opts), //H: a server listens on its port
 		logger:    awgLogger,
 		ipcConfig: ipcConfig,
 		path:      newDevicePath(ctx, logger, tun, opts), //H
