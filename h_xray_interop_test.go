@@ -229,6 +229,16 @@ func TestH_XrayXHTTP(t *testing.T) {
 			{"packet-up obfs header",
 				`"mode": "packet-up", "path": "/xh", "xPaddingObfsMode": true, "xPaddingPlacement": "header", "xPaddingHeader": "X-Pad", "xPaddingKey": "x_pad"`,
 				`"mode": "packet-up", "path": "/xh", "x_padding_obfs_mode": true, "x_padding_placement": "header", "x_padding_header": "X-Pad", "x_padding_key": "x_pad"`},
+			// hiddify-app#2479: tokenish padding with obfs mode and a custom header and key
+			{"stream-one tokenish obfs",
+				`"mode": "stream-one", "path": "/xh", "xPaddingObfsMode": true, "xPaddingMethod": "tokenish", "xPaddingPlacement": "queryInHeader", "xPaddingHeader": "9267f8", "xPaddingKey": "_826c26"`,
+				`"mode": "stream-one", "path": "/xh", "x_padding_obfs_mode": true, "x_padding_method": "tokenish", "x_padding_placement": "queryInHeader", "x_padding_header": "9267f8", "x_padding_key": "_826c26"`},
+			{"stream-up tokenish obfs",
+				`"mode": "stream-up", "path": "/xh", "xPaddingObfsMode": true, "xPaddingMethod": "tokenish", "xPaddingPlacement": "queryInHeader", "xPaddingHeader": "9267f8", "xPaddingKey": "_826c26"`,
+				`"mode": "stream-up", "path": "/xh", "x_padding_obfs_mode": true, "x_padding_method": "tokenish", "x_padding_placement": "queryInHeader", "x_padding_header": "9267f8", "x_padding_key": "_826c26"`},
+			{"packet-up tokenish obfs cookie",
+				`"mode": "packet-up", "path": "/xh", "xPaddingObfsMode": true, "xPaddingMethod": "tokenish", "xPaddingPlacement": "cookie", "xPaddingKey": "_826c26"`,
+				`"mode": "packet-up", "path": "/xh", "x_padding_obfs_mode": true, "x_padding_method": "tokenish", "x_padding_placement": "cookie", "x_padding_key": "_826c26"`},
 		} {
 			t.Run(version+"/"+variant.name+"/sing-box to xray", func(t *testing.T) {
 				xrayPort := hFreeTCPPort(t)
