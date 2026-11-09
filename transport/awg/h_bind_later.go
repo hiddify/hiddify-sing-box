@@ -68,3 +68,15 @@ func (b *bind_adapter) sendConn(ep conn.Endpoint) net.PacketConn {
 	}
 	return b.conn4
 }
+
+// openPending opens the bind of a peer given by a domain, before it is resolved: without a
+// connection, as the any-address ones a detour that needs a destination refuses would fail the
+// start. Resolving the peer sets its address and opens the bind again. b.mutex is held.
+func (b *bind_adapter) openPending(port uint16) ([]conn.ReceiveFunc, uint16, error) {
+	done := make(chan struct{})
+	b.later = done
+	return []conn.ReceiveFunc{func(packets [][]byte, sizes []int, eps []conn.Endpoint) (int, error) {
+		<-done
+		return 0, net.ErrClosed
+	}}, port, nil
+}

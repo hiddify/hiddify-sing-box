@@ -45,8 +45,9 @@ type Endpoint struct {
 	tracker   adapter.StatusTracker //H
 	ctx       context.Context
 	// H: see h_interface_update.go //H
-	deviceStarted atomic.Bool //H
-	bindAccess    sync.Mutex  //H
+	deviceStarted atomic.Bool  //H
+	bindAccess    sync.Mutex   //H
+	peers         *domainPeers //H: see h_domain_peer.go
 }
 
 func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.AwgEndpointOptions) (adapter.Endpoint, error) {
@@ -101,22 +102,14 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 		return nil, err
 	}
 
-	// Create peer resolver function for domain endpoints
-	// Always use system resolver for peer endpoints because:
-	// 1. VPN server must be resolved before VPN tunnel is established
-	// 2. dnsRouter may not be fully initialized at this stage
-	var resolvePeer func(domain string) (netip.Addr, error)
-	if remoteIsDomain {
-		resolvePeer = func(domain string) (netip.Addr, error) {
-			addrs, lookupErr := net.DefaultResolver.LookupNetIP(ctx, "ip", domain)
-			if lookupErr != nil {
-				return netip.Addr{}, lookupErr
-			}
-			return addrs[0], nil
-		}
-	}
+	// H: a peer given by a domain is resolved by the DNS router once the box started, not by the
+	// system resolver here: see h_domain_peer.go //H
+	ipcOptions, domainPeers, err := deferDomainPeers(options) //H
+	if err != nil {                                           //H
+		return nil, err //H
+	} //H
 
-	ipc, err := genIpcConfig(options, resolvePeer)
+	ipc, err := genIpcConfig(ipcOptions, nil) //H
 	if err != nil {
 		return nil, err
 	}
@@ -134,6 +127,7 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 		MTUDiscovery:     options.MTUDiscovery == nil || *options.MTUDiscovery, //H
 		Fallback:         fallback,                                             //H
 		ListenPort:       options.ListenPort,                                   //H
+		PeerPending:      len(options.Peers) == 1 && len(domainPeers) == 1,     //H: see h_domain_peer.go
 	})
 	if err != nil {
 		return nil, err
@@ -151,6 +145,7 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 		logger:    logger,
 		dnsRouter: service.FromContext[adapter.DNSRouter](ctx),
 		ctx:       ctx,
+		peers:     newDomainPeers(dial, domainPeers, len(options.Peers)), //H
 	}, nil
 }
 
@@ -366,6 +361,7 @@ func (o *Endpoint) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 		o.deviceStarted.Store(err == nil) //H
 		return err                        //H
 	case adapter.StartStatePostStart:
+		o.startResolvingPeers() //H: the DNS router is ready now
 		go o.readyChecker()
 	}
 	return nil

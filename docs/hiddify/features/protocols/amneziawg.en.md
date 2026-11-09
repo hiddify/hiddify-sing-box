@@ -175,7 +175,7 @@ The server needs no change: it ignores the decoy, as it ignores every `i` packet
 
 | Field | Type | Default | Meaning |
 |---|---|---|---|
-| `address` | string | none | Server IP address or domain. A domain is resolved once at start with the system resolver. |
+| `address` | string | none | Server IP address or domain. A domain is resolved by the box's DNS once it started, with the endpoint's `domain_resolver` (or `route.default_domain_resolver`), never to a fake IP; a failed lookup is tried again, and the domain is looked up again after a network change. |
 | `port` | number | none | Server UDP port. |
 | `public_key` | string | required | The peer's public key, base64. |
 | `preshared_key` | string | none | Optional preshared key, base64. |

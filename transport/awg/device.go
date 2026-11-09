@@ -34,6 +34,8 @@ type DeviceOpts struct {
 	Fallback     []netip.AddrPort //H
 	// ListenPort, set on a server, is the port its peers send to: see h_listen.go. //H
 	ListenPort uint16 //H
+	// PeerPending: the only peer is given by a domain, resolved after the start (SetPeerEndpoint). //H
+	PeerPending bool //H
 }
 
 type Device struct {

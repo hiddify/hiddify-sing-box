@@ -31,6 +31,10 @@ func (w *Endpoint) updateBind(ctx context.Context) {
 	if ctx.Err() != nil || w.ctx.Err() != nil || !w.deviceStarted.Load() {
 		return
 	}
+	// the peer's domain may have another address on this network; a move connects the bind again
+	if _, rebound := w.resolvePeersLocked(); rebound {
+		return
+	}
 	if err := w.Device.BindUpdate(); err != nil {
 		w.logger.Error(E.Cause(err, "update AmneziaWG bind after network change"))
 	}

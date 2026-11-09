@@ -15,5 +15,7 @@ func newDeviceBind(ctx context.Context, dial N.Dialer, opts DeviceOpts) conn.Bin
 	if opts.ListenPort != 0 {
 		return conn.NewStdNetBind()
 	}
-	return newBind(ctx, dial, opts.Peer, opts.Reserved)
+	bind := newBind(ctx, dial, opts.Peer, opts.Reserved).(*bind_adapter)
+	bind.pending = opts.PeerPending && !opts.Peer.IsValid()
+	return bind
 }

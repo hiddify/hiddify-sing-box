@@ -276,6 +276,7 @@ func (b *bind_adapter) setPeer(address netip.AddrPort) {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 	b.peer = address
+	b.pending = false
 }
 
 // noteOpen counts the bind's opens; each after the first reports a possible path change.

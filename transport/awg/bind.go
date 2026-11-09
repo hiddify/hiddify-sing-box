@@ -30,6 +30,7 @@ type bind_adapter struct {
 	opens    int           //H: see h_path.go
 	onReopen func()        //H
 	later    chan struct{} //H: see h_bind_later.go
+	pending  bool          //H: the only peer, given by a domain, is not resolved yet
 }
 
 func newBind(ctx context.Context, dial N.Dialer, peer netip.AddrPort, reserved *Reserved) conn.Bind {
@@ -85,6 +86,10 @@ func (b *bind_adapter) Open(port uint16) (fns []conn.ReceiveFunc, actualPort uin
 		}
 		return []conn.ReceiveFunc{b.receive(peerConn)}, port, nil
 	}
+
+	if b.pending { //H
+		return b.openPending(port) //H
+	} //H
 
 	conn4, err := b.connect(netip.IPv4Unspecified(), port)
 	if err != nil && !errors.Is(err, syscall.EAFNOSUPPORT) {
