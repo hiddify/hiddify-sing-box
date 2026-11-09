@@ -95,10 +95,10 @@ listen port is closed as soon as the transport starts: the server reads the stor
 | `s3` | object | — | For `s3`: `endpoint`, `region`, `bucket`, `path_style` (default `true`). |
 | `template` | object | — | For `template`: the HTTP requests for put, get, list and delete, as in Xray. |
 | `segment_bytes` | number | `524288` | Largest segment file, at most 16 MiB. |
-| `flush_interval_ms` | number | `20` | How long writes are gathered into one segment. |
-| `poll_interval_ms`, `max_poll_interval_ms` | number | `50`, `500` | First and longest wait between polls. |
+| `flush_interval_ms` | number | `20` (`10` on Google Drive) | How long writes are gathered into one segment. |
+| `poll_interval_ms`, `max_poll_interval_ms` | number | `50`, `500` (`200` on Google Drive) | First and longest wait between polls. |
 | `session_ttl_seconds` | number | `300` | When an idle session's files are deleted. |
-| `concurrency` | number | `8` | Requests in flight per session, at most 64. |
+| `concurrency` | number | `8` (`64` on Google Drive) | Requests in flight per session, at most 256. |
 | `eager_window_ms` | number | `2000` | How long after the last data the reader keeps polling at the fast rate. |
 | `hole_timeout_ms` | number | `30000` | How long to wait for a missing segment before the session fails. |
 | `xmux` | object | 4 connections on Google Drive over h2, else 1 | Connection reuse, the same fields as XHTTP's `xmux`. |
@@ -118,8 +118,12 @@ host's own name.
   VLESS link with `type=xdrive` and Xray's `xdriveSettings` as JSON in `xdrive=` (the stream's
   `address` and `port` included, for fronting), and ray2sing reads that link back.
 - The `local` service is for tests and for a client and a server on one machine or a shared disk.
-- Tested against Xray-core 26.10.31 in both directions over the `local` service
-  (`h_xray_xdrive_interop_test.go`).
+- The transport is Xray-core's own code, so it follows Xray's releases. From Xray 26.11.9 the
+  Google Drive backend is faster (deeper ring of slots, read-ahead, hedged reads, background token
+  refresh), with its own defaults where the config leaves `concurrency`, `flush_interval_ms` and
+  `max_poll_interval_ms` at 0.
+- Tested against Xray-core 26.11.9, 26.10.31 and the patterniha fork 26.11.9 in both directions
+  over the `local` service (`h_xray_xdrive_interop_test.go`).
 
 ## See also
 

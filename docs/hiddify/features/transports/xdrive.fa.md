@@ -96,10 +96,10 @@ XDRIVE ترنسپورت ذخیره‌سازی Xray-core است. کلاینت و 
 | `s3` | object | — | برای `s3`: `endpoint`، `region`، `bucket`، `path_style` (پیش‌فرض `true`). |
 | `template` | object | — | برای `template`: درخواست‌های HTTP برای put، get، list و delete، مثل Xray. |
 | `segment_bytes` | number | `524288` | بزرگ‌ترین فایل تکه، حداکثر ۱۶ مگابایت. |
-| `flush_interval_ms` | number | `20` | مدتی که نوشتن‌ها در یک تکه جمع می‌شوند. |
-| `poll_interval_ms`، `max_poll_interval_ms` | number | `50`، `500` | اولین و طولانی‌ترین مکث میان pollها. |
+| `flush_interval_ms` | number | `20` (`10` در Google Drive) | مدتی که نوشتن‌ها در یک تکه جمع می‌شوند. |
+| `poll_interval_ms`، `max_poll_interval_ms` | number | `50`، `500` (`200` در Google Drive) | اولین و طولانی‌ترین مکث میان pollها. |
 | `session_ttl_seconds` | number | `300` | زمانی که فایل‌های نشست بی‌کار پاک می‌شوند. |
-| `concurrency` | number | `8` | درخواست‌های هم‌زمان هر نشست، حداکثر ۶۴. |
+| `concurrency` | number | `8` (`64` در Google Drive) | درخواست‌های هم‌زمان هر نشست، حداکثر ۲۵۶. |
 | `eager_window_ms` | number | `2000` | مدتی که خواننده پس از آخرین داده با سرعت بالا poll می‌کند. |
 | `hole_timeout_ms` | number | `30000` | مدت انتظار برای تکهٔ گم‌شده پیش از شکست نشست. |
 | `xmux` | object | ۴ اتصال روی Google Drive با h2، وگرنه ۱ | استفادهٔ دوباره از اتصال‌ها، همان فیلدهای `xmux` در XHTTP. |
@@ -118,8 +118,12 @@ XDRIVE ترنسپورت ذخیره‌سازی Xray-core است. کلاینت و 
   با `type=xdrive` می‌نویسد و `xdriveSettings` در Xray را به‌صورت JSON در `xdrive=` می‌گذارد (همراه
   `address` و `port` جریان برای fronting)، و ray2sing همان لینک را می‌خواند.
 - سرویس `local` برای آزمایش و برای کلاینت و سروری روی یک ماشین یا یک دیسک مشترک است.
-- در هر دو جهت روی سرویس `local` با Xray-core 26.10.31 آزموده شده است
-  (`h_xray_xdrive_interop_test.go`).
+- این ترنسپورت کد خود Xray-core است، پس همراه نسخه‌های Xray به‌روز می‌شود. از Xray 26.11.9 بک‌اند
+  Google Drive سریع‌تر است (حلقهٔ عمیق‌تر اسلات‌ها، پیش‌خوانی، خواندن موازی، تازه‌سازی توکن در پس‌زمینه)
+  و وقتی `concurrency`، `flush_interval_ms` و `max_poll_interval_ms` در کانفیگ ۰ باشند پیش‌فرض‌های
+  خودش را دارد.
+- در هر دو جهت روی سرویس `local` با Xray-core 26.11.9 و 26.10.31 و فورک patterniha 26.11.9 آزموده شده
+  است (`h_xray_xdrive_interop_test.go`).
 
 ## همچنین ببینید
 
