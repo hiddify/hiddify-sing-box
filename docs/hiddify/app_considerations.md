@@ -61,7 +61,13 @@ do about it. Items marked **Required** break or misbehave until they are handled
 - **REALITY and fragmentation.** `tls.fragment` and `tls.record_fragment` now work with REALITY.
   hiddify-core skips fragmentation for REALITY nodes; that skip can be removed. The new
   `tls.reality.key_share` (`""`, `hybrid`, `classical`) is available; `classical` is refused by
-  Xray 26.9.8 and newer servers.
+  Xray 26.9.8 and newer servers. `auto` tests classical once per server when hybrid handshakes
+  get no answer, and keeps the result across subscription updates and (with the cache file)
+  restarts. It is opt-in, since retrying with a smaller ClientHello is something Chrome does not
+  do: the app could offer it as a setting for REALITY ("key_share: auto" for nodes without their
+  own `key_share`), and links can carry `keyshare=auto`. The first two connections to a server on
+  a network that drops the large ClientHello still fail, so a URL test or retry helps the test
+  happen before the user notices.
 - **TLS tricks.** `tls.tls_tricks` (mixed-case SNI, padding extension) now works for uTLS clients;
   padding with a `random` fingerprint is a config error.
 - **Balancer.** `delay_acceptable_ratio` now defaults to 2 when unset or 0 (the app sends 2
