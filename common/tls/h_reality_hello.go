@@ -13,9 +13,16 @@ import (
 // X25519MLKEM768 key share before the X25519 one, and REALITY needs TLS 1.3 with an X25519 key
 // share, which some fingerprints (old browsers, Android OkHttp, 360) do not send.
 //
-// With classical (key_share "classical"), X25519MLKEM768 is removed instead: the ClientHello
-// fits in one TCP segment, which some networks need, but v26.9.8+ Xray servers reject it.
+// With classical (key_share "classical", or "auto" after the test), the ClientHello is that of
+// an older version of the same browser, from before it sent X25519MLKEM768 (see
+// realityClassicalHelloID), and any X25519MLKEM768 left is removed: the ClientHello fits in one
+// TCP segment, which some networks need, but v26.9.8+ Xray servers reject it. Current browsers
+// always send X25519MLKEM768, so "current Chrome without it" would be a ClientHello no browser
+// sends; an older browser is one that is still seen.
 func realityClientHelloSpec(id utls.ClientHelloID, config *utls.Config, classical bool) (*utls.ClientHelloSpec, error) {
+	if classical {
+		id = realityClassicalHelloID(id)
+	}
 	spec, err := utls.UTLSIdToSpec(id)
 	if err != nil {
 		// randomized fingerprints have no fixed spec: generate one and take it from the result
@@ -36,6 +43,21 @@ func realityClientHelloSpec(id utls.ClientHelloID, config *utls.Config, classica
 		removeHybridKeyShare(&spec)
 	}
 	return &spec, nil
+}
+
+// realityClassicalHelloID returns the newest fingerprint of the same browser family from before
+// that browser sent a post-quantum key share. Fingerprints that never send one (Android OkHttp,
+// old versions, randomized) are kept.
+func realityClassicalHelloID(id utls.ClientHelloID) utls.ClientHelloID {
+	switch id.Client {
+	case utls.HelloChrome_Auto.Client, utls.HelloEdge_Auto.Client, utls.Hello360_Auto.Client, utls.HelloQQ_Auto.Client:
+		return utls.HelloChrome_120
+	case utls.HelloFirefox_Auto.Client:
+		return utls.HelloFirefox_120
+	case utls.HelloSafari_Auto.Client, utls.HelloIOS_Auto.Client:
+		return utls.HelloSafari_16_0
+	}
+	return id
 }
 
 // removeHybridKeyShare drops X25519MLKEM768 from the supported groups and the key shares.

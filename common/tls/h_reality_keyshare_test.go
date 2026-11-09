@@ -67,3 +67,24 @@ func TestH_RealityKeyShareOption(t *testing.T) {
 	_, err = NewRealityClient(context.Background(), log.NewNOPFactory().Logger(), "example.com", options("classic"))
 	require.ErrorContains(t, err, "unknown reality key_share")
 }
+
+// The classical ClientHello is that of an older version of the same browser, from before it sent a
+// post-quantum key share, and fits in one TCP segment.
+func TestH_RealityClassicalHelloIsOlderBrowser(t *testing.T) {
+	require.Equal(t, utls.HelloChrome_120, realityClassicalHelloID(utls.HelloChrome_Auto))
+	require.Equal(t, utls.HelloChrome_120, realityClassicalHelloID(utls.HelloEdge_Auto))
+	require.Equal(t, utls.HelloFirefox_120, realityClassicalHelloID(utls.HelloFirefox_Auto))
+	require.Equal(t, utls.HelloSafari_16_0, realityClassicalHelloID(utls.HelloSafari_Auto))
+	require.Equal(t, utls.HelloSafari_16_0, realityClassicalHelloID(utls.HelloIOS_Auto))
+	require.Equal(t, utls.HelloAndroid_11_OkHttp, realityClassicalHelloID(utls.HelloAndroid_11_OkHttp))
+	for _, id := range []utls.ClientHelloID{utls.HelloChrome_Auto, utls.HelloFirefox_Auto, utls.HelloSafari_Auto, utls.HelloIOS_Auto,
+		utls.HelloEdge_Auto, utls.HelloAndroid_11_OkHttp, utls.Hello360_Auto, utls.HelloQQ_Auto, utls.HelloRandomized} {
+		config := &utls.Config{ServerName: "www.example.com"}
+		spec, err := realityClientHelloSpec(id, config, true)
+		require.NoError(t, err, id.Str())
+		uConn := utls.UClient(nil, config, utls.HelloCustom)
+		require.NoError(t, uConn.ApplyPreset(spec), id.Str())
+		require.NoError(t, uConn.BuildHandshakeState(), id.Str())
+		require.Less(t, len(uConn.HandshakeState.Hello.Raw), 1200, "classical ClientHello of %s fits one segment", id.Str())
+	}
+}

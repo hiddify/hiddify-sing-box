@@ -274,5 +274,5 @@ type OutboundRealityOptions struct {
 	Enabled   bool   `json:"enabled,omitempty"`
 	PublicKey string `json:"public_key,omitempty"`
 	ShortID   string `json:"short_id,omitempty"`
-	KeyShare  string `json:"key_share,omitempty"` //H: "", "hybrid" or "classical"
+	KeyShare  string `json:"key_share,omitempty"` //H: "" (hybrid), "hybrid", "classical" or "auto" (classical when hybrid gets no answer, tested once)
 }

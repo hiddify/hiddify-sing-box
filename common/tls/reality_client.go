@@ -50,7 +50,9 @@ type RealityClientConfig struct {
 	uClient   *UTLSClientConfig
 	publicKey []byte
 	shortID   [8]byte
-	classical bool //H: key_share "classical", no X25519MLKEM768
+	classical bool                 //H: key_share "classical", no X25519MLKEM768
+	auto      *realityKeyShareAuto //H: key_share "auto": classical, tested once, when hybrid handshakes get no answer
+	logger    logger.ContextLogger //H
 }
 
 func NewRealityClient(ctx context.Context, logger logger.ContextLogger, serverAddress string, options option.OutboundTLSOptions) (Config, error) {
@@ -92,15 +94,18 @@ func newRealityClient(ctx context.Context, logger logger.ContextLogger, serverAd
 		return nil, E.New("invalid short_id")
 	}
 
-	var classical bool //H: key_share
-	switch options.Reality.KeyShare {
-	case "", "hybrid":
+	var classical bool                //H: key_share
+	var auto *realityKeyShareAuto     //H
+	switch options.Reality.KeyShare { //H
+	case "", "hybrid": //H
+	case "auto": //H
+		auto = realityKeyShareAutoFor(serverAddress, options.ServerName, publicKey) //H
 	case "classical":
 		classical = true
 	default:
-		return nil, E.New("unknown reality key_share: ", options.Reality.KeyShare, ` (expected "hybrid" or "classical")`)
+		return nil, E.New("unknown reality key_share: ", options.Reality.KeyShare, ` (expected "hybrid", "classical" or "auto")`) //H
 	}
-	var config Config = &RealityClientConfig{ctx, uClient.(*UTLSClientConfig), publicKey, shortID, classical} //H
+	var config Config = &RealityClientConfig{ctx, uClient.(*UTLSClientConfig), publicKey, shortID, classical, auto, logger} //H
 	if options.KernelRx || options.KernelTx {
 		if !C.IsLinux {
 			return nil, E.New("kTLS is only supported on Linux")
@@ -152,7 +157,17 @@ func (e *RealityClientConfig) Client(conn net.Conn) (Conn, error) {
 // release instead of sing-box's old 1.8.1, which those servers reject.
 var realityClientVersion = [3]byte{26, 10, 17}
 
-func (e *RealityClientConfig) ClientHandshake(ctx context.Context, conn net.Conn) (aTLS.Conn, error) {
+func (e *RealityClientConfig) ClientHandshake(ctx context.Context, conn net.Conn) (aTLS.Conn, error) { //H
+	if e.auto == nil { //H
+		return e.clientHandshake(ctx, conn, e.classical) //H
+	} //H
+	classical := e.auto.useClassical(e.ctx)                 //H
+	tlsConn, err := e.clientHandshake(ctx, conn, classical) //H
+	e.auto.report(ctx, e.ctx, e.logger, classical, err)     //H
+	return tlsConn, err                                     //H
+} //H
+
+func (e *RealityClientConfig) clientHandshake(ctx context.Context, conn net.Conn, classical bool) (aTLS.Conn, error) { //H
 	verifier := &realityVerifier{
 		serverName: e.uClient.ServerName(),
 	}
@@ -163,7 +178,7 @@ func (e *RealityClientConfig) ClientHandshake(ctx context.Context, conn net.Conn
 	// H: the fingerprint is changed to pass both older and v26.10+ Xray servers (see
 	// realityClientHelloSpec). The auth key comes from the X25519 share (KeyShareKeys.Ecdhe),
 	// which REALITY servers check first, as Xray's own client does.
-	spec, err := realityClientHelloSpec(e.uClient.id, uConfig, e.classical) //H
+	spec, err := realityClientHelloSpec(e.uClient.id, uConfig, classical) //H
 	if err != nil {
 		return nil, err
 	}
@@ -252,7 +267,7 @@ func (e *RealityClientConfig) ClientHandshake(ctx context.Context, conn net.Conn
 
 	if !verifier.verified {
 		go realityClientFallback(e.ctx, uConn, e.uClient.ServerName(), e.uClient.id)
-		return nil, E.New("reality verification failed")
+		return nil, errRealityVerificationFailed //H
 	}
 
 	return &realityClientConnWrapper{uConn}, nil
@@ -297,6 +312,8 @@ func (e *RealityClientConfig) Clone() Config {
 		e.publicKey,
 		e.shortID,
 		e.classical, //H
+		e.auto,      //H: shared, so the clones learn together
+		e.logger,    //H
 	}
 }
 
