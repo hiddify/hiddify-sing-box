@@ -34,7 +34,10 @@ func (c *splitConn) Close() error {
 	}
 
 	err := c.writer.Close()
-	err2 := c.reader.Close()
+	var err2 error       //H
+	if c.reader != nil { //H: a dial that failed has no reader yet
+		err2 = c.reader.Close() //H
+	} //H
 	if err != nil {
 		return err
 	}

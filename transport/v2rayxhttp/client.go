@@ -143,6 +143,10 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 			}
 		},
 	}
+	fail := func(err error) (net.Conn, error) { //H: a failed dial releases what it took
+		conn.Close()    //H
+		return nil, err //H
+	} //H
 	var err error
 	if mode == "stream-one" {
 		requestURL.Path = options.GetNormalizedPath()
@@ -151,7 +155,7 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 		}
 		conn.reader, conn.remoteAddr, conn.localAddr, err = httpClient.OpenStream(ctx, requestURL.String(), sessionId, reader, false)
 		if err != nil { // browser dialer only
-			return nil, err
+			return fail(err) //H
 		}
 		return &conn, nil
 	} else { // stream-down
@@ -160,7 +164,7 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 		}
 		conn.reader, conn.remoteAddr, conn.localAddr, err = httpClient2.OpenStream(ctx, requestURL2.String(), sessionId, nil, false)
 		if err != nil { // browser dialer only
-			return nil, err
+			return fail(err) //H
 		}
 	}
 	if mode == "stream-up" {
@@ -169,7 +173,7 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 		}
 		_, _, _, err = httpClient.OpenStream(ctx, requestURL.String(), sessionId, reader, true)
 		if err != nil { // browser dialer only
-			return nil, err
+			return fail(err) //H
 		}
 		return &conn, nil
 	}
@@ -188,6 +192,7 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 		uploadPipeWriter,
 		maxUploadSize,
 	}
+	ctx = context.WithoutCancel(ctx) //H: the uploads belong to the conn, which outlives the dial context
 	go func() {
 		var seq int64
 		var lastWrite time.Time

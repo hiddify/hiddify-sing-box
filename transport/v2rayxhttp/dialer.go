@@ -63,7 +63,8 @@ func (c *DefaultDialerClient) OpenStream(ctx context.Context, url string, sessio
 	if body != nil {
 		method = c.options.GetNormalizedUplinkHTTPMethod() // stream-up/one
 	}
-	req, _ := http.NewRequestWithContext(context.WithoutCancel(ctx), method, url, body)
+	requestCtx, cancelRequest := context.WithCancel(context.WithoutCancel(ctx)) //H: the stream lives until Close, not until the dial context ends
+	req, _ := http.NewRequestWithContext(requestCtx, method, url, body)         //H
 	req.Header = c.options.GetRequestHeader()
 	length := int(c.options.GetNormalizedXPaddingBytes().Rand())
 	config := XPaddingConfig{Length: length}
@@ -88,9 +89,9 @@ func (c *DefaultDialerClient) OpenStream(ctx context.Context, url string, sessio
 	if method == c.options.GetNormalizedUplinkHTTPMethod() && !c.options.NoGRPCHeader {
 		req.Header.Set("Content-Type", "application/grpc")
 	}
-	reader := &WaitReadCloser{ctx: ctx, Wait: make(chan struct{})} //H: the goroutine keeps its own reference, wrc is a result
-	wrc = reader                                                   //H
-	var doErr atomic.Pointer[error]                                //H: a request that fails before connecting is returned, not hidden in a dead reader
+	reader := &WaitReadCloser{Wait: make(chan struct{}), cancel: cancelRequest} //H: the goroutine keeps its own reference, wrc is a result
+	wrc = reader                                                                //H
+	var doErr atomic.Pointer[error]                                             //H: a request that fails before connecting is returned, not hidden in a dead reader
 	go func() {
 		resp, err := c.client.Do(req)
 		if err != nil {
@@ -117,9 +118,12 @@ func (c *DefaultDialerClient) OpenStream(ctx context.Context, url string, sessio
 	if failure := doErr.Load(); failure != nil { //H
 		return nil, nil, nil, *failure //H
 	} //H
-	if addrs := connAddrs.Load(); addrs != nil {
-		remoteAddr, localAddr = addrs[0], addrs[1]
-	}
+	addrs := connAddrs.Load() //H
+	if addrs == nil {         //H: the dial context ended first: a conn without addresses is no conn
+		reader.Close()                  //H: abandons the pending request
+		return nil, nil, nil, ctx.Err() //H
+	} //H
+	remoteAddr, localAddr = addrs[0], addrs[1] //H
 	return
 }
 
@@ -259,8 +263,10 @@ func (c *DefaultDialerClient) PostPacket(ctx context.Context, url string, sessio
 
 // WaitReadCloser is the download stream of OpenStream: reads wait until the response arrives
 // (Set) or the stream is closed. Set runs on the request goroutine, so the reader is guarded.
+// Its lifetime ends with Close, which also cancels the request (cancel), never with the dial
+// context: a multiplexer cancels that one as soon as the dial returns.
 type WaitReadCloser struct {
-	ctx    context.Context
+	cancel context.CancelFunc //H
 	Wait   chan struct{}
 	access sync.Mutex
 	reader io.ReadCloser
@@ -280,11 +286,7 @@ func (w *WaitReadCloser) Set(rc io.ReadCloser) {
 }
 
 func (w *WaitReadCloser) Read(b []byte) (int, error) {
-	select {
-	case <-w.ctx.Done():
-		return 0, w.ctx.Err()
-	case <-w.Wait:
-	}
+	<-w.Wait //H
 	w.access.Lock()
 	reader := w.reader
 	w.access.Unlock()
@@ -306,6 +308,9 @@ func (w *WaitReadCloser) Close() error {
 		close(w.Wait)
 	}
 	w.access.Unlock()
+	if w.cancel != nil { //H
+		w.cancel() //H
+	} //H
 	if reader != nil {
 		return reader.Close()
 	}
