@@ -19,7 +19,10 @@ func TestH_UTLSXrayFingerprintNames(t *testing.T) {
 	require.Equal(t, utls.HelloFirefox_148, id)
 	id, err = uTLSClientHelloID("chrome")
 	require.NoError(t, err)
-	require.Equal(t, utls.HelloChrome_Auto, id, "sing-box's own names first")
+	require.Equal(t, utls.HelloChrome_155, id, "sing-box's own names first")
+	id, err = uTLSClientHelloID("hellochrome_auto")
+	require.NoError(t, err)
+	require.Equal(t, utls.HelloChrome_155, id, "hellochrome_auto is Chrome 155, as Xray's")
 	_, err = uTLSClientHelloID("hellochrome_999")
 	require.Error(t, err)
 }

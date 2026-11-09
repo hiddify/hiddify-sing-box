@@ -379,7 +379,7 @@ var (
 
 func init() {
 	modernFingerprints := []utls.ClientHelloID{
-		utls.HelloChrome_Auto,
+		hChromeFingerprint, //H: Chrome 155, as Xray
 		utls.HelloFirefox_Auto,
 		utls.HelloEdge_Auto,
 		utls.HelloSafari_Auto,
@@ -400,7 +400,7 @@ func uTLSClientHelloID(name string) (utls.ClientHelloID, error) {
 	case "chrome_psk", "chrome_psk_shuffle", "chrome_padding_psk_shuffle", "chrome_pq", "chrome_pq_psk":
 		fallthrough
 	case "chrome", "":
-		return utls.HelloChrome_Auto, nil
+		return hChromeFingerprint, nil //H: Chrome 155, as Xray
 	case "firefox":
 		return utls.HelloFirefox_Auto, nil
 	case "edge":

@@ -8,6 +8,12 @@ import (
 	utls "github.com/metacubex/utls"
 )
 
+// hChromeFingerprint is the ClientHello of the "chrome" fingerprint: Chrome 155, as Xray from
+// v26.11.9, whose uTLS made it HelloChrome_Auto because TSPU does not target it yet
+// (XTLS/Xray-core#7259). The uTLS fork used here still has Chrome 133 as HelloChrome_Auto; its
+// Chrome 155 ClientHello is the same as upstream uTLS's.
+var hChromeFingerprint = utls.HelloChrome_155
+
 // xrayFingerprints are Xray's fingerprint names for a fixed uTLS ClientHello (its
 // ModernFingerprints and OtherFingerprints), so an Xray link's fp= value works here too. The
 // short names (chrome, firefox, ...) are sing-box's own and are read before these. //H
@@ -17,6 +23,7 @@ var xrayFingerprints = map[string]utls.ClientHelloID{
 	"hellochrome_120":                  utls.HelloChrome_120,
 	"hellochrome_131":                  utls.HelloChrome_131,
 	"hellochrome_133":                  utls.HelloChrome_133,
+	"hellochrome_155":                  utls.HelloChrome_155,
 	"helloios_13":                      utls.HelloIOS_13,
 	"helloios_14":                      utls.HelloIOS_14,
 	"helloedge_106":                    utls.HelloEdge_106,
@@ -35,7 +42,7 @@ var xrayFingerprints = map[string]utls.ClientHelloID{
 	"hellofirefox_99":                  utls.HelloFirefox_99,
 	"hellofirefox_102":                 utls.HelloFirefox_102,
 	"hellofirefox_105":                 utls.HelloFirefox_105,
-	"hellochrome_auto":                 utls.HelloChrome_Auto,
+	"hellochrome_auto":                 hChromeFingerprint,
 	"hellochrome_58":                   utls.HelloChrome_58,
 	"hellochrome_62":                   utls.HelloChrome_62,
 	"hellochrome_70":                   utls.HelloChrome_70,
