@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"net"
 	"net/netip"
+	"sync"        //H
+	"sync/atomic" //H
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -42,6 +44,9 @@ type Endpoint struct {
 	started   bool
 	tracker   adapter.StatusTracker //H
 	ctx       context.Context
+	// H: see h_interface_update.go //H
+	deviceStarted atomic.Bool //H
+	bindAccess    sync.Mutex  //H
 }
 
 func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.AwgEndpointOptions) (adapter.Endpoint, error) {
@@ -357,7 +362,9 @@ func (o *Endpoint) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	}
 	switch stage {
 	case adapter.StartStateStart:
-		return o.Device.Start(stage)
+		err := o.Device.Start(stage)      //H
+		o.deviceStarted.Store(err == nil) //H
+		return err                        //H
 	case adapter.StartStatePostStart:
 		go o.readyChecker()
 	}

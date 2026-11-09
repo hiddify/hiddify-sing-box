@@ -116,12 +116,12 @@ func (b *bind_adapter) Close() error {
 	b.closeLater() //H
 
 	if b.conn4 != nil {
-		err4 = b.conn4.Close()
+		err4 = closeConn(b.conn4) //H: closed already by a network change
 		b.conn4 = nil
 	}
 
 	if b.conn6 != nil {
-		err6 = b.conn6.Close()
+		err6 = closeConn(b.conn6) //H
 		b.conn6 = nil
 	}
 
