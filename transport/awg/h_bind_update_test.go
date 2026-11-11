@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/hiddify/peerfallback"
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
@@ -120,8 +121,65 @@ func TestH_PendingPeerSetLater(t *testing.T) {
 	t.Cleanup(func() { client.Close() })
 	require.NoError(t, client.Start(adapter.StartStateStart))
 
-	require.NoError(t, client.SetPeerEndpoint(hKeyHex(serverKey.PublicKey()), netip.MustParseAddrPort("127.0.0.1:"+strconv.Itoa(int(serverPort))), true))
+	require.NoError(t, client.SetPeerEndpoint(hKeyHex(serverKey.PublicKey()), []netip.AddrPort{netip.MustParseAddrPort("127.0.0.1:" + strconv.Itoa(int(serverPort)))}, true))
 	started := time.Now()
 	require.NoError(t, hEcho(t, ctx, client, M.SocksaddrFrom(serverAddress.Addr(), 8080)))
 	require.Less(t, time.Since(started), 3*time.Second, "the handshake waited for the retry")
+}
+
+// hiddify-app#2499: the domain resolves to an IPv6 address first, on a network without IPv6. Every
+// send there fails, so the device counts nothing sent; the failed sends still count, and the
+// client moves to the IPv4 address.
+func TestH_PendingPeerUnreachableFirstAddress(t *testing.T) {
+	wait, interval := peerfallback.Wait, peerfallback.Interval
+	peerfallback.Wait, peerfallback.Interval = time.Second, 200*time.Millisecond
+	defer func() { peerfallback.Wait, peerfallback.Interval = wait, interval }()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	serverKey, clientKey := hGenKey(t), hGenKey(t)
+	serverPort := hFreeUDPPort(t)
+	serverAddress := netip.MustParsePrefix("10.77.0.1/32")
+	clientAddress := netip.MustParsePrefix("10.77.0.2/32")
+	server, err := NewDevice(ctx, logger.NOP(), &hLoopbackDialer{}, "private_key="+hKeyHex(serverKey)+
+		"\nlisten_port="+strconv.Itoa(int(serverPort))+
+		"\npublic_key="+hKeyHex(clientKey.PublicKey())+"\nallowed_ip="+clientAddress.String(),
+		DeviceOpts{Address: []netip.Prefix{serverAddress}, MTU: 1408})
+	require.NoError(t, err)
+	t.Cleanup(func() { server.Close() })
+	require.NoError(t, server.Start(adapter.StartStateStart))
+	hServeEcho(t, server, serverAddress)
+
+	// hAnyDialer's socket is IPv4: a send to an IPv6 address fails, as on a network without IPv6
+	client, err := NewDevice(ctx, logger.NOP(), hAnyDialer{}, "private_key="+hKeyHex(clientKey)+
+		"\npublic_key="+hKeyHex(serverKey.PublicKey())+"\nallowed_ip=0.0.0.0/0\npersistent_keepalive_interval=1",
+		DeviceOpts{Address: []netip.Prefix{clientAddress}, MTU: 1408, PeerPending: true})
+	require.NoError(t, err)
+	t.Cleanup(func() { client.Close() })
+	require.NoError(t, client.Start(adapter.StartStateStart))
+
+	require.NoError(t, client.SetPeerEndpoint(hKeyHex(serverKey.PublicKey()), []netip.AddrPort{
+		netip.AddrPortFrom(netip.MustParseAddr("2001:db8::1"), serverPort),
+		netip.AddrPortFrom(netip.MustParseAddr("127.0.0.1"), serverPort),
+	}, true))
+	require.Eventually(t, func() bool {
+		echoCtx, echoCancel := context.WithTimeout(ctx, time.Second)
+		defer echoCancel()
+		return hEchoErr(echoCtx, client, M.SocksaddrFrom(serverAddress.Addr(), 8080)) == nil
+	}, 20*time.Second, 100*time.Millisecond, "the client never moved to the IPv4 address")
+}
+
+// hEchoErr is hEcho without the test's assertions, for require.Eventually.
+func hEchoErr(ctx context.Context, client *Device, destination M.Socksaddr) error {
+	conn, err := client.DialContext(ctx, N.NetworkTCP, destination)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	conn.SetDeadline(time.Now().Add(time.Second))
+	payload := []byte("ping")
+	if _, err = conn.Write(payload); err != nil {
+		return err
+	}
+	_, err = io.ReadFull(conn, make([]byte, len(payload)))
+	return err
 }

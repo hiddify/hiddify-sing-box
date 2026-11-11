@@ -32,7 +32,11 @@ import (
 //     reconnect with packets that fit. It needs the user-space stack, not useIntegratedTun.
 //   - Fallback addresses: the only peer's other addresses, tried in turn when the one in use does
 //     not answer (package peerfallback). A move sets the peer's endpoint, makes the bind connect
-//     again, to the new address, and starts a handshake there at once.
+//     again, to the new address, and starts a handshake there at once. A peer given by a domain
+//     gets every address it resolves to, once it is resolved (SetPeerEndpoint): an AAAA record
+//     the network cannot reach no longer stops the tunnel (hiddify-app#2499). A send that fails
+//     counts as sent, as the device counts only the bytes that went out: a network without IPv6
+//     fails every send to an IPv6 peer, and the fallback never left it.
 //
 // Each time the bind connects again after the first, the path may have changed: the fallback
 // starts again from the peer's own address, and discovery runs again.
@@ -48,8 +52,9 @@ type devicePath struct {
 	opts      DeviceOpts
 	stack     *netstack.Net // nil: no discovery
 	tcp       *interrupt.Group
-	fallback  *peerfallback.Fallback
+	fallback  atomic.Pointer[peerfallback.Fallback] // replaced when a domain peer is resolved
 	device    *Device
+	bind      *bind_adapter         // nil: no fallback
 	publicKey device.NoisePublicKey // of the only peer
 
 	access   sync.Mutex
@@ -72,29 +77,13 @@ func (p *devicePath) start(d *Device) {
 	p.device = d
 	p.publicKey, _ = peerPublicKey(d.ipcConfig)
 	if bind, isBind := d.bind.(*bind_adapter); isBind {
+		p.bind = bind
 		bind.mutex.Lock()
 		bind.onReopen = p.pathChanged
 		peer := bind.peer
 		bind.mutex.Unlock()
-		if p.publicKey != (device.NoisePublicKey{}) && peer.IsValid() && len(p.opts.Fallback) > 0 {
-			publicKey := p.publicKey
-			p.fallback = peerfallback.New(peerfallback.Options{
-				Logger:    p.logger,
-				Addresses: append([]netip.AddrPort{peer}, p.opts.Fallback...),
-				Status:    p.status,
-				Move: func(address netip.AddrPort) bool {
-					bind.setPeer(address)
-					if err := d.awgDevice.IpcSet("public_key=" + hex.EncodeToString(publicKey[:]) + "\nupdate_only=true\nendpoint=" + address.String()); err != nil {
-						p.logger.Error("set the peer's address: ", err)
-					}
-					if err := d.awgDevice.BindUpdate(); err != nil {
-						p.logger.Error("connect to ", address, ": ", err)
-					}
-					p.startHandshake(true) // at once, not at the next retry in 5 seconds
-					return true
-				},
-			})
-			p.fallback.Start(p.ctx)
+		if peer.IsValid() && len(p.opts.Fallback) > 0 {
+			p.setAddresses(append([]netip.AddrPort{peer}, p.opts.Fallback...))
 		}
 	}
 	if p.stack != nil {
@@ -104,8 +93,35 @@ func (p *devicePath) start(d *Device) {
 	}
 }
 
+// setAddresses makes addresses the only peer's, in the order they are tried; the first is in use
+// already. Fewer than two stop the fallback.
+func (p *devicePath) setAddresses(addresses []netip.AddrPort) {
+	var fallback *peerfallback.Fallback
+	if p.bind != nil && p.publicKey != (device.NoisePublicKey{}) {
+		bind, publicKey, d := p.bind, p.publicKey, p.device
+		fallback = peerfallback.New(peerfallback.Options{
+			Logger:    p.logger,
+			Addresses: addresses,
+			Status:    p.status,
+			Move: func(address netip.AddrPort) bool {
+				bind.setPeer(address)
+				if err := d.awgDevice.IpcSet("public_key=" + hex.EncodeToString(publicKey[:]) + "\nupdate_only=true\nendpoint=" + address.String()); err != nil {
+					p.logger.Error("set the peer's address: ", err)
+				}
+				if err := d.awgDevice.BindUpdate(); err != nil {
+					p.logger.Error("connect to ", address, ": ", err)
+				}
+				p.startHandshake(true) // at once, not at the next retry in 5 seconds
+				return true
+			},
+		})
+	}
+	p.fallback.Swap(fallback).Close()
+	fallback.Start(p.ctx)
+}
+
 func (p *devicePath) close() {
-	p.fallback.Close()
+	p.fallback.Swap(nil).Close()
 	p.access.Lock()
 	defer p.access.Unlock()
 	if p.cancel != nil {
@@ -125,7 +141,7 @@ func (p *devicePath) track(network string, conn net.Conn, err error) (net.Conn, 
 
 // pathChanged is called each time the bind connects again after the first.
 func (p *devicePath) pathChanged() {
-	if p.fallback.PathChanged() {
+	if p.fallback.Load().PathChanged() {
 		return // the bind connects to the first address, which calls pathChanged again
 	}
 	if p.stack == nil {
@@ -249,7 +265,11 @@ func (p *devicePath) status() (time.Time, uint64) {
 	if err != nil {
 		return time.Time{}, 0
 	}
-	return peerfallback.ParseStatus(state)
+	handshake, tx := peerfallback.ParseStatus(state)
+	if p.bind != nil {
+		tx += p.bind.failedTx.Load() // the device counts only what went out
+	}
+	return handshake, tx
 }
 
 // peerPublicKey is the public key of the only peer in a UAPI configuration.
@@ -277,6 +297,13 @@ func (b *bind_adapter) setPeer(address netip.AddrPort) {
 	defer b.mutex.Unlock()
 	b.peer = address
 	b.pending = false
+}
+
+// noteFailedSend counts the bytes of a send that failed, as the device does not (see status).
+func (b *bind_adapter) noteFailedSend(bufs [][]byte) {
+	for _, buf := range bufs {
+		b.failedTx.Add(uint64(len(buf)))
+	}
 }
 
 // noteOpen counts the bind's opens; each after the first reports a possible path change.

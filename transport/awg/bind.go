@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/netip"
 	"sync"
+	"sync/atomic"
 	"syscall"
 
 	"github.com/amnezia-vpn/amneziawg-go/v3/conn"
@@ -31,6 +32,7 @@ type bind_adapter struct {
 	onReopen func()        //H
 	later    chan struct{} //H: see h_bind_later.go
 	pending  bool          //H: the only peer, given by a domain, is not resolved yet
+	failedTx atomic.Uint64 //H: bytes of the sends that failed, see h_path.go
 }
 
 func newBind(ctx context.Context, dial N.Dialer, peer netip.AddrPort, reserved *Reserved) conn.Bind {
@@ -169,6 +171,7 @@ func (b *bind_adapter) Send(bufs [][]byte, ep conn.Endpoint) error {
 	for _, buf := range bufs {
 		b.reserved.write(buf)
 		if _, err := conn.WriteTo(buf, udpAddr); err != nil {
+			b.noteFailedSend(bufs) //H
 			return err
 		}
 	}

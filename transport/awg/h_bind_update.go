@@ -22,18 +22,21 @@ func (d *Device) BindUpdate() error {
 	return d.awgDevice.BindUpdate()
 }
 
-// SetPeerEndpoint sets the address of the peer with the public key (hex), resolved from its
-// domain once the box started. The only peer's address is also where the bind connects: it
-// connects again at once. A handshake then starts, from the bind that gets the answer.
-func (d *Device) SetPeerEndpoint(publicKey string, address netip.AddrPort, only bool) error {
-	if d.awgDevice == nil {
+// SetPeerEndpoint sets the addresses of the peer with the public key (hex), resolved from its
+// domain once the box started: the first is used. The only peer's address is also where the bind
+// connects: it connects again at once, and the others are its fallback addresses (h_path.go). A
+// handshake then starts, from the bind that gets the answer.
+func (d *Device) SetPeerEndpoint(publicKey string, addresses []netip.AddrPort, only bool) error {
+	if d.awgDevice == nil || len(addresses) == 0 {
 		return os.ErrInvalid
 	}
+	address := addresses[0]
 	if err := d.awgDevice.IpcSet("public_key=" + publicKey + "\nupdate_only=true\nendpoint=" + address.String()); err != nil {
 		return err
 	}
 	if bind, isBind := d.bind.(*bind_adapter); isBind && only {
 		bind.setPeer(address)
+		d.path.setAddresses(addresses) // before the bind connects again: that is a path change
 		if err := d.awgDevice.BindUpdate(); err != nil {
 			return err
 		}

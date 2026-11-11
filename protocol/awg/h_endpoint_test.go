@@ -356,3 +356,15 @@ func TestH_EndpointListenPortConflictsWithDetour(t *testing.T) {
 	})
 	require.ErrorContains(t, err, "`listen_port` is conflict with `detour`")
 }
+
+// hiddify-app#2499: a domain peer gets every address it resolves to, one of each family before a
+// second of either, in the resolver's order.
+func TestH_PeerAddresses(t *testing.T) {
+	addr := netip.MustParseAddr
+	addrPort := func(s string) netip.AddrPort { return netip.MustParseAddrPort(s) }
+	require.Equal(t, []netip.AddrPort{addrPort("[2001:db8::1]:1024"), addrPort("192.0.2.1:1024"), addrPort("[2001:db8::2]:1024"), addrPort("192.0.2.2:1024")},
+		peerAddresses([]netip.Addr{addr("2001:db8::1"), addr("2001:db8::2"), addr("192.0.2.1"), addr("192.0.2.2")}, 1024))
+	require.Equal(t, []netip.AddrPort{addrPort("192.0.2.1:1024"), addrPort("[2001:db8::1]:1024"), addrPort("192.0.2.2:1024")},
+		peerAddresses([]netip.Addr{addr("::ffff:192.0.2.1"), addr("192.0.2.1"), addr("192.0.2.2"), addr("2001:db8::1")}, 1024))
+	require.Empty(t, peerAddresses(nil, 1024))
+}
