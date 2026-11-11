@@ -86,7 +86,9 @@ its changes small and close to upstream so it can follow every sing-box release.
   [URL test additions](docs/hiddify/features/groups/urltest.en.md) (more test URLs, failover mode,
   dial penalties),
   [monitoring](docs/hiddify/features/groups/monitoring.en.md) with a connection status for every
-  outbound, [unified delay](docs/hiddify/features/groups/unified-delay.en.md).
+  outbound, [lazy outbounds and keep top](docs/hiddify/features/groups/keep-top.en.md) (only the
+  fastest few proxies of a large profile exist and are tested),
+  [unified delay](docs/hiddify/features/groups/unified-delay.en.md).
 
 ### Fixes
 

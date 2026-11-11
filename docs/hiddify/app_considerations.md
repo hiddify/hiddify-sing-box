@@ -289,6 +289,31 @@ do about it. Items marked **Required** break or misbehave until they are handled
 
 ## Behaviour the app should know about
 
+- **Keep top is the core's own now, and the proxy list is always whole.** hiddify-core no longer
+  drops proxies from the config and hot reloads to keep the fastest few. With `keep-top`,
+  `keep-top-countries` or keep-top answering set, it marks the profile's proxies `lazy`, whatever
+  their number, and sets `experimental.monitoring.keep_top`
+  (`count`, `answering`, `countries`, `batch` from the new setting `keep-top-batch`, `quick`), see
+  [lazy outbounds and keep top](features/groups/keep-top.en.md). So the core lists every
+  proxy of the profile at all times, and marks the ones at rest (`OutboundInfo.resting`): not
+  loaded, not tested, not used by the groups. The app shows those folded away under the proxies
+  in use, without a loading mark. Selecting one takes it out of rest and tests it; a tap on its
+  ping tests it; a URL test or a speed test of a group is of the ones in use. The proxies the
+  user keeps loaded (`keep-top-pinned`, a list of tags, from the proxy's details) are always in
+  use beside the fastest. `OutboundGroup.keep_top_picking` says a pick is under way, for the
+  footer of the list. While the first pick still has proxies
+  to test, the core reports `WAITING`, not `NO_AVAILABLE_PROXIES`
+  (`OutboundMonitoring.KeepTopSearching`). Keep top manages the outbound proxies whose start is
+  cheap (VLESS, VMess, Trojan, Shadowsocks, SOCKS, HTTP, Hysteria, Hysteria2, TUIC, AnyTLS,
+  ShadowTLS, SSH, Naive, Mieru, Snell, TrustTunnel, Sudoku); endpoints (WireGuard, AmneziaWG,
+  WARP), Psiphon, Tor and the DNS tunnels run for the whole run, whatever `keep-top` says. The
+  app does not send `keep-top-batch` yet; the core's default is 10. Changing `keep-top`,
+  `keep-top-batch`, `keep-top-quick` or `keep-top-countries` while connected needs only the hot
+  reload the app already asks for after a settings change: it changes no outbound, so the core
+  is not restarted and no connection is cut. Fewer to keep takes effect at once, by the pings
+  the core has; more starts a pick for the others while the kept ones stay in use. Turning keep
+  top on or off replaces the profile's proxies (still a hot reload). `keep-tags` (keep chosen)
+  still drops the other proxies from the config.
 - **finalmask follows Xray v26.10.** `xdns` takes `domains` as `{"names": [...]}` and
   `resolvers` as `{"addrs": [...]}`, with DoH resolvers (`https://…` plus `tlsConfig`); the older
   string forms still load. New masks: `udphop`, noise `type: "exp"` and `script`. Masks are now

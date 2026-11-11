@@ -37,6 +37,9 @@ type URLTestHistory struct {
 	IPv6FromCache bool `json:"ipv6_from_cache,omitempty"` //H
 	// Error: why the last URL test failed; empty when it worked. //H
 	Error string `json:"error,omitempty"` //H
+	// LastGood: the last delay of a test that worked, kept when a later one fails: of the
+	// outbounds that fail, the ones that worked are tested first. //H
+	LastGood uint16 `json:"last_good,omitempty"` //H
 }
 
 type URLTestHistoryStorage interface {

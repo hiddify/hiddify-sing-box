@@ -33,4 +33,7 @@ func (m *OutboundMonitoring) joinRunningTest(task *testTask, state *outboundStat
 		err = errors.New(history.Error)
 	}
 	m.handResult(task, testOutcome{outboundTag: task.outboundTag, history: history, err: err, cycleID: task.cycleID, priority: task.priority})
+	// keep top asked for this test after the other one had told it its result: it is the answer
+	// to this one too
+	m.keepTopNoted(task.outboundTag)
 }

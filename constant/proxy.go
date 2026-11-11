@@ -55,6 +55,7 @@ const (
 	TypeTunnelServer       = "tunnel_server"
 
 	TypeHInvalidConfig = "hinvalid"   //H
+	TypeHLazy          = "hlazy"      //H: the outbound that stands for a lazy one, see option.HLazyOptions
 	TypeXray           = "xray"       //H
 	TypeCustom         = "custom"     //H
 	TypeAwg            = "awg"        //H

@@ -386,13 +386,14 @@ func New(options Options) (*Box, error) {
 			})
 		}
 		outboundLogger := logFactory.NewLogger(F.ToString("outbound/", outboundOptions.Type, "[", tag, "]"))
+		createType, createOptions := lazyOutbound(ctx, outboundOptions) //H: a lazy outbound is created as its stand-in
 		err = outboundManager.Create(
 			outboundCtx,
 			router,
 			outboundLogger,
 			tag,
-			outboundOptions.Type,
-			outboundOptions.Options,
+			createType,    //H
+			createOptions, //H
 		)
 		if err != nil {
 			// H: replace a broken outbound with an invalid placeholder instead of failing the whole config

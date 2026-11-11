@@ -123,6 +123,7 @@ func OutboundRegistry() *outbound.Registry {
 	psiphon.RegisterOutbound(registry)
 	mieru.RegisterOutbound(registry)
 	hinvalid.RegisterOutbound(registry)
+	outbound.RegisterLazy(registry) //H
 	xray.RegisterOutbound(registry)
 	dnstt.RegisterOutbound(registry)
 	gooserelay.RegisterOutbound(registry)

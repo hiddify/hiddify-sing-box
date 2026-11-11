@@ -42,11 +42,12 @@ type HotReloadResult struct {
 	DNSRules   bool
 	RouteFinal bool
 	DNSFinal   bool
+	KeepTop    bool // the keep top options of the monitoring changed
 }
 
 func (r HotReloadResult) IsEmpty() bool {
 	return r.Outbounds.IsEmpty() && r.DNSServers.IsEmpty() && r.Inbounds.IsEmpty() &&
-		!r.RouteRules && !r.DNSRules && !r.RouteFinal && !r.DNSFinal
+		!r.RouteRules && !r.DNSRules && !r.RouteFinal && !r.DNSFinal && !r.KeepTop
 }
 
 // HotReload applies options to the running box without restarting it. It returns an error,
@@ -91,6 +92,7 @@ func CheckHotReload(ctx context.Context, oldOptions, newOptions option.Options) 
 	oldRest, newRest := oldOptions, newOptions
 	for _, options := range []*option.Options{&oldRest, &newRest} {
 		options.Inbounds, options.Outbounds, options.Endpoints, options.DNS, options.Route = nil, nil, nil, nil, nil
+		options.Experimental = withoutKeepTop(options.Experimental)
 	}
 	keys, err := changedKeys(ctx, &oldRest, &newRest)
 	if err != nil {
@@ -199,13 +201,16 @@ const (
 )
 
 type hotReloadItem struct {
-	kind         string
-	tag          string
-	typ          string
-	options      any
-	content      []byte
-	dependencies []string
-	index        int
+	kind    string
+	tag     string
+	typ     string
+	options any
+	// what to create for an outbound: typ and options, or the stand-in of a lazy one (lazyOutbound)
+	createType    string
+	createOptions any
+	content       []byte
+	dependencies  []string
+	index         int
 }
 
 type hotReloadItems map[string]*hotReloadItem
@@ -236,7 +241,9 @@ func outboundItems(ctx context.Context, options option.Options) (hotReloadItems,
 	items := make(hotReloadItems)
 	for i := range options.Outbounds {
 		outbound := &options.Outbounds[i]
-		if err := items.add(ctx, &hotReloadItem{kind: hotReloadOutbound, tag: outbound.Tag, typ: outbound.Type, options: outbound.Options, index: i}, outbound); err != nil {
+		item := &hotReloadItem{kind: hotReloadOutbound, tag: outbound.Tag, typ: outbound.Type, options: outbound.Options, index: i}
+		item.createType, item.createOptions = lazyOutbound(ctx, *outbound)
+		if err := items.add(ctx, item, outbound); err != nil {
 			return nil, err
 		}
 	}
@@ -475,7 +482,30 @@ func planHotReload(ctx context.Context, oldOptions, newOptions option.Options) (
 	// DNS rules hold the route rule-sets they use
 	plan.result.DNSRules = dnsRulesChanged || (ruleSetsChanged && len(newDNS.Rules) > 0)
 	plan.result.DNSFinal = oldDNS.Final != newDNS.Final
+	if plan.result.KeepTop, err = contentChanged(ctx, keepTopOptions(oldOptions), keepTopOptions(newOptions)); err != nil {
+		return nil, err
+	}
 	return plan, nil
+}
+
+// keepTopOptions are the keep top options of the monitoring, which a hot reload can change.
+func keepTopOptions(options option.Options) *option.KeepTopOptions {
+	if options.Experimental == nil || options.Experimental.Monitoring == nil {
+		return nil
+	}
+	return options.Experimental.Monitoring.KeepTop
+}
+
+// withoutKeepTop is experimental without the keep top options, for comparing the rest.
+func withoutKeepTop(experimental *option.ExperimentalOptions) *option.ExperimentalOptions {
+	if experimental == nil || experimental.Monitoring == nil || experimental.Monitoring.KeepTop == nil {
+		return experimental
+	}
+	rest := *experimental
+	monitoringRest := *experimental.Monitoring
+	monitoringRest.KeepTop = nil
+	rest.Monitoring = &monitoringRest
+	return &rest
 }
 
 func contentChanged(ctx context.Context, oldValue, newValue any) (bool, error) {
@@ -575,6 +605,11 @@ func (s *Box) applyHotReload(ctx context.Context, plan *hotReloadPlan) error {
 			}
 		}
 	}
+	if plan.result.KeepTop {
+		if monitor := monitoring.Get(s.ctx); monitor != nil {
+			monitor.SetKeepTop(keepTopOptions(plan.newOptions))
+		}
+	}
 	return nil
 }
 
@@ -601,7 +636,11 @@ func (s *Box) hotReloadCreate(item *hotReloadItem) error {
 	if item.kind == hotReloadEndpoint {
 		create = s.endpoint.Create
 	}
-	err = create(ctx, s.router, logger, item.tag, item.typ, item.options)
+	createType, createOptions := item.typ, item.options
+	if item.createType != "" {
+		createType, createOptions = item.createType, item.createOptions
+	}
+	err = create(ctx, s.router, logger, item.tag, createType, createOptions)
 	if err == nil {
 		return nil
 	}

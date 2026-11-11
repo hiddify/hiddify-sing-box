@@ -165,6 +165,7 @@ api.my-ip.io: it answers the address and the country only, with no rate limit.
 | `ipv6_probe` | | | Retired, no effect. |
 | `workers` | int | `10` | Tests that run at once. |
 | `url_test_timeout` | duration | `5s` | Longest time for one test of the cycle, and for one IP information request. |
+| `keep_top` | object | | Use only the fastest few of the lazy outbounds; see [lazy outbounds and keep top](keep-top.en.md). |
 | `on_demand_timeouts` | list of durations | `["1s", "3s", "10s"]` | The marks of a test asked for: unavailable for now at the first with no answer, a failed attempt tried again at each but the last, which is the deadline. The first mark is skipped for an outbound that worked in this run. |
 | `idle_timeout` | duration | `10m` | Stop testing after this long with no connections. |
 | `debounce_window` | duration | `500ms` | How long to collect results before groups get an update. |

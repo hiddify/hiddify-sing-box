@@ -91,7 +91,11 @@ type OutboundMonitoring struct {
 	mainInterval     time.Duration
 	debounceWindow   time.Duration
 	urlTestTimeout   time.Duration
-	onDemand         []time.Duration // H: see option.MonitoringOptions.OnDemandTimeouts
+	onDemand         []time.Duration                     // H: see option.MonitoringOptions.OnDemandTimeouts
+	parkLazy         atomic.Bool                         // H: keep top is on: the lazy outbounds not in active rest, see h_parked.go
+	keepTop          keepTopState                        // H: see h_keep_top.go
+	parkAccess       sync.Mutex                          // H: one SetActive at a time
+	active           atomic.Pointer[map[string]struct{}] // H: the lazy outbounds that do not rest
 	workersCount     int
 	history          adapter.URLTestHistoryStorage
 
@@ -183,6 +187,9 @@ func (m *OutboundMonitoring) OutboundsHistory(groupTag string) map[string]*adapt
 	}
 	//m.logger.Debug("collecting history for group ", groupTag, " with ", len(grp.outbounds), " outbounds")
 	for outboundTag := range grp.outbounds {
+		if groupTag != "" && m.Parked(outboundTag) { //H: a group does not use a member that rests
+			continue //H
+		} //H
 		histories[outboundTag] = m.confirmed(groupTag, outboundTag, m.getUrlTest(outboundTag)) //H
 		// m.logger.Error("checking history for outbound ", outboundTag)
 
@@ -223,7 +230,7 @@ func (m *OutboundMonitoring) getMinGroupOutboundHistory(groupTag string) *adapte
 	var minHisFromCache *adapter.URLTestHistory
 	for outboundTag := range grp.outbounds {
 		his := m.getUrlTest(outboundTag)
-		if his == nil || his.Delay == 0 {
+		if his == nil || his.Delay == 0 || m.Parked(outboundTag) { //H
 			continue
 		}
 		if !his.IsFromCache {
@@ -340,6 +347,8 @@ func NewOutboundMonitoring(ctx context.Context, logger log.ContextLogger, option
 		normalQueue: make(chan *testTask, 10000),
 	}
 	m.registry.Store(newMonitoringRegistry())
+	m.keepTop.options = options.KeepTop                          //H
+	m.parkLazy.Store(options.KeepTop != nil)                     //H
 	if service.FromContext[adapter.IPv6Capability](ctx) == nil { //H: what the DNS router and the route ask
 		service.MustRegister[adapter.IPv6Capability](ctx, m) //H
 	} //H
@@ -364,6 +373,7 @@ func (m *OutboundMonitoring) Start(stage adapter.StartStage, scope *adapter.Scop
 		m.logger.Info("registered ", len(registry.groups), " outbound groups for monitoring")
 		m.loadHistory()
 		m.seedIPv6Knowledge() //H: what the cache and the links' declarations say
+		m.keepTopStart()      //H: the first stage, which the first cycle tests
 	case adapter.StartStatePostStart:
 		for i := 0; i < m.workersCount; i++ {
 			m.workerWG.Add(1)
@@ -375,7 +385,8 @@ func (m *OutboundMonitoring) Start(stage adapter.StartStage, scope *adapter.Scop
 		}
 
 		m.started = true
-		m.testSelections() // H: the selected proxies first, before the cycle Touch starts
+		m.keepTopEvaluate() // H: the selectors have their selection now
+		m.testSelections()  // H: the selected proxies first, before the cycle Touch starts
 		m.Touch()
 	}
 
@@ -423,6 +434,7 @@ func (m *OutboundMonitoring) SignalChange(outboundTag string) error {
 	m.flushSelectionEvents(outboundTag)
 	m.testParents(outboundTag, true)
 	m.testSelected(outboundTag) // H: the new selection itself, now
+	m.keepTopEvaluate()         // H: a selected lazy outbound comes out of rest
 	return nil
 }
 
@@ -474,6 +486,9 @@ func (m *OutboundMonitoring) TestNow(outboundTag string) error {
 func (m *OutboundMonitoring) testNow(outboundTag string, priority bool, reason string) error { //H: reason
 	if grp, ok := m.reg().groups[outboundTag]; ok {
 		for tag := range grp.outbounds {
+			if m.Parked(tag) { //H: a test of the group is of the members it uses
+				continue //H
+			} //H
 			m.testNow(tag, false, "member of "+outboundTag+", "+reason) //H
 		}
 	} else {
@@ -700,6 +715,8 @@ func (m *OutboundMonitoring) tester(parent context.Context, tag string, interim 
 		return adapter.URLTestHistory{Delay: 0}, errors.New("outbound not registered")
 	}
 
+	release := adapter.AcquireOutbound(out.outbound) //H: a lazy outbound stays over the test's connections
+	defer release()                                  //H
 	idx := m.currentLinkIndex.Load()
 	factor := m.timeoutFactor(out.outbound) //H
 
@@ -908,6 +925,9 @@ func (m *OutboundMonitoring) applyResult(outcome testOutcome) *adapter.URLTestHi
 	if (outcome.history.Delay != state.history.Delay) || state.history.IpInfo == nil || (outcome.history.IpInfo != nil) {
 		m.cacheDirty.Store(true)
 	}
+	if outcome.err == nil && outcome.history.Delay > 0 && outcome.history.Delay < TimeoutDelay { //H
+		state.history.LastGood = outcome.history.Delay //H
+	} //H
 	state.history.Delay = outcome.history.Delay
 	state.history.Time = outcome.history.Time
 	state.history.Error = testError(outcome.err) //H
@@ -956,6 +976,9 @@ func (m *OutboundMonitoring) collectCycleTargets() []string {
 		if _, ok := m.reg().groups[tag]; ok {
 			continue
 		}
+		if m.parked(tag, state) { //H: tested when it is taken out of rest
+			continue //H
+		} //H
 		state.mu.Lock()
 		if state.testing || state.queued || state.priorityQueued {
 			state.mu.Unlock()

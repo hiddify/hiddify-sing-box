@@ -22,6 +22,7 @@ type OutboundOptionsRegistry interface {
 type _Outbound struct {
 	Type    string `json:"type"`
 	Tag     string `json:"tag,omitempty"`
+	Lazy    bool   `json:"lazy,omitempty"` //H: created when first used, closed when idle, see HLazyOptions
 	Options any    `json:"-"`
 }
 

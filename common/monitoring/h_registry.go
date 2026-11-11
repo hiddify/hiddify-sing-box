@@ -115,6 +115,7 @@ func (m *OutboundMonitoring) Reload() error {
 		return err
 	}
 	m.registry.Store(registry)
+	m.keepTopReload(registry) // before the changed ones are tested: the ones that rest are not
 	if m.started {
 		for tag, grp := range registry.groups {
 			if _, existed := previous.groups[tag]; !existed {
@@ -151,6 +152,9 @@ func (m *OutboundMonitoring) testChanged(previous, registry *monitoringRegistry)
 			continue
 		}
 		if old, ok := previous.outbounds[tag]; ok && old.outbound == state.outbound {
+			continue
+		}
+		if m.parked(tag, state) { // tested when it is taken out of rest
 			continue
 		}
 		m.enqueueTask(&testTask{outboundTag: tag, cycleID: cycleID, reason: "replaced by a reload"})

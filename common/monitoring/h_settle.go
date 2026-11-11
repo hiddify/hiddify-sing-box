@@ -60,6 +60,7 @@ func (m *OutboundMonitoring) settle(task *testTask, state *outboundState, histor
 		priority:    task.priority,
 	}
 	m.applyResult(outcome)
+	m.keepTopNoted(task.outboundTag)
 	if task.priority { // asked for, so wanted now: past the debounce, as a selection is
 		m.flushSelectionEvents(task.outboundTag)
 	}

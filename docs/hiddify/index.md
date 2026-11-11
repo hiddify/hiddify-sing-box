@@ -60,6 +60,7 @@ an English and a Persian version.
 - [Fallback](features/groups/fallback.en.md): try members in order and skip one that failed for a while.
 - [URL test: Hiddify additions](features/groups/urltest.en.md): more test URLs, a `failover` mode, and a move to another member on the first failed connection.
 - [Monitoring](features/groups/monitoring.en.md): background tests of every outbound for delay and exit IP, which feed the groups.
+- [Lazy outbounds and keep top](features/groups/keep-top.en.md): outbounds created when first used and closed when idle, and only the fastest few of them in use, found a few at a time, so a profile of hundreds of proxies fits in the memory of a phone.
 - [Unified delay](features/groups/unified-delay.en.md): URL tests time one HTTP round trip on an open connection, so delays compare across protocols.
 
 ## For app developers
