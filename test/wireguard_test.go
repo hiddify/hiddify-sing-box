@@ -12,6 +12,7 @@ import (
 	"io"
 	"net"
 	"net/netip"
+	"os" //H
 	"testing"
 	"time"
 
@@ -25,6 +26,9 @@ import (
 func TestWireGuardEndpointDataPlane(t *testing.T) {
 	for _, system := range []bool{false, true} {
 		t.Run(fmt.Sprintf("system=%v", system), func(test *testing.T) {
+			if system && os.Geteuid() != 0 { //H: the system stack creates a real TUN interface
+				test.Skip("the system stack needs root") //H
+			} //H
 			serverKey, err := ecdh.X25519().GenerateKey(rand.Reader)
 			require.NoError(test, err)
 			clientKey, err := ecdh.X25519().GenerateKey(rand.Reader)

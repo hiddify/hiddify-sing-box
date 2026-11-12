@@ -14,6 +14,7 @@ import (
 )
 
 func TestBrutalShadowsocks(t *testing.T) {
+	requireBrutal(t) //H
 	method := shadowaead_2022.List[0]
 	password := mkBase64(t, 16)
 	startInstance(t, option.Options{
@@ -99,6 +100,7 @@ func TestBrutalShadowsocks(t *testing.T) {
 }
 
 func TestBrutalTrojan(t *testing.T) {
+	requireBrutal(t) //H
 	_, certPem, keyPem := createSelfSignedCertificate(t, "example.org")
 	password := mkBase64(t, 16)
 	startInstance(t, option.Options{
@@ -197,6 +199,7 @@ func TestBrutalTrojan(t *testing.T) {
 }
 
 func TestBrutalVMess(t *testing.T) {
+	requireBrutal(t) //H
 	user, _ := uuid.NewV4()
 	startInstance(t, option.Options{
 		Inbounds: []option.Inbound{
@@ -279,6 +282,7 @@ func TestBrutalVMess(t *testing.T) {
 }
 
 func TestBrutalVLESS(t *testing.T) {
+	requireBrutal(t) //H
 	user, _ := uuid.NewV4()
 	startInstance(t, option.Options{
 		Inbounds: []option.Inbound{

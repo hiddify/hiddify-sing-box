@@ -59,6 +59,12 @@ func TestChainedInbound(t *testing.T) {
 				Type: C.TypeShadowsocks,
 				Tag:  "ss-out",
 				Options: &option.ShadowsocksOutboundOptions{
+					// H: the inbound with a detour hands the stream to "detour" whatever its
+					// address, but an empty one cannot be written ("unsupported address") //H
+					ServerOptions: option.ServerOptions{ //H
+						Server:     "127.0.0.1", //H
+						ServerPort: otherPort,   //H
+					}, //H
 					Method:   method,
 					Password: password,
 					DialerOptions: option.DialerOptions{
