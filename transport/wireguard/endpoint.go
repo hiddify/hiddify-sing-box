@@ -43,8 +43,9 @@ type Endpoint struct {
 	stateAccess    sync.Mutex
 	suspended      atomic.Bool
 	networkPaused  bool
-	mtuProbe       *mtuProber    //H
-	fallback       *peerFallback //H
+	mtuProbe       *mtuProber                 //H
+	fallback       *peerFallback              //H
+	clientBind     atomic.Pointer[ClientBind] //H: closed first on Close, see there
 }
 
 func NewEndpoint(options EndpointOptions) (*Endpoint, error) {
@@ -200,6 +201,7 @@ func (e *Endpoint) Start(postStart bool) error {
 		}
 		clientBind := NewClientBind(e.options.Context, e.options.Logger, e.options.Dialer, isConnect, connectAddr, reserved) //H
 		clientBind.onReconnect = e.pathChanged                                                                               //H: MTU discovery, fallback
+		e.clientBind.Store(clientBind)                                                                                       //H
 		bind = clientBind                                                                                                    //H
 	}
 	if isUDPListener || len(e.peers) > 1 {
@@ -354,6 +356,12 @@ func (e *Endpoint) Close() error {
 	}
 	e.mtuProbe.stop()  //H
 	e.fallback.Close() //H
+	// H: close the detour's connections before Down: Up sends a peer's persistent keepalive, a
+	// handshake through the detour, under the device's state lock, and when the detour's stream
+	// stalled that write never returned, so Down, which takes the lock, waited for good //H
+	if clientBind := e.clientBind.Load(); clientBind != nil { //H
+		clientBind.Close() //H
+	} //H
 	e.stateAccess.Lock()
 	wgDevice := e.device.Swap(nil)
 	if wgDevice != nil {
