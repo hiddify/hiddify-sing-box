@@ -119,7 +119,7 @@ func TestH_FinalMaskXDNSRoundTrip(t *testing.T) {
 		return N.SystemDialer.DialContext(ctx, network, destination)
 	}, func(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
 		count(destination)
-		return N.SystemDialer.ListenPacket(ctx, destination)
+		return listenPacket(ctx, destination)
 	})
 	require.NoError(t, err)
 	defer conn.Close()
@@ -146,7 +146,9 @@ func TestH_FinalMaskXDNSRoundTrip(t *testing.T) {
 func TestH_FinalMaskUDPHop(t *testing.T) {
 	var ports []string
 	received := make(chan uint16, 64)
-	for range 3 {
+	// a hop picks any of the ports, the current one too: with 16 the connection stays on its first
+	// port through the three hops of the 20 s below once in 4096 runs (once in 27 with three ports)
+	for range 16 {
 		server, err := net.ListenPacket("udp", "127.0.0.1:0")
 		require.NoError(t, err)
 		defer server.Close()

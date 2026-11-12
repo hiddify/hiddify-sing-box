@@ -176,7 +176,18 @@ func TestWrapConnTCPRoundTrip(t *testing.T) {
 }
 
 func dial(ctx context.Context, masks *Masks, network string, destination M.Socksaddr) (net.Conn, error) {
-	return masks.DialContext(ctx, network, destination, N.SystemDialer.DialContext, N.SystemDialer.ListenPacket)
+	return masks.DialContext(ctx, network, destination, N.SystemDialer.DialContext, listenPacket)
+}
+
+// listenPacket opens the UDP socket as the outbound dialer does (common/dialer): an IPv4 one for
+// an IPv4 destination. A dual-stack socket, as N.SystemDialer opens, can be given on macOS the port
+// of an IPv4 socket bound elsewhere, which then takes its IPv4 replies, and the read times out.
+func listenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
+	if destination.IsIPv4() {
+		var listener net.ListenConfig
+		return listener.ListenPacket(ctx, "udp4", "")
+	}
+	return N.SystemDialer.ListenPacket(ctx, destination)
 }
 
 // wrapTCP puts the tcp masks over conn, as if the dialer had opened it.
@@ -234,7 +245,7 @@ func TestWrapUDPSalamanderRoundTrip(t *testing.T) {
 	defer cancel()
 
 	payload := []byte("hello final mask over udp")
-	packetConn, err := N.SystemDialer.ListenPacket(ctx, destination)
+	packetConn, err := listenPacket(ctx, destination)
 	require.NoError(t, err)
 	packetConn, err = wrapPacket(ctx, clientMasks, destination, packetConn)
 	require.NoError(t, err)

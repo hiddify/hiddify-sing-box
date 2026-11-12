@@ -85,20 +85,37 @@ func TestH_DnsttAutoResolvers(t *testing.T) {
 	require.NotEmpty(t, builtin)
 
 	for _, auto := range []string{"auto", ""} {
-		resolvers, err := getConfigResolvers(option.DnsttOptions{Resolvers: []string{auto, "4.4.4.4:53"}})
+		// "auto" is the shared candidate list (Soar's discovery candidates, then the built-in
+		// resolvers), each turned into a UDP resolver in order, keeping whether it is automatic
+		// and its tier.
+		entries := []string{auto, "4.4.4.4:53"}
+		candidates := dnspool.Expand(entries)
+		resolvers, err := getConfigResolvers(option.DnsttOptions{Resolvers: entries})
 		require.NoError(t, err)
-		require.Len(t, resolvers, len(builtin)+1)
+		require.Len(t, resolvers, len(candidates))
+		// the discovery candidates keep their order; the built-in ones come in map order
+		wantTier := map[string]int{}
+		for _, c := range candidates[:len(candidates)-1] {
+			wantTier[c.Address] = c.Tier
+		}
 		seen := map[string]bool{}
-		for _, r := range resolvers[:len(resolvers)-1] {
+		for i, r := range resolvers[:len(resolvers)-1] {
 			require.True(t, r.Auto)
 			require.Equal(t, dnstt.ResolverTypeUDP, r.Resolver.ResolverType)
 			require.True(t, strings.HasSuffix(r.Resolver.ResolverAddr, ":53"), r.Resolver.ResolverAddr)
-			ip := strings.TrimSuffix(r.Resolver.ResolverAddr, ":53")
-			_, known := builtin[ip]
-			require.True(t, known, ip)
-			seen[ip] = true
+			require.Equal(t, candidates[i].Tier, r.Tier, r.Resolver.ResolverAddr)
+			if r.Tier == dnspool.TierDiscovery {
+				require.Equal(t, candidates[i].Address, r.Resolver.ResolverAddr)
+			}
+			tier, known := wantTier[r.Resolver.ResolverAddr]
+			require.True(t, known, r.Resolver.ResolverAddr)
+			require.Equal(t, tier, r.Tier, r.Resolver.ResolverAddr)
+			require.False(t, seen[r.Resolver.ResolverAddr], r.Resolver.ResolverAddr)
+			seen[r.Resolver.ResolverAddr] = true
 		}
-		require.Len(t, seen, len(builtin))
+		for ip := range builtin {
+			require.True(t, seen[ip+":53"], ip)
+		}
 		last := resolvers[len(resolvers)-1]
 		require.False(t, last.Auto)
 		require.Equal(t, "4.4.4.4:53", last.Resolver.ResolverAddr)
