@@ -47,6 +47,7 @@ func NewClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr, opt
 	if options.Mode == "" || options.Mode == "auto" {
 		options.Mode = autoMode(tls.IsReality(tlsConfig), options.Download != nil)
 	}
+	tlsConfig = hDefaultALPN(tlsConfig) //H
 	dest := serverAddr
 	baseRequestURL, err := getBaseRequestURL(&options.V2RayXHTTPBaseOptions, dest, tlsConfig)
 	if err != nil {
@@ -82,6 +83,7 @@ func NewClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr, opt
 			if err != nil {
 				return nil, err
 			}
+			tlsConfig2 = hDefaultALPN(tlsConfig2) //H
 		}
 		baseRequestURL2, err = getBaseRequestURL(&options2.V2RayXHTTPBaseOptions, dest2, tlsConfig2)
 		if err != nil {

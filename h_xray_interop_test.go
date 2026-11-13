@@ -22,6 +22,7 @@ import (
 	"time"
 
 	box "github.com/sagernet/sing-box"
+	"github.com/sagernet/sing-box/common/tls"
 	"github.com/sagernet/sing-box/include"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing/common/json"
@@ -276,6 +277,54 @@ func TestH_XrayXHTTP(t *testing.T) {
 				}`, socksPort)
 				hEchoThroughSOCKS(t, socksPort, echoAddress)
 			})
+		}
+	}
+}
+
+// hiddify-app#2542: XHTTP over TLS with a uTLS fingerprint and no ALPN, as in a share link with
+// fp=chrome. The hello offers h2 and Xray's server picks it, so the client has to speak HTTP/2.
+func TestH_XrayXHTTPTLSFingerprint(t *testing.T) {
+	binaries := hXrayBinaries(t)
+	echoAddress := hStartEcho(t)
+	keyPEM, certPEM, err := tls.GenerateCertificate(nil, nil, time.Now, "example.com", time.Now().Add(time.Hour))
+	require.NoError(t, err)
+	directory := t.TempDir()
+	certPath, keyPath := filepath.Join(directory, "cert.pem"), filepath.Join(directory, "key.pem")
+	require.NoError(t, os.WriteFile(certPath, certPEM, 0o600))
+	require.NoError(t, os.WriteFile(keyPath, keyPEM, 0o600))
+	certJSON, err := json.Marshal(string(certPEM))
+	require.NoError(t, err)
+	const padding = `"xPaddingObfsMode": true, "xPaddingMethod": "tokenish", "xPaddingPlacement": "queryInHeader", "xPaddingHeader": "9267f8", "xPaddingKey": "_826c26"`
+	const singBoxPadding = `"x_padding_obfs_mode": true, "x_padding_method": "tokenish", "x_padding_placement": "queryInHeader", "x_padding_header": "9267f8", "x_padding_key": "_826c26"`
+	for _, binary := range binaries {
+		version := hXrayVersion(t, binary)
+		for _, mode := range []string{"stream-one", "stream-up", "packet-up"} {
+			for _, fingerprint := range []string{"chrome", "firefox", ""} {
+				t.Run(version+"/"+mode+"/fingerprint="+fingerprint, func(t *testing.T) {
+					xrayPort := hFreeTCPPort(t)
+					hStartXray(t, binary, `{
+						"log": {"loglevel": "warning"},
+						"inbounds": [{"listen": "127.0.0.1", "port": `+strconv.Itoa(xrayPort)+`, "protocol": "vless",
+							"settings": {"clients": [{"id": "`+hInteropUUID+`"}], "decryption": "none"},
+							"streamSettings": {"network": "xhttp", "xhttpSettings": {"mode": "auto", "path": "/", "extra": {`+padding+`}},
+								"security": "tls", "tlsSettings": {"certificates": [{"certificateFile": "`+certPath+`", "keyFile": "`+keyPath+`"}]}}}],
+						"outbounds": [{"protocol": "freedom", "settings": {"finalRules": [{"action": "allow", "ip": ["127.0.0.0/8"]}]}}]
+					}`, xrayPort)
+					utls := ""
+					if fingerprint != "" {
+						utls = `, "utls": {"enabled": true, "fingerprint": "` + fingerprint + `"}`
+					}
+					mixedPort := hFreeTCPPort(t)
+					hStartInteropBox(t, `{
+						"log": {"disabled": true},
+						"inbounds": [{"type": "mixed", "listen": "127.0.0.1", "listen_port": `+strconv.Itoa(mixedPort)+`}],
+						"outbounds": [{"type": "vless", "server": "127.0.0.1", "server_port": `+strconv.Itoa(xrayPort)+`,
+							"uuid": "`+hInteropUUID+`", "transport": {"type": "xhttp", "mode": "`+mode+`", "path": "/", `+singBoxPadding+`},
+							"tls": {"enabled": true, "server_name": "example.com", "certificate": [`+string(certJSON)+`]`+utls+`}}]
+					}`, nil)
+					hEchoThroughSOCKS(t, mixedPort, echoAddress)
+				})
+			}
 		}
 	}
 }

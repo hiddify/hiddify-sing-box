@@ -45,6 +45,10 @@ you put a CDN in front of it. Without TLS (or REALITY), the requests are readabl
   the sequence number into a query parameter, a header or a cookie.
 - The HTTP version follows the TLS ALPN: no TLS or `http/1.1` is HTTP/1.1, `h2` is HTTP/2, and
   `h3` is HTTP/3 over QUIC (UDP). A server whose only ALPN is `h3` listens on UDP.
+- A TLS client without `alpn` offers `h2` and `http/1.1` and speaks HTTP/2, as Xray's client does.
+  A uTLS fingerprint offers the browser's `h2` anyway, so a client that spoke HTTP/1.1 there
+  failed against a server that picked `h2`. Set `alpn` to `["http/1.1"]` for a server that only
+  speaks HTTP/1.1. REALITY keeps its own ALPN.
 - XMUX reuses HTTP connections for several proxy connections; the `xmux` options limit how much
   one HTTP connection is reused.
 
