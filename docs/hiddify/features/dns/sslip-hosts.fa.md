@@ -57,6 +57,12 @@ DNS از نوع `hosts` در هیدیفای (`"type": "hosts"` در فهرست `
 
 فیلدهای سرور `hosts` (`path` و `predefined`) مثل sing-box اصلی کار می‌کنند.
 
+## منبع‌ها و قدردانی
+
+بخش‌هایی از این قابلیت از این پروژه‌ها آمده است. از نویسندگان آن‌ها سپاسگزاریم.
+
+- [cunnie/sslip.io](https://github.com/cunnie/sslip.io): سرویس sslip.io و قالب نام‌های آن.
+
 ## همچنین ببینید
 
 - [گروه DNS](dns-group.fa.md)

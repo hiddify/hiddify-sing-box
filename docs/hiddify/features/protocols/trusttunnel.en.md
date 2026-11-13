@@ -90,6 +90,19 @@ QUIC is blocked.
   to load without at least one user.
 - Each user name must have a password.
 
+## Sources and credits
+
+Parts of this feature come from these projects. Thanks to their authors.
+
+- [TrustTunnel/TrustTunnel](https://github.com/TrustTunnel/TrustTunnel): the TrustTunnel protocol.
+- [xchacha20-poly1305/sing-trusttunnel](https://github.com/xchacha20-poly1305/sing-trusttunnel): the Go library Hiddify uses.
+- [xchacha20-poly1305/sing-box](https://github.com/xchacha20-poly1305/sing-box): the outbound and inbound were cherry-picked from [this commit](https://github.com/xchacha20-poly1305/sing-box/commit/45d3fe09f66cab657cfb9a037ebf7412c12845d9).
+
+Related projects:
+
+- [shtorm-7/sing-box-extended](https://github.com/shtorm-7/sing-box-extended): also has TrustTunnel.
+- [MetaCubeX/mihomo](https://github.com/MetaCubeX/mihomo): also supports TrustTunnel.
+
 ## See also
 
 - [All Hiddify features](../../index.md)

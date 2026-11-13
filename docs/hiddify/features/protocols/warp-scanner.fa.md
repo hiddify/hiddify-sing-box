@@ -202,6 +202,18 @@ probe همیشه همان چیزی را می‌فرستد که تونل می‌�
 - noise در برابر فیلتری که همهٔ UDP یا همهٔ بازه‌های WARP کلادفلر را مسدود کند کمکی نمی‌کند: آن‌وقت حالت
   auto، یا `masque` با `vhttp` برابر `auto` (‏HTTP/2 روی TCP)، راه است.
 
+## منبع‌ها و قدردانی
+
+بخش‌هایی از این قابلیت از این پروژه‌ها آمده است. از نویسندگان آن‌ها سپاسگزاریم.
+
+- [kyochikuto/sing-box-plus](https://github.com/kyochikuto/sing-box-plus): probe مربوط به WireGuard از این پروژه گرفته شده است.
+- [XTLS/Xray-core](https://github.com/XTLS/Xray-core): پیش‌تنظیم نویز `xray-random`.
+- [amnezia-vpn/amneziawg-go](https://github.com/amnezia-vpn/amneziawg-go): بسته‌های junk که پیش‌تنظیم‌های AmneziaWG از آن‌ها تقلید می‌کنند.
+
+پروژه‌های مرتبط:
+
+- [bepass-org/warp-plus](https://github.com/bepass-org/warp-plus): اسکنر endpoint برای WARP هم دارد.
+
 ## همچنین ببینید
 
 - [WARP](warp.fa.md)

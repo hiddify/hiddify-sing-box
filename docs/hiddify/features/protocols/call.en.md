@@ -152,6 +152,22 @@ config can use your account.
 - When the server side creates a new call, the link changes each time it connects. Set
   `join_link` on the inbound to keep it the same.
 
+## Sources and credits
+
+Parts of this feature come from these projects. Thanks to their authors.
+
+- [shtorm-7/sing-box-extended](https://github.com/shtorm-7/sing-box-extended): the call tunnel, its inbound and outbound, and the clients for VK, Telemost, Dion, WB Stream and Bitrix24 were ported from it.
+- [kulikov0/headless-client](https://github.com/kulikov0/headless-client): makes the service clients send Chrome's TLS, HTTP/2 and DTLS fingerprint.
+- [pion](https://github.com/pion): the WebRTC libraries (RTP, data channels, interceptors) that carry the call.
+- [xtaci/kcp-go](https://github.com/xtaci/kcp-go): the reliable stream over the video tracks.
+
+Related projects:
+
+- [kulikov0/whitelist-bypass](https://github.com/kulikov0/whitelist-bypass): tunnels through the media servers of VK and Yandex Telemost calls.
+- [openlibrecommunity/olcrtc](https://github.com/openlibrecommunity/olcrtc): tunnels through online meeting services.
+- [cacggghp/vk-turn-proxy](https://github.com/cacggghp/vk-turn-proxy): carries WireGuard or Hysteria through the TURN servers of VK calls.
+- [jaykaiperson/lionheart](https://github.com/jaykaiperson/lionheart): a similar tunnel for WB Stream.
+
 ## See also
 
 - [Bond](bond.en.md)

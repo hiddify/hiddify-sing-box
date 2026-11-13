@@ -126,6 +126,13 @@ Soar لینک اشتراکی تعریف نکرده است. ray2sing در هست�
   مجموعه اعمال می‌شود. بدون resolver در پیکربندی، یا با `smart_pool: false`، کلاینت هر resolver را
   جدا تنظیم می‌کند.
 
+## منبع‌ها و قدردانی
+
+بخش‌هایی از این قابلیت از این پروژه‌ها آمده است. از نویسندگان آن‌ها سپاسگزاریم.
+
+- [getlantern/soar](https://github.com/getlantern/soar): پروتکل Soar و کتابخانهٔ Go آن از Lantern که از طریق فورک [hiddify/soar](https://github.com/hiddify/soar) استفاده می‌شود.
+- [WhiteDNS/WhiteDNS-Android](https://github.com/WhiteDNS/WhiteDNS-Android): قالب لینک پروفایل `soar://`.
+
 ## همچنین ببینید
 
 - [مجموعهٔ هوشمند resolver](../dns/smart-dns-pool.fa.md)

@@ -114,6 +114,13 @@ log shows a warning.
 
 `dnstt-compat` and `clientid-size` change the wire format, so they must match your server.
 
+## Sources and credits
+
+Parts of this feature come from these projects. Thanks to their authors.
+
+- [dnstt](https://www.bamsoftware.com/software/dnstt/): the original DNSTT by David Fifield.
+- [net2share/vaydns](https://github.com/net2share/vaydns): the DNSTT fork the client is built on, used through the fork [hiddify/vaydns](https://github.com/hiddify/vaydns).
+
 ## See also
 
 - [Smart resolver pool](../dns/smart-dns-pool.en.md)

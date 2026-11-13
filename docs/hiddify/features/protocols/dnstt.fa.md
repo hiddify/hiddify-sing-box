@@ -116,6 +116,13 @@ Noise رمز می‌شوند، پس نه resolver و نه فیلتر نمی‌ت
 
 `dnstt-compat` و `clientid-size` قالب سیمی را تغییر می‌دهند، پس باید با سرور شما یکی باشند.
 
+## منبع‌ها و قدردانی
+
+بخش‌هایی از این قابلیت از این پروژه‌ها آمده است. از نویسندگان آن‌ها سپاسگزاریم.
+
+- [dnstt](https://www.bamsoftware.com/software/dnstt/): DNSTT اصلی، نوشتهٔ David Fifield.
+- [net2share/vaydns](https://github.com/net2share/vaydns): فورک DNSTT که کلاینت بر پایهٔ آن ساخته شده و از طریق فورک [hiddify/vaydns](https://github.com/hiddify/vaydns) استفاده می‌شود.
+
 ## همچنین ببینید
 
 - [مجموعهٔ هوشمند resolver](../dns/smart-dns-pool.fa.md)

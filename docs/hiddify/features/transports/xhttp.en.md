@@ -158,6 +158,17 @@ snake_case forms of Xray's names (`xPaddingBytes` is `x_padding_bytes`). Both si
 same path, padding placement and session/seq placement. A wrong option is a configuration error
 when the config loads.
 
+## Sources and credits
+
+Parts of this feature come from these projects. Thanks to their authors.
+
+- [XTLS/Xray-core](https://github.com/XTLS/Xray-core): the XHTTP transport and its modes come from it.
+
+Related projects:
+
+- [shtorm-7/sing-box-extended](https://github.com/shtorm-7/sing-box-extended): also has XHTTP.
+- [Leadaxe/sing-box-lx](https://github.com/Leadaxe/sing-box-lx): also has XHTTP.
+
 ## See also
 
 - [REALITY in Hiddify](../reality-hiddify.en.md)

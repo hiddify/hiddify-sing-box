@@ -67,6 +67,36 @@ an English and a Persian version.
 
 - [App considerations](app_considerations.md): what hiddify-app and hiddify-core need to change or know because of the v5 work.
 
+## Credits
+
+Hiddify's features build on these projects. Each feature page names what it takes from them, under "Sources and credits". Thanks to their authors.
+
+- [SagerNet/sing-box](https://github.com/SagerNet/sing-box): the upstream this fork is built on.
+- [shtorm-7/sing-box-extended](https://github.com/shtorm-7/sing-box-extended): call tunnel, bond, fallback, Sudoku, rmux.
+- [Leadaxe/sing-box-lx](https://github.com/Leadaxe/sing-box-lx): URL test additions, REALITY `key_share`, MASQUE failover, DNS group modes.
+- [reF1nd/sing-box](https://github.com/reF1nd/sing-box): DNS group, WireGuard recovery and other fixes.
+- [kyochikuto/sing-box-plus](https://github.com/kyochikuto/sing-box-plus): the WARP scanner's WireGuard probe.
+- [XTLS/Xray-core](https://github.com/XTLS/Xray-core): XHTTP, mKCP, XDRIVE, finalmask, VLESS encryption.
+- [patterniha/Xray-core](https://github.com/patterniha/Xray-core): the `merge` and `oob` masks.
+- [PoriyaVali/mirage](https://github.com/PoriyaVali/mirage): the `mirage` mask.
+- [amnezia-vpn/amneziawg-go](https://github.com/amnezia-vpn/amneziawg-go): AmneziaWG.
+- [enfein/mieru](https://github.com/enfein/mieru): Mieru.
+- [SUDOKU-ASCII/sudoku](https://github.com/SUDOKU-ASCII/sudoku): the Sudoku protocol.
+- [TrustTunnel/TrustTunnel](https://github.com/TrustTunnel/TrustTunnel): the TrustTunnel protocol.
+- [xchacha20-poly1305/sing-trusttunnel](https://github.com/xchacha20-poly1305/sing-trusttunnel): the TrustTunnel library.
+- [Psiphon-Labs/psiphon-tunnel-core](https://github.com/Psiphon-Labs/psiphon-tunnel-core): Psiphon.
+- [dnstt](https://www.bamsoftware.com/software/dnstt/): the original DNSTT.
+- [net2share/vaydns](https://github.com/net2share/vaydns): the DNSTT client.
+- [masterking32/MasterDnsVPN](https://github.com/masterking32/MasterDnsVPN): MasterDNS.
+- [getlantern/soar](https://github.com/getlantern/soar): Soar.
+- [Kianmhz/GooseRelayVPN](https://github.com/Kianmhz/GooseRelayVPN): GooseRelay.
+- [kulikov0/headless-client](https://github.com/kulikov0/headless-client): Chrome fingerprints for the call tunnel.
+- [Diniboy1123/connect-ip-go](https://github.com/Diniboy1123/connect-ip-go): CONNECT-IP for WARP over MASQUE.
+- [Leadaxe/utls-lx](https://github.com/Leadaxe/utls-lx): current browser TLS fingerprints.
+- [ameshkov/dnscrypt](https://github.com/ameshkov/dnscrypt): DNSCrypt.
+- [pires/go-proxyproto](https://github.com/pires/go-proxyproto): the PROXY protocol.
+- [shadowsocks/simple-obfs](https://github.com/shadowsocks/simple-obfs): simple-obfs.
+
 ## Bug fixes
 
 - [v5 bug fixes](bugfix/v5.en.md): bugs fixed on top of sing-box v1.15, newest first, each with its commit.

@@ -5,7 +5,7 @@
 Sudoku is an encrypted proxy over TCP that hides its bytes as clues of small sudoku puzzles. You can
 tune the result to look like plain text or to have a fixed, low randomness instead of looking
 like random noise. It is the inbound and outbound `"type": "sudoku"`. It carries TCP, and UDP
-inside the TCP connection. It is the Sudoku protocol of [saba-futai/sudoku](https://github.com/saba-futai/sudoku),
+inside the TCP connection. It is the Sudoku protocol of [SUDOKU-ASCII/sudoku](https://github.com/SUDOKU-ASCII/sudoku),
 which mihomo also supports, ported from sing-box-extended.
 
 ## Why use it
@@ -178,6 +178,17 @@ or an empty `key`, stops the config from loading, on both sides.
 
 Tested only between two Hiddify sing-box instances: without the mask, with the HTTP mask, and with
 `prefer_ascii`. It has not been tested against the original Sudoku or mihomo.
+
+## Sources and credits
+
+Parts of this feature come from these projects. Thanks to their authors.
+
+- [SUDOKU-ASCII/sudoku](https://github.com/SUDOKU-ASCII/sudoku): the Sudoku protocol and its reference implementation.
+- [shtorm-7/sing-box-extended](https://github.com/shtorm-7/sing-box-extended): the sing-box inbound and outbound were ported from it.
+
+Related projects:
+
+- [MetaCubeX/mihomo](https://github.com/MetaCubeX/mihomo): also supports Sudoku.
 
 ## See also
 

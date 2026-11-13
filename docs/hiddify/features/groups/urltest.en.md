@@ -79,6 +79,12 @@ The other fields are upstream's: `outbounds`, `url`, `interval`, `tolerance`, `i
 
 lx's `round_robin` mode is not included: the [balancer](balancer.en.md) group covers it.
 
+## Sources and credits
+
+Parts of this feature come from these projects. Thanks to their authors.
+
+- [Leadaxe/sing-box-lx](https://github.com/Leadaxe/sing-box-lx): more test URLs, the `failover` mode and the dial penalties follow it.
+
 ## See also
 
 - [Balancer](balancer.en.md)

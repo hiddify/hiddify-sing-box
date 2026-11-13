@@ -239,6 +239,22 @@ probe همان چیزی را می‌فرستد که دستگاه می‌فرست
 - تونل در پس‌زمینه راه می‌افتد. اتصال‌ها منتظر می‌مانند تا اولین راه‌اندازی تمام شود. اگر شکست خورده باشد، با خطای «endpoint not initialized» شکست می‌خورند.
 - اگر ثبت حساب یا اولین راه‌اندازی شکست بخورد، خطا در لاگ ثبت می‌شود و تا وقتی موفق شود یا endpoint بسته شود دوباره امتحان می‌شود.
 
+## منبع‌ها و قدردانی
+
+بخش‌هایی از این قابلیت از این پروژه‌ها آمده است. از نویسندگان آن‌ها سپاسگزاریم.
+
+- [kyochikuto/sing-box-plus](https://github.com/kyochikuto/sing-box-plus): probe مربوط به WireGuard در اسکنر endpoint از این پروژه گرفته شده است.
+- [amnezia-vpn/amneziawg-go](https://github.com/amnezia-vpn/amneziawg-go): حالت AmneziaWG.
+- [XTLS/Xray-core](https://github.com/XTLS/Xray-core): نویز `xray-random`.
+- [Leadaxe/sing-box-lx](https://github.com/Leadaxe/sing-box-lx): حالت خودکار `vhttp` در MASQUE و جابه‌جایی endpoint از این پروژه پیروی می‌کنند.
+
+پروژه‌های مرتبط:
+
+- [ViRb3/wgcf](https://github.com/ViRb3/wgcf): کلاینت غیررسمی WARP و ثبت حساب.
+- [bepass-org/warp-plus](https://github.com/bepass-org/warp-plus): WARP با اسکنر endpoint و Psiphon.
+- [Diniboy1123/usque](https://github.com/Diniboy1123/usque): پیاده‌سازی متن‌باز پروتکل MASQUE در WARP.
+- [shtorm-7/sing-box-extended](https://github.com/shtorm-7/sing-box-extended): WARP را هم دارد.
+
 ## همچنین ببینید
 
 - [اسکنر و noise در WARP](warp-scanner.fa.md)

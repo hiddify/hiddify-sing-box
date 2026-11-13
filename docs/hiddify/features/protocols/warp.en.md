@@ -357,6 +357,22 @@ Notes:
 - If registration or the first start fails, the error is logged and it is tried again until it
   works or the endpoint closes.
 
+## Sources and credits
+
+Parts of this feature come from these projects. Thanks to their authors.
+
+- [kyochikuto/sing-box-plus](https://github.com/kyochikuto/sing-box-plus): the WireGuard probe of the endpoint scanner is adapted from it.
+- [amnezia-vpn/amneziawg-go](https://github.com/amnezia-vpn/amneziawg-go): the AmneziaWG mode.
+- [XTLS/Xray-core](https://github.com/XTLS/Xray-core): the `xray-random` noise.
+- [Leadaxe/sing-box-lx](https://github.com/Leadaxe/sing-box-lx): the MASQUE `vhttp` auto mode and endpoint failover follow it.
+
+Related projects:
+
+- [ViRb3/wgcf](https://github.com/ViRb3/wgcf): an unofficial WARP client and account registration.
+- [bepass-org/warp-plus](https://github.com/bepass-org/warp-plus): WARP with an endpoint scanner and Psiphon.
+- [Diniboy1123/usque](https://github.com/Diniboy1123/usque): an open reimplementation of WARP's MASQUE protocol.
+- [shtorm-7/sing-box-extended](https://github.com/shtorm-7/sing-box-extended): also has WARP.
+
 ## See also
 
 - [WARP scanner and noise](warp-scanner.en.md): how the scanner, noise, the noise search and auto

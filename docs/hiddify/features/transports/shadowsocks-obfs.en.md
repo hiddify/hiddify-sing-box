@@ -93,6 +93,12 @@ Errors: an `obfs_mode` other than `http` or `tls`, `obfs_fallback` without `obfs
 fallback without a valid address and port is a configuration error. Without `obfs_fallback`, a
 failed connection is closed.
 
+## Sources and credits
+
+Parts of this feature come from these projects. Thanks to their authors.
+
+- [shadowsocks/simple-obfs](https://github.com/shadowsocks/simple-obfs): the simple-obfs protocol and the `obfs-local` plugin.
+
 ## See also
 
 - [finalmask](finalmask.en.md)

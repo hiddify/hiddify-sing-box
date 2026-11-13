@@ -105,6 +105,18 @@ ClientHello کوچک می‌فرستد، و `key_share: "auto"` وقتی hybrid 
 `fragment` و `record_fragment` با هر دو کار می‌کنند. ClientHelloهای کلاسیک مرورگر قدیمی‌تر و `auto` تا کنون
 فقط در برابر سرور REALITY خود sing-box آزموده شده‌اند.
 
+## منبع‌ها و قدردانی
+
+بخش‌هایی از این قابلیت از این پروژه‌ها آمده است. از نویسندگان آن‌ها سپاسگزاریم.
+
+- [XTLS/REALITY](https://github.com/XTLS/REALITY): پروتکل REALITY.
+- [Leadaxe/sing-box-lx](https://github.com/Leadaxe/sing-box-lx): `key_share` و تکه‌تکه‌کردن روی REALITY از این پروژه پیروی می‌کنند.
+- [Leadaxe/utls-lx](https://github.com/Leadaxe/utls-lx): فورک uTLS با اثرانگشت مرورگرهای فعلی، فورکی از [metacubex/utls](https://github.com/metacubex/utls) و [refraction-networking/utls](https://github.com/refraction-networking/utls).
+
+پروژه‌های مرتبط:
+
+- [XTLS/Xray-core](https://github.com/XTLS/Xray-core): سرور REALITY که هیدیفای به آن وصل می‌شود.
+
 ## همچنین ببینید
 
 - [تکه‌تکه کردن TLS](tls-fragment.fa.md)

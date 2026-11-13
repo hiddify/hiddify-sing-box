@@ -49,6 +49,13 @@ It does not. It only changes how delay is measured.
 The test site must keep the connection open after the first answer. Common test addresses such
 as `https://www.gstatic.com/generate_204` do.
 
+## Sources and credits
+
+This feature follows these projects, or works like them. Thanks to their authors.
+
+- [MetaCubeX/mihomo](https://github.com/MetaCubeX/mihomo): the `unified-delay` option of Clash, which this follows.
+- [shtorm-7/sing-box-extended](https://github.com/shtorm-7/sing-box-extended): has the same switch.
+
 ## See also
 
 - [Monitoring](monitoring.en.md)

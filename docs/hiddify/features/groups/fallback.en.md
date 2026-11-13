@@ -51,6 +51,12 @@ It does not. It only chooses among outbounds that do.
 
 Ported from sing-box-extended.
 
+## Sources and credits
+
+Parts of this feature come from these projects. Thanks to their authors.
+
+- [shtorm-7/sing-box-extended](https://github.com/shtorm-7/sing-box-extended): the fallback group was ported from it.
+
 ## See also
 
 - [Balancer](balancer.en.md)

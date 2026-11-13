@@ -84,6 +84,12 @@ Old templates put `tls_fragment` inside the `tls` block. When the outbound is cr
 `tls_fragment` there is moved to the outbound's dial fields and applied, unless the outbound
 already has its own enabled `tls_fragment`. Then the one in the `tls` block is ignored.
 
+## Sources and credits
+
+Parts of this feature come from these projects. Thanks to their authors.
+
+- [XTLS/Xray-core](https://github.com/XTLS/Xray-core): the finalmask `fragment` mask that applies it.
+
 ## See also
 
 - [finalmask](transports/finalmask.en.md)

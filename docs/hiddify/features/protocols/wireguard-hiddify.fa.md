@@ -198,6 +198,17 @@ WireGuard بسته‌ای را از یک peer فقط وقتی می‌پذیرد 
   [endpoint `awg`](amneziawg.fa.md) یا بلوک `awg` در endpoint ‏`warp` استفاده کنید.
 - Noise با هر سرور WireGuard کار می‌کند و سرور به تغییری نیاز ندارد.
 
+## منبع‌ها و قدردانی
+
+بخش‌هایی از این قابلیت از این پروژه‌ها آمده است. از نویسندگان آن‌ها سپاسگزاریم.
+
+- [XTLS/Xray-core](https://github.com/XTLS/Xray-core): نویز `raw` از نویز تصادفی Xray پیروی می‌کند.
+- [reF1nd/sing-box](https://github.com/reF1nd/sing-box): بازیابی پس از قطع شبکه از این پروژه آمده است.
+
+پروژه‌های مرتبط:
+
+- [amnezia-vpn/amneziawg-go](https://github.com/amnezia-vpn/amneziawg-go): WireGuard با بسته‌های junk.
+
 ## همچنین ببینید
 
 - [AmneziaWG](amneziawg.fa.md)

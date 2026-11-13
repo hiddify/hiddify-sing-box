@@ -46,6 +46,12 @@ TLS or REALITY layer.
 |---|---|---|---|
 | `type` | string | — | `raw`. The transport has no other fields. |
 
+## Sources and credits
+
+Parts of this feature come from these projects. Thanks to their authors.
+
+- [XTLS/Xray-core](https://github.com/XTLS/Xray-core): the `raw` network this matches.
+
 ## See also
 
 - [XHTTP transport](xhttp.en.md)

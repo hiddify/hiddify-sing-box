@@ -64,6 +64,17 @@ masks `mkcp-aes128gcm` and `header-wechat`; they are the same on the wire.
 
 Inbounds do not take finalmask, so a Hiddify mKCP server works only without masks.
 
+## Sources and credits
+
+Parts of this feature come from these projects. Thanks to their authors.
+
+- [XTLS/Xray-core](https://github.com/XTLS/Xray-core): the mKCP code comes from it.
+
+Related projects:
+
+- [skywind3000/kcp](https://github.com/skywind3000/kcp): the original KCP protocol.
+- [shtorm-7/sing-box-extended](https://github.com/shtorm-7/sing-box-extended): also has mKCP.
+
 ## See also
 
 - [finalmask](finalmask.en.md)

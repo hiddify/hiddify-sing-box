@@ -80,6 +80,12 @@
 
 حالت `round_robin` از lx اضافه نشده است: گروه [balancer](balancer.fa.md) آن را پوشش می‌دهد.
 
+## منبع‌ها و قدردانی
+
+بخش‌هایی از این قابلیت از این پروژه‌ها آمده است. از نویسندگان آن‌ها سپاسگزاریم.
+
+- [Leadaxe/sing-box-lx](https://github.com/Leadaxe/sing-box-lx): URLهای تست بیشتر، حالت `failover` و جریمه‌های اتصال از این پروژه پیروی می‌کنند.
+
 ## همچنین ببینید
 
 - [Balancer](balancer.fa.md)

@@ -69,6 +69,12 @@ domain fronting می‌گویند: فیلتر اتصالی به گوگل می‌
 این خروجی اتصال‌هایش به گوگل را خودش می‌سازد، پس فیلدهای اتصال مثل `detour` برای آن‌ها به
 کار نمی‌روند.
 
+## منبع‌ها و قدردانی
+
+بخش‌هایی از این قابلیت از این پروژه‌ها آمده است. از نویسندگان آن‌ها سپاسگزاریم.
+
+- [Kianmhz/GooseRelayVPN](https://github.com/Kianmhz/GooseRelayVPN): پروژهٔ GooseRelayVPN؛ کلاینت آن از طریق فورک [hiddify/GooseRelayVPN](https://github.com/hiddify/GooseRelayVPN) استفاده می‌شود.
+
 ## همچنین ببینید
 
 - [پایش](../groups/monitoring.fa.md)

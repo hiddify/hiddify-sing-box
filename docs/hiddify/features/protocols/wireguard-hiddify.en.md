@@ -200,6 +200,17 @@ A range is written as a number (`3`), a string (`"2-4"` or `"3"`), or an object
   for AmneziaWG obfuscation, or the `awg` block of a `warp` endpoint.
 - Noise works with any WireGuard server. The server needs no change.
 
+## Sources and credits
+
+Parts of this feature come from these projects. Thanks to their authors.
+
+- [XTLS/Xray-core](https://github.com/XTLS/Xray-core): the `raw` noise follows Xray's random noise.
+- [reF1nd/sing-box](https://github.com/reF1nd/sing-box): the recovery after a network loss comes from it.
+
+Related projects:
+
+- [amnezia-vpn/amneziawg-go](https://github.com/amnezia-vpn/amneziawg-go): WireGuard with junk packets.
+
 ## See also
 
 - [AmneziaWG](amneziawg.en.md)

@@ -143,6 +143,12 @@ backend `socks` همین خروجی به‌تنهایی است و هر backend �
 - لینک‌هایی که دامنهٔ تونل را دارند فقط با افراد مورد اعتماد به اشتراک بگذارید: دامنهٔ
   منتشرشده ظرف چند ساعت مسدود می‌شود.
 
+## منبع‌ها و قدردانی
+
+بخش‌هایی از این قابلیت از این پروژه‌ها آمده است. از نویسندگان آن‌ها سپاسگزاریم.
+
+- [masterking32/MasterDnsVPN](https://github.com/masterking32/MasterDnsVPN): پروژهٔ MasterDnsVPN؛ کلاینت Go آن از طریق فورک [hiddify/MasterDnsVPN](https://github.com/hiddify/MasterDnsVPN) جاسازی شده است.
+
 ## همچنین ببینید
 
 - [DNSTT](dnstt.fa.md)

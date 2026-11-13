@@ -194,6 +194,14 @@ Related options: the outbound's [`tls_fragment`](../tls-fragment.en.md) is added
 `fragment` mask. [`tls_tricks`](../tls-tricks.en.md) changes the ClientHello itself and is not a mask.
 `tls_fragment` cannot be used with `tcp_fast_open`.
 
+## Sources and credits
+
+Parts of this feature come from these projects. Thanks to their authors.
+
+- [XTLS/Xray-core](https://github.com/XTLS/Xray-core): the finalmask masks come from it.
+- [patterniha/Xray-core](https://github.com/patterniha/Xray-core): the `merge` and `oob` masks.
+- [PoriyaVali/mirage](https://github.com/PoriyaVali/mirage): the `mirage` TCP mask.
+
 ## See also
 
 - [XDRIVE transport](xdrive.en.md)

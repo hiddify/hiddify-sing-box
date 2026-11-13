@@ -201,6 +201,18 @@ The other scanner fields (`ports`, `cidrs`, `max_rtt`, `timeout`, `count`, `conc
 - Noise does not help against a filter that blocks all UDP, or all of Cloudflare's WARP ranges:
   then auto mode, or `masque` with `vhttp` `auto` (HTTP/2 over TCP), is the way.
 
+## Sources and credits
+
+Parts of this feature come from these projects. Thanks to their authors.
+
+- [kyochikuto/sing-box-plus](https://github.com/kyochikuto/sing-box-plus): the WireGuard probe is adapted from it.
+- [XTLS/Xray-core](https://github.com/XTLS/Xray-core): the `xray-random` noise preset.
+- [amnezia-vpn/amneziawg-go](https://github.com/amnezia-vpn/amneziawg-go): the junk packets that the AmneziaWG presets copy.
+
+Related projects:
+
+- [bepass-org/warp-plus](https://github.com/bepass-org/warp-plus): has a WARP endpoint scanner too.
+
 ## See also
 
 - [WARP](warp.en.md)

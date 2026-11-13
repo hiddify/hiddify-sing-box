@@ -73,6 +73,12 @@ sing-box اصلی در نسخهٔ 1.13 خروجی WireGuard را حذف کرد �
 فیلدهای اتصال (`detour`، `bind_interface` و بقیه) مثل خروجی‌های دیگر کار می‌کنند. گزینه‌ای برای
 keepalive وجود ندارد، مثل خروجی قدیمی sing-box اصلی.
 
+## منبع‌ها و قدردانی
+
+بخش‌هایی از این قابلیت از این پروژه‌ها آمده است. از نویسندگان آن‌ها سپاسگزاریم.
+
+- [SagerNet/sing-box](https://github.com/SagerNet/sing-box): outbound قدیمی WireGuard که در نسخهٔ 1.13 از upstream حذف شد.
+
 ## همچنین ببینید
 
 - [WireGuard: افزوده‌های هیدیفای](wireguard-hiddify.fa.md)

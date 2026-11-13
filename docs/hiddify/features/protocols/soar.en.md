@@ -126,6 +126,13 @@ Soar defines no share link. hiddify-core's ray2sing reads `soar://` in two forms
   window) applies to the pool as a whole. Without resolvers in the config, or with
   `smart_pool: false`, the client tunes every resolver separately.
 
+## Sources and credits
+
+Parts of this feature come from these projects. Thanks to their authors.
+
+- [getlantern/soar](https://github.com/getlantern/soar): the Soar protocol and Go library from Lantern, used through the fork [hiddify/soar](https://github.com/hiddify/soar).
+- [WhiteDNS/WhiteDNS-Android](https://github.com/WhiteDNS/WhiteDNS-Android): the `soar://` profile link format.
+
 ## See also
 
 - [Smart resolver pool](../dns/smart-dns-pool.en.md)

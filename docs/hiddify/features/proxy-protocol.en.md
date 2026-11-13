@@ -88,6 +88,12 @@ Direct outbound that sends the header to a backend:
 Turn on `proxy_protocol` on an inbound only when every client reaches it through a relay that
 sends the header. Otherwise anyone can send a header and claim any source address.
 
+## Sources and credits
+
+Parts of this feature come from these projects. Thanks to their authors.
+
+- [pires/go-proxyproto](https://github.com/pires/go-proxyproto): reads and writes the PROXY protocol header.
+
 ## See also
 
 - [SSH: inbound and Hiddify additions](protocols/ssh.en.md)

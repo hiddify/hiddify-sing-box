@@ -80,6 +80,16 @@ The `network` field is accepted but has no effect: the outbound is TCP only.
 For each identity and server list field, the order is: the value set in the outbound, then the
 value in `config`, then the default.
 
+## Sources and credits
+
+Parts of this feature come from these projects. Thanks to their authors.
+
+- [Psiphon-Labs/psiphon-tunnel-core](https://github.com/Psiphon-Labs/psiphon-tunnel-core): the official Psiphon tunnel core, built in.
+
+Related projects:
+
+- [bepass-org/warp-plus](https://github.com/bepass-org/warp-plus): combines WARP with Psiphon.
+
 ## See also
 
 - [Monitoring](../groups/monitoring.en.md)

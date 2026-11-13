@@ -96,6 +96,17 @@ and otherwise `"mode": "sequential"`.
 
 The `stable` and `fastest` modes follow sing-box-lx.
 
+## Sources and credits
+
+Parts of this feature come from these projects. Thanks to their authors.
+
+- [reF1nd/sing-box](https://github.com/reF1nd/sing-box): the `group` DNS server was cherry-picked from [this commit](https://github.com/reF1nd/sing-box/commit/cd6ca5485a34a7baa84de0aeef795fe314545e97).
+- [Leadaxe/sing-box-lx](https://github.com/Leadaxe/sing-box-lx): the `stable` and `fastest` modes follow it.
+
+Related projects:
+
+- [shtorm-7/sing-box-extended](https://github.com/shtorm-7/sing-box-extended): has a similar DNS fallback with sequential and parallel queries.
+
 ## See also
 
 - [Smart resolver pool](smart-dns-pool.en.md)

@@ -8,7 +8,7 @@ Sudoku یک پراکسی رمزشده روی TCP است که بایت‌هایش
 می‌کند. می‌توانید خروجی را طوری تنظیم کنید که شبیه متن ساده باشد یا تصادفی‌بودنی کم و ثابت داشته باشد،
 به‌جای این‌که شبیه نویز تصادفی باشد. این همان inbound و outbound با `"type": "sudoku"` است. TCP را
 حمل می‌کند و UDP را هم درون همان اتصال TCP. این پروتکل Sudoku از
-[saba-futai/sudoku](https://github.com/saba-futai/sudoku) است که mihomo هم از آن پشتیبانی می‌کند و از
+[SUDOKU-ASCII/sudoku](https://github.com/SUDOKU-ASCII/sudoku) است که mihomo هم از آن پشتیبانی می‌کند و از
 sing-box-extended به این‌جا منتقل شده است.
 
 ## چرا از آن استفاده کنیم
@@ -177,6 +177,17 @@ inbound خودش TLS ندارد. برای HTTPS یک CDN یا reverse proxy که
 
 فقط میان دو نمونهٔ sing-box هیدیفای آزموده شده است: بدون ماسک، با ماسک HTTP و با `prefer_ascii`. با
 Sudoku اصلی یا mihomo آزموده نشده است.
+
+## منبع‌ها و قدردانی
+
+بخش‌هایی از این قابلیت از این پروژه‌ها آمده است. از نویسندگان آن‌ها سپاسگزاریم.
+
+- [SUDOKU-ASCII/sudoku](https://github.com/SUDOKU-ASCII/sudoku): پروتکل Sudoku و پیاده‌سازی مرجع آن.
+- [shtorm-7/sing-box-extended](https://github.com/shtorm-7/sing-box-extended): inbound و outbound مربوط به sing-box از این پروژه منتقل شده‌اند.
+
+پروژه‌های مرتبط:
+
+- [MetaCubeX/mihomo](https://github.com/MetaCubeX/mihomo): از Sudoku هم پشتیبانی می‌کند.
 
 ## همچنین ببینید
 

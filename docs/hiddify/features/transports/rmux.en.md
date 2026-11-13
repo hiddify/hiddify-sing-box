@@ -4,7 +4,7 @@
 
 rmux is one more protocol for sing-box multiplexing: `"multiplex": {"protocol": "rmux"}` on an
 outbound. Like `smux`, `yamux` and `h2mux`, it carries many connections inside one connection to
-the server. It comes from sing-box-extended (github.com/shtorm-7/rmux).
+the server. It comes from sing-box-extended ([shtorm-7/rmux](https://github.com/shtorm-7/rmux)).
 
 ## Why use it
 
@@ -39,6 +39,13 @@ network sees.
 The server's inbound needs `"multiplex": {"enabled": true}` and Hiddify's sing-box: it accepts
 rmux like the other protocols, and an upstream sing-box server refuses it. The other
 `multiplex` fields work as for the other protocols. No build tag is needed.
+
+## Sources and credits
+
+Parts of this feature come from these projects. Thanks to their authors.
+
+- [shtorm-7/rmux](https://github.com/shtorm-7/rmux): the rmux multiplex library.
+- [shtorm-7/sing-box-extended](https://github.com/shtorm-7/sing-box-extended): the rmux support in sing-box was ported from it.
 
 ## See also
 

@@ -206,6 +206,19 @@ Notes:
   failed, they fail with "tunnel not initialized".
 - When a connect fails, the tunnel logs the error and tries again after `reconnect_delay`.
 
+## Sources and credits
+
+Parts of this feature come from these projects. Thanks to their authors.
+
+- [SagerNet/sing-box](https://github.com/SagerNet/sing-box): the MASQUE support this outbound runs on.
+- [Diniboy1123/connect-ip-go](https://github.com/Diniboy1123/connect-ip-go): CONNECT-IP for Cloudflare's WARP, a fork of [quic-go/connect-ip-go](https://github.com/quic-go/connect-ip-go), used through [shtorm-7/connect-ip-go](https://github.com/shtorm-7/connect-ip-go).
+- [Leadaxe/sing-box-lx](https://github.com/Leadaxe/sing-box-lx): `vhttp` auto, `server_name` and endpoint failover follow it.
+
+Related projects:
+
+- [Diniboy1123/usque](https://github.com/Diniboy1123/usque): an open reimplementation of WARP's MASQUE protocol.
+- [shtorm-7/sing-box-extended](https://github.com/shtorm-7/sing-box-extended): also has MASQUE.
+
 ## See also
 
 - [WARP](warp.en.md)

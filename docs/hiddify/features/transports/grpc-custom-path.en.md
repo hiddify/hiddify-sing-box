@@ -58,6 +58,12 @@ TLS.
 Client and server must give the same path. Tested in both directions, with both
 implementations, against Xray 26.10.21 and 26.3.27.
 
+## Sources and credits
+
+Parts of this feature come from these projects. Thanks to their authors.
+
+- [XTLS/Xray-core](https://github.com/XTLS/Xray-core): the custom gRPC path format follows it.
+
 ## See also
 
 - [XHTTP transport](xhttp.en.md)

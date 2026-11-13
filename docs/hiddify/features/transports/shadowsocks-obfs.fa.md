@@ -89,6 +89,12 @@ simple-obfs قدیمی است و شکل‌های HTTP و TLS آن برای فی�
 خطاها: `obfs_mode` غیر از `http` یا `tls`، `obfs_fallback` بدون `obfs_mode`، یا fallback بدون نشانی و
 پورت معتبر خطای پیکربندی است. بدون `obfs_fallback`، اتصال ناموفق بسته می‌شود.
 
+## منبع‌ها و قدردانی
+
+بخش‌هایی از این قابلیت از این پروژه‌ها آمده است. از نویسندگان آن‌ها سپاسگزاریم.
+
+- [shadowsocks/simple-obfs](https://github.com/shadowsocks/simple-obfs): پروتکل simple-obfs و افزونهٔ `obfs-local`.
+
 ## همچنین ببینید
 
 - [finalmask](finalmask.fa.md)

@@ -51,6 +51,13 @@
 سایت تست باید پس از پاسخ اول اتصال را باز نگه دارد. نشانی‌های رایج تست مثل
 `https://www.gstatic.com/generate_204` این کار را می‌کنند.
 
+## منبع‌ها و قدردانی
+
+این قابلیت از این پروژه‌ها پیروی می‌کند یا مانند آن‌ها کار می‌کند. از نویسندگان آن‌ها سپاسگزاریم.
+
+- [MetaCubeX/mihomo](https://github.com/MetaCubeX/mihomo): گزینهٔ `unified-delay` در Clash که این قابلیت از آن پیروی می‌کند.
+- [shtorm-7/sing-box-extended](https://github.com/shtorm-7/sing-box-extended): همین گزینه را دارد.
+
 ## همچنین ببینید
 
 - [پایش](monitoring.fa.md)

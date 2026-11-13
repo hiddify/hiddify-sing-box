@@ -59,6 +59,18 @@
 فیلدهای اتصال سرورهای DNS راه دور دیگر این‌جا هم کار می‌کنند، مثلاً `detour` برای فرستادن پرسش‌ها
 از یک خروجی. نشانی سرور از استمپ گرفته می‌شود: `server` و `server_port` استفاده نمی‌شوند.
 
+## منبع‌ها و قدردانی
+
+بخش‌هایی از این قابلیت از این پروژه‌ها آمده است. از نویسندگان آن‌ها سپاسگزاریم.
+
+- [ameshkov/dnscrypt](https://github.com/ameshkov/dnscrypt): کلاینت DNSCrypt که از طریق فورک [shtorm-7/dnscrypt](https://github.com/shtorm-7/dnscrypt) استفاده می‌شود.
+- [ameshkov/dnsstamps](https://github.com/ameshkov/dnsstamps): stampهای `sdns://` را می‌خواند.
+
+پروژه‌های مرتبط:
+
+- [shtorm-7/sing-box-extended](https://github.com/shtorm-7/sing-box-extended): همین سرور SDNS را دارد.
+- [DNSCrypt/dnscrypt-proxy](https://github.com/DNSCrypt/dnscrypt-proxy): کلاینت مرجع DNSCrypt و فهرست resolverهای عمومی.
+
 ## همچنین ببینید
 
 - [گروه DNS](dns-group.fa.md)

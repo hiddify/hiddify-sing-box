@@ -121,6 +121,16 @@ The usual listen fields (`listen`, `listen_port` and the rest) work as for other
 | `udp_over_tcp` | bool or object | off | Send UDP inside forwarded TCP connections. `true` uses version 2. The object form is `{"enabled": true, "version": 1}` or `2`. |
 | `network` | `"tcp"` or `"udp"` | both | Networks the outbound accepts. Upstream accepts only TCP. UDP is accepted only when `udp_over_tcp` is on. |
 
+## Sources and credits
+
+Parts of this feature come from these projects. Thanks to their authors.
+
+- [SagerNet/sing-box](https://github.com/SagerNet/sing-box): the SSH outbound that Hiddify extends.
+
+Related projects:
+
+- [shtorm-7/sing-box-extended](https://github.com/shtorm-7/sing-box-extended): also has an SSH server.
+
 ## See also
 
 - [Monitoring](../groups/monitoring.en.md)

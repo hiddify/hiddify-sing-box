@@ -124,6 +124,16 @@ OpenSSH معمولی نمی‌فهمد.
 | `udp_over_tcp` | bool or object | خاموش | ترافیک UDP را درون اتصال‌های TCP forward شده بفرست. `true` یعنی نسخهٔ ۲. شکل شیء آن `{"enabled": true, "version": 1}` یا `2` است. |
 | `network` | `"tcp"` or `"udp"` | هر دو | شبکه‌هایی که خروجی می‌پذیرد. sing-box اصلی فقط TCP را می‌پذیرد. UDP فقط وقتی پذیرفته می‌شود که `udp_over_tcp` روشن باشد. |
 
+## منبع‌ها و قدردانی
+
+بخش‌هایی از این قابلیت از این پروژه‌ها آمده است. از نویسندگان آن‌ها سپاسگزاریم.
+
+- [SagerNet/sing-box](https://github.com/SagerNet/sing-box): outbound مربوط به SSH که هیدیفای آن را گسترش می‌دهد.
+
+پروژه‌های مرتبط:
+
+- [shtorm-7/sing-box-extended](https://github.com/shtorm-7/sing-box-extended): سرور SSH هم دارد.
+
 ## همچنین ببینید
 
 - [پایش](../groups/monitoring.fa.md)

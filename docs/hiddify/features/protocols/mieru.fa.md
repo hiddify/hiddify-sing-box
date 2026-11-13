@@ -99,6 +99,17 @@ Mieru ادای پروتکل دیگری را درنمی‌آورد. به‌جای
   می‌برد.
 - Mieru از TLS استفاده نمی‌کند، پس بلوک `tls` برای آن کاربردی ندارد.
 
+## منبع‌ها و قدردانی
+
+بخش‌هایی از این قابلیت از این پروژه‌ها آمده است. از نویسندگان آن‌ها سپاسگزاریم.
+
+- [enfein/mieru](https://github.com/enfein/mieru): پروتکل mieru و کتابخانهٔ Go آن.
+
+پروژه‌های مرتبط:
+
+- [shtorm-7/sing-box-extended](https://github.com/shtorm-7/sing-box-extended): mieru را هم دارد.
+- [MetaCubeX/mihomo](https://github.com/MetaCubeX/mihomo): از mieru هم پشتیبانی می‌کند.
+
 ## همچنین ببینید
 
 - [همهٔ قابلیت‌های هیدیفای](../../index.fa.md)

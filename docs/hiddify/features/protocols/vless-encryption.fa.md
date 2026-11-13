@@ -94,6 +94,16 @@ Vision: در هیدیفای، `flow: "xtls-rprx-vision"` روی خروجی بد�
 را انجام نمی‌دهد. وقتی `multiplex` روشن باشد flow خاموش می‌شود، چون Vision روی اتصال مالتی‌پلکس‌شده
 اجرا نمی‌شود.
 
+## منبع‌ها و قدردانی
+
+بخش‌هایی از این قابلیت از این پروژه‌ها آمده است. از نویسندگان آن‌ها سپاسگزاریم.
+
+- [XTLS/Xray-core](https://github.com/XTLS/Xray-core): رمزنگاری VLESS و جریان Vision از این پروژه آمده‌اند.
+
+پروژه‌های مرتبط:
+
+- [shtorm-7/sing-box-extended](https://github.com/shtorm-7/sing-box-extended): رمزنگاری VLESS را هم دارد.
+
 ## همچنین ببینید
 
 - [REALITY در هیدیفای](../reality-hiddify.fa.md)

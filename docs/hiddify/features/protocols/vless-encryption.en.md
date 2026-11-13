@@ -94,6 +94,16 @@ with no TLS or REALITY; it needs one of the two. With `random` mode Vision does 
 (copy directly between sockets). When `multiplex` is enabled, the flow is turned off, since Vision
 cannot run over a multiplexed connection.
 
+## Sources and credits
+
+Parts of this feature come from these projects. Thanks to their authors.
+
+- [XTLS/Xray-core](https://github.com/XTLS/Xray-core): VLESS encryption and the Vision flow come from it.
+
+Related projects:
+
+- [shtorm-7/sing-box-extended](https://github.com/shtorm-7/sing-box-extended): also has VLESS encryption.
+
 ## See also
 
 - [REALITY in Hiddify](../reality-hiddify.en.md)

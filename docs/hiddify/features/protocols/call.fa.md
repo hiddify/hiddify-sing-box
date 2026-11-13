@@ -157,6 +157,22 @@ included in this build, rebuild with -tags with_call» متوقف می‌شود.
 - وقتی طرف سرور تماس تازه می‌سازد، لینک در هر بار اتصال عوض می‌شود. برای ثابت ماندن لینک،
   `join_link` را در inbound تنظیم کنید.
 
+## منبع‌ها و قدردانی
+
+بخش‌هایی از این قابلیت از این پروژه‌ها آمده است. از نویسندگان آن‌ها سپاسگزاریم.
+
+- [shtorm-7/sing-box-extended](https://github.com/shtorm-7/sing-box-extended): تونل تماس، inbound و outbound آن و کلاینت‌های VK، Telemost، Dion، WB Stream و Bitrix24 از این پروژه منتقل شده‌اند.
+- [kulikov0/headless-client](https://github.com/kulikov0/headless-client): باعث می‌شود کلاینت‌های سرویس‌ها اثرانگشت TLS، HTTP/2 و DTLS کروم را بفرستند.
+- [pion](https://github.com/pion): کتابخانه‌های WebRTC (RTP، data channel و interceptor) که تماس را حمل می‌کنند.
+- [xtaci/kcp-go](https://github.com/xtaci/kcp-go): جریان مطمئن روی track‌های ویدیو.
+
+پروژه‌های مرتبط:
+
+- [kulikov0/whitelist-bypass](https://github.com/kulikov0/whitelist-bypass): از طریق سرورهای مدیای تماس‌های VK و Yandex Telemost تونل می‌زند.
+- [openlibrecommunity/olcrtc](https://github.com/openlibrecommunity/olcrtc): از طریق سرویس‌های جلسهٔ آنلاین تونل می‌زند.
+- [cacggghp/vk-turn-proxy](https://github.com/cacggghp/vk-turn-proxy): WireGuard یا Hysteria را از طریق سرورهای TURN تماس‌های VK عبور می‌دهد.
+- [jaykaiperson/lionheart](https://github.com/jaykaiperson/lionheart): تونلی مشابه برای WB Stream.
+
 ## همچنین ببینید
 
 - [Bond](bond.fa.md)

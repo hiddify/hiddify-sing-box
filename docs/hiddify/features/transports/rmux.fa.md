@@ -6,7 +6,7 @@
 
 rmux یک پروتکل دیگر برای چندگانه‌سازی (multiplex) در sing-box است: `"multiplex": {"protocol": "rmux"}`
 در یک outbound. مثل `smux`، `yamux` و `h2mux`، چندین اتصال را درون یک اتصال به سرور حمل می‌کند. از
-sing-box-extended ‏(github.com/shtorm-7/rmux) آمده است.
+sing-box-extended ‏([shtorm-7/rmux](https://github.com/shtorm-7/rmux)) آمده است.
 
 ## چرا از آن استفاده کنیم
 
@@ -40,6 +40,13 @@ sing-box-extended ‏(github.com/shtorm-7/rmux) آمده است.
 inbound سرور به `"multiplex": {"enabled": true}` و sing-box هیدیفای نیاز دارد: rmux را مثل
 پروتکل‌های دیگر می‌پذیرد، ولی سرور sing-box اصلی آن را رد می‌کند. بقیهٔ فیلدهای `multiplex` مثل
 پروتکل‌های دیگر کار می‌کنند. برچسب ساخت لازم نیست.
+
+## منبع‌ها و قدردانی
+
+بخش‌هایی از این قابلیت از این پروژه‌ها آمده است. از نویسندگان آن‌ها سپاسگزاریم.
+
+- [shtorm-7/rmux](https://github.com/shtorm-7/rmux): کتابخانهٔ multiplex با نام rmux.
+- [shtorm-7/sing-box-extended](https://github.com/shtorm-7/sing-box-extended): پشتیبانی rmux در sing-box از این پروژه منتقل شده است.
 
 ## همچنین ببینید
 

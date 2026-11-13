@@ -198,6 +198,18 @@ The resolvers themselves are the outbound's `resolvers`: `host:port` or `host` f
   [hmrd_multi_resolver_dns](https://github.com/hiddify/hmrd_multi_resolver_dns).
 - The pool listens on 127.0.0.1 only, on a port chosen at start, and closes with the outbound.
 
+## Sources and credits
+
+Parts of this feature come from these projects. Thanks to their authors.
+
+- [hiddify/hmrd_multi_resolver_dns](https://github.com/hiddify/hmrd_multi_resolver_dns): the pool itself, written for Hiddify.
+- [getlantern/soar](https://github.com/getlantern/soar): its resolver discovery is used for the `auto` resolvers.
+
+Related projects:
+
+- [net2share/vaydns](https://github.com/net2share/vaydns): the DNSTT client the pool serves.
+- [masterking32/MasterDnsVPN](https://github.com/masterking32/MasterDnsVPN): the MasterDNS tunnel the pool serves.
+
 ## See also
 
 - [DNSTT](../protocols/dnstt.en.md)

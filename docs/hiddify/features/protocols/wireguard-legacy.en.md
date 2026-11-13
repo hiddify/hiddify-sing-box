@@ -71,6 +71,12 @@ obfuscation, use the [WireGuard endpoint](wireguard-hiddify.en.md) with noise, o
 The dial fields (`detour`, `bind_interface` and the rest) work as for other outbounds. There is no
 keepalive option, as in upstream's old outbound.
 
+## Sources and credits
+
+Parts of this feature come from these projects. Thanks to their authors.
+
+- [SagerNet/sing-box](https://github.com/SagerNet/sing-box): the old WireGuard outbound, removed upstream in 1.13.
+
 ## See also
 
 - [WireGuard: Hiddify additions](wireguard-hiddify.en.md)

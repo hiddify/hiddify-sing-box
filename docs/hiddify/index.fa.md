@@ -69,6 +69,36 @@
 
 - [ملاحظات اپ](app_considerations.md) (انگلیسی): آنچه hiddify-app و hiddify-core به‌خاطر کارهای v5 باید تغییر دهند یا بدانند.
 
+## قدردانی
+
+قابلیت‌های هیدیفای بر پایهٔ این پروژه‌ها ساخته شده‌اند. صفحهٔ هر قابلیت، در بخش «منبع‌ها و قدردانی»، می‌گوید چه چیزی از آن‌ها گرفته است. از نویسندگان آن‌ها سپاسگزاریم.
+
+- [SagerNet/sing-box](https://github.com/SagerNet/sing-box): پروژهٔ اصلی که این فورک بر پایهٔ آن ساخته شده است.
+- [shtorm-7/sing-box-extended](https://github.com/shtorm-7/sing-box-extended): تونل تماس، bond، fallback، Sudoku و rmux.
+- [Leadaxe/sing-box-lx](https://github.com/Leadaxe/sing-box-lx): افزوده‌های URL test، `key_share` در REALITY، جابه‌جایی MASQUE و حالت‌های DNS group.
+- [reF1nd/sing-box](https://github.com/reF1nd/sing-box): DNS group، بازیابی WireGuard و رفع اشکال‌های دیگر.
+- [kyochikuto/sing-box-plus](https://github.com/kyochikuto/sing-box-plus): probe مربوط به WireGuard در اسکنر WARP.
+- [XTLS/Xray-core](https://github.com/XTLS/Xray-core): XHTTP، mKCP، XDRIVE، finalmask و رمزنگاری VLESS.
+- [patterniha/Xray-core](https://github.com/patterniha/Xray-core): ماسک‌های `merge` و `oob`.
+- [PoriyaVali/mirage](https://github.com/PoriyaVali/mirage): ماسک `mirage`.
+- [amnezia-vpn/amneziawg-go](https://github.com/amnezia-vpn/amneziawg-go): AmneziaWG.
+- [enfein/mieru](https://github.com/enfein/mieru): Mieru.
+- [SUDOKU-ASCII/sudoku](https://github.com/SUDOKU-ASCII/sudoku): پروتکل Sudoku.
+- [TrustTunnel/TrustTunnel](https://github.com/TrustTunnel/TrustTunnel): پروتکل TrustTunnel.
+- [xchacha20-poly1305/sing-trusttunnel](https://github.com/xchacha20-poly1305/sing-trusttunnel): کتابخانهٔ TrustTunnel.
+- [Psiphon-Labs/psiphon-tunnel-core](https://github.com/Psiphon-Labs/psiphon-tunnel-core): Psiphon.
+- [dnstt](https://www.bamsoftware.com/software/dnstt/): DNSTT اصلی.
+- [net2share/vaydns](https://github.com/net2share/vaydns): کلاینت DNSTT.
+- [masterking32/MasterDnsVPN](https://github.com/masterking32/MasterDnsVPN): MasterDNS.
+- [getlantern/soar](https://github.com/getlantern/soar): Soar.
+- [Kianmhz/GooseRelayVPN](https://github.com/Kianmhz/GooseRelayVPN): GooseRelay.
+- [kulikov0/headless-client](https://github.com/kulikov0/headless-client): اثرانگشت کروم برای تونل تماس.
+- [Diniboy1123/connect-ip-go](https://github.com/Diniboy1123/connect-ip-go): CONNECT-IP برای WARP روی MASQUE.
+- [Leadaxe/utls-lx](https://github.com/Leadaxe/utls-lx): اثرانگشت TLS مرورگرهای فعلی.
+- [ameshkov/dnscrypt](https://github.com/ameshkov/dnscrypt): DNSCrypt.
+- [pires/go-proxyproto](https://github.com/pires/go-proxyproto): PROXY protocol.
+- [shadowsocks/simple-obfs](https://github.com/shadowsocks/simple-obfs): simple-obfs.
+
 ## رفع اشکال‌ها
 
 - [رفع اشکال‌های v5](bugfix/v5.fa.md): اشکال‌هایی که روی sing-box نسخهٔ v1.15 رفع شده‌اند، جدیدترین در بالا، هر کدام با کامیتش.

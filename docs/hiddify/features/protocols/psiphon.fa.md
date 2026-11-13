@@ -80,6 +80,16 @@
 برای هر فیلد شناسه و فهرست سرور، ترتیب این است: مقدار تنظیم‌شده در خروجی، سپس مقدار داخل
 `config`، سپس پیش‌فرض.
 
+## منبع‌ها و قدردانی
+
+بخش‌هایی از این قابلیت از این پروژه‌ها آمده است. از نویسندگان آن‌ها سپاسگزاریم.
+
+- [Psiphon-Labs/psiphon-tunnel-core](https://github.com/Psiphon-Labs/psiphon-tunnel-core): هستهٔ رسمی تونل Psiphon که درون برنامه ساخته شده است.
+
+پروژه‌های مرتبط:
+
+- [bepass-org/warp-plus](https://github.com/bepass-org/warp-plus): WARP را با Psiphon ترکیب می‌کند.
+
 ## همچنین ببینید
 
 - [پایش](../groups/monitoring.fa.md)

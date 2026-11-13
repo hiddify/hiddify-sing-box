@@ -199,6 +199,17 @@ Initial کلاینت QUIC v1 برای دامنهٔ `id` می‌شود: یک Clie
   WireGuard ساده اجرا می‌کنند، پس تغییر `s1` تا `s4`، `h1` تا `h4` یا `header_protection_key` دست‌دادن را خراب می‌کند. برای
   WARP فقط مقادیری را تنظیم کنید که روی بسته‌های کلاینت اثر دارند: `jc`، `jmin`، `jmax` و i1 تا i5.
 
+## منبع‌ها و قدردانی
+
+بخش‌هایی از این قابلیت از این پروژه‌ها آمده است. از نویسندگان آن‌ها سپاسگزاریم.
+
+- [amnezia-vpn/amneziawg-go](https://github.com/amnezia-vpn/amneziawg-go): پروتکل AmneziaWG و کتابخانهٔ Go آن که از طریق فورک [hiddifydeveloper/amneziawg-go](https://github.com/hiddifydeveloper/amneziawg-go) استفاده می‌شود.
+- [Leadaxe/sing-box-lx](https://github.com/Leadaxe/sing-box-lx): فیلدهای پوشش QUIC (`ip`، `id` و `ib`) از این پروژه پیروی می‌کنند.
+
+پروژه‌های مرتبط:
+
+- [shtorm-7/sing-box-extended](https://github.com/shtorm-7/sing-box-extended): AmneziaWG را هم دارد.
+
 ## همچنین ببینید
 
 - [WireGuard: افزوده‌های هیدیفای](wireguard-hiddify.fa.md)

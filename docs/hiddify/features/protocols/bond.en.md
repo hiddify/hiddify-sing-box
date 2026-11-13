@@ -81,6 +81,12 @@ Route rules see bonded connections as coming from the bond inbound's tag. Ported
 sing-box-extended, with fixes: writes larger than 64 KiB, ratio totals, legs that never all
 arrive.
 
+## Sources and credits
+
+Parts of this feature come from these projects. Thanks to their authors.
+
+- [shtorm-7/sing-box-extended](https://github.com/shtorm-7/sing-box-extended): the bond inbound and outbound were ported from it.
+
 ## See also
 
 - [Balancer](../groups/balancer.en.md)

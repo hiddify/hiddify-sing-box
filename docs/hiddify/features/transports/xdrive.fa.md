@@ -125,6 +125,16 @@ XDRIVE ترنسپورت ذخیره‌سازی Xray-core است. کلاینت و 
 - در هر دو جهت روی سرویس `local` با Xray-core 26.11.9 و 26.10.31 و فورک patterniha 26.11.9 آزموده شده
   است (`h_xray_xdrive_interop_test.go`).
 
+## منبع‌ها و قدردانی
+
+بخش‌هایی از این قابلیت از این پروژه‌ها آمده است. از نویسندگان آن‌ها سپاسگزاریم.
+
+- [XTLS/Xray-core](https://github.com/XTLS/Xray-core): کد XDRIVE از این پروژه آمده است.
+
+پروژه‌های مرتبط:
+
+- [patterniha/Xray-core](https://github.com/patterniha/Xray-core): با این پروژه آزموده شده است.
+
 ## همچنین ببینید
 
 - [finalmask](finalmask.fa.md)

@@ -68,6 +68,12 @@ routing these requests.
 The carrier makes its own connections to Google, so the dial fields such as `detour` are not
 used for them.
 
+## Sources and credits
+
+Parts of this feature come from these projects. Thanks to their authors.
+
+- [Kianmhz/GooseRelayVPN](https://github.com/Kianmhz/GooseRelayVPN): the GooseRelayVPN project; its client is used through the fork [hiddify/GooseRelayVPN](https://github.com/hiddify/GooseRelayVPN).
+
 ## See also
 
 - [Monitoring](../groups/monitoring.en.md)

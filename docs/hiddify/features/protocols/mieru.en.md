@@ -99,6 +99,17 @@ If `listen_port` is set, `portBindings` must hold exactly one binding with the s
   the problem.
 - Mieru does not use TLS, so the `tls` block does not apply.
 
+## Sources and credits
+
+Parts of this feature come from these projects. Thanks to their authors.
+
+- [enfein/mieru](https://github.com/enfein/mieru): the mieru protocol and Go library.
+
+Related projects:
+
+- [shtorm-7/sing-box-extended](https://github.com/shtorm-7/sing-box-extended): also has mieru.
+- [MetaCubeX/mihomo](https://github.com/MetaCubeX/mihomo): also supports mieru.
+
 ## See also
 
 - [All Hiddify features](../../index.md)

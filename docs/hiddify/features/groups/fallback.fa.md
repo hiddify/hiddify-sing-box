@@ -52,6 +52,12 @@ outbound است: `"type": "fallback"` در فهرست `outbounds`.
 
 از sing-box-extended منتقل شده است.
 
+## منبع‌ها و قدردانی
+
+بخش‌هایی از این قابلیت از این پروژه‌ها آمده است. از نویسندگان آن‌ها سپاسگزاریم.
+
+- [shtorm-7/sing-box-extended](https://github.com/shtorm-7/sing-box-extended): گروه fallback از این پروژه منتقل شده است.
+
 ## همچنین ببینید
 
 - [متعادل‌کننده](balancer.fa.md)

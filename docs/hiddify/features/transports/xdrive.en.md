@@ -125,6 +125,16 @@ host's own name.
 - Tested against Xray-core 26.11.9, 26.10.31 and the patterniha fork 26.11.9 in both directions
   over the `local` service (`h_xray_xdrive_interop_test.go`).
 
+## Sources and credits
+
+Parts of this feature come from these projects. Thanks to their authors.
+
+- [XTLS/Xray-core](https://github.com/XTLS/Xray-core): the XDRIVE code comes from it.
+
+Related projects:
+
+- [patterniha/Xray-core](https://github.com/patterniha/Xray-core): tested against it.
+
 ## See also
 
 - [finalmask](finalmask.en.md)

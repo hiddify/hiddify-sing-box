@@ -98,6 +98,17 @@
 
 حالت‌های `stable` و `fastest` از sing-box-lx گرفته شده‌اند.
 
+## منبع‌ها و قدردانی
+
+بخش‌هایی از این قابلیت از این پروژه‌ها آمده است. از نویسندگان آن‌ها سپاسگزاریم.
+
+- [reF1nd/sing-box](https://github.com/reF1nd/sing-box): سرور DNS از نوع `group` از [این commit](https://github.com/reF1nd/sing-box/commit/cd6ca5485a34a7baa84de0aeef795fe314545e97) برداشته شده است.
+- [Leadaxe/sing-box-lx](https://github.com/Leadaxe/sing-box-lx): حالت‌های `stable` و `fastest` از این پروژه پیروی می‌کنند.
+
+پروژه‌های مرتبط:
+
+- [shtorm-7/sing-box-extended](https://github.com/shtorm-7/sing-box-extended): DNS fallback مشابهی با پرس‌وجوی ترتیبی و موازی دارد.
+
 ## همچنین ببینید
 
 - [مجموعهٔ هوشمند resolver](smart-dns-pool.fa.md)

@@ -55,6 +55,12 @@ DNS rule:
 
 The `hosts` server fields (`path`, `predefined`) work as in upstream sing-box.
 
+## Sources and credits
+
+Parts of this feature come from these projects. Thanks to their authors.
+
+- [cunnie/sslip.io](https://github.com/cunnie/sslip.io): the sslip.io service and its naming scheme.
+
 ## See also
 
 - [DNS group](dns-group.en.md)

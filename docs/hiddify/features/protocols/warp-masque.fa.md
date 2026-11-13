@@ -154,6 +154,19 @@ WARP روی MASQUE شما را با MASQUE، پروتکلی که اپ‌های �
 - تونل در پس‌زمینه راه می‌افتد. اتصال‌ها منتظر می‌مانند تا اولین راه‌اندازی تمام شود. اگر شکست خورده باشد، با خطای «tunnel not initialized» شکست می‌خورند.
 - وقتی اتصالی شکست بخورد، تونل خطا را در لاگ ثبت می‌کند و بعد از `reconnect_delay` دوباره امتحان می‌کند.
 
+## منبع‌ها و قدردانی
+
+بخش‌هایی از این قابلیت از این پروژه‌ها آمده است. از نویسندگان آن‌ها سپاسگزاریم.
+
+- [SagerNet/sing-box](https://github.com/SagerNet/sing-box): پشتیبانی MASQUE که این outbound روی آن کار می‌کند.
+- [Diniboy1123/connect-ip-go](https://github.com/Diniboy1123/connect-ip-go): CONNECT-IP برای WARP کلودفلر، فورکی از [quic-go/connect-ip-go](https://github.com/quic-go/connect-ip-go) که از طریق [shtorm-7/connect-ip-go](https://github.com/shtorm-7/connect-ip-go) استفاده می‌شود.
+- [Leadaxe/sing-box-lx](https://github.com/Leadaxe/sing-box-lx): `vhttp` خودکار، `server_name` و جابه‌جایی endpoint از این پروژه پیروی می‌کنند.
+
+پروژه‌های مرتبط:
+
+- [Diniboy1123/usque](https://github.com/Diniboy1123/usque): پیاده‌سازی متن‌باز پروتکل MASQUE در WARP.
+- [shtorm-7/sing-box-extended](https://github.com/shtorm-7/sing-box-extended): MASQUE را هم دارد.
+
 ## همچنین ببینید
 
 - [WARP](warp.fa.md)

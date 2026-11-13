@@ -58,6 +58,18 @@ The dial fields of other remote DNS servers work here too, for example `detour` 
 queries through an outbound. The server address comes from the stamp: `server` and `server_port`
 are not used.
 
+## Sources and credits
+
+Parts of this feature come from these projects. Thanks to their authors.
+
+- [ameshkov/dnscrypt](https://github.com/ameshkov/dnscrypt): the DNSCrypt client, used through the fork [shtorm-7/dnscrypt](https://github.com/shtorm-7/dnscrypt).
+- [ameshkov/dnsstamps](https://github.com/ameshkov/dnsstamps): parses the `sdns://` stamps.
+
+Related projects:
+
+- [shtorm-7/sing-box-extended](https://github.com/shtorm-7/sing-box-extended): has the same SDNS server.
+- [DNSCrypt/dnscrypt-proxy](https://github.com/DNSCrypt/dnscrypt-proxy): the reference DNSCrypt client and the public resolver list.
+
 ## See also
 
 - [DNS group](dns-group.en.md)

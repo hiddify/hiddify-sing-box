@@ -79,6 +79,12 @@ Inbound:
 قاعده‌های مسیریابی اتصال‌های bond را با tag ‏inbound ‏bond می‌بینند. از sing-box-extended گرفته شده، با
 این اصلاح‌ها: نوشتن بیش از ۶۴ کیلوبایت، جمع نسبت‌ها و پایه‌هایی که همه با هم نمی‌رسند.
 
+## منبع‌ها و قدردانی
+
+بخش‌هایی از این قابلیت از این پروژه‌ها آمده است. از نویسندگان آن‌ها سپاسگزاریم.
+
+- [shtorm-7/sing-box-extended](https://github.com/shtorm-7/sing-box-extended): inbound و outbound مربوط به bond از این پروژه منتقل شده‌اند.
+
 ## همچنین ببینید
 
 - [Balancer](../groups/balancer.fa.md)

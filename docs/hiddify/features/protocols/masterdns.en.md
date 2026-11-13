@@ -143,6 +143,12 @@ through the pool, or a list of well-known public resolvers without it.
 - Share links with the tunnel domain only with people you trust: a published domain is blocked
   within hours.
 
+## Sources and credits
+
+Parts of this feature come from these projects. Thanks to their authors.
+
+- [masterking32/MasterDnsVPN](https://github.com/masterking32/MasterDnsVPN): the MasterDnsVPN project; its Go client is embedded through the fork [hiddify/MasterDnsVPN](https://github.com/hiddify/MasterDnsVPN).
+
 ## See also
 
 - [DNSTT](dnstt.en.md)

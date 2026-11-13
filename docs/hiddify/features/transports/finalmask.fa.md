@@ -194,6 +194,14 @@
 می‌شود. [`tls_tricks`](../tls-tricks.fa.md) خود ClientHello را تغییر می‌دهد و ماسک نیست.
 `tls_fragment` را نمی‌توان با `tcp_fast_open` به کار برد.
 
+## منبع‌ها و قدردانی
+
+بخش‌هایی از این قابلیت از این پروژه‌ها آمده است. از نویسندگان آن‌ها سپاسگزاریم.
+
+- [XTLS/Xray-core](https://github.com/XTLS/Xray-core): ماسک‌های finalmask از این پروژه آمده‌اند.
+- [patterniha/Xray-core](https://github.com/patterniha/Xray-core): ماسک‌های `merge` و `oob`.
+- [PoriyaVali/mirage](https://github.com/PoriyaVali/mirage): ماسک TCP با نام `mirage`.
+
 ## همچنین ببینید
 
 - [ترنسپورت XDRIVE](xdrive.fa.md)

@@ -66,6 +66,17 @@ build» متوقف می‌شود.
 
 inboundها finalmask نمی‌پذیرند، پس سرور mKCP هیدیفای فقط بدون ماسک کار می‌کند.
 
+## منبع‌ها و قدردانی
+
+بخش‌هایی از این قابلیت از این پروژه‌ها آمده است. از نویسندگان آن‌ها سپاسگزاریم.
+
+- [XTLS/Xray-core](https://github.com/XTLS/Xray-core): کد mKCP از این پروژه آمده است.
+
+پروژه‌های مرتبط:
+
+- [skywind3000/kcp](https://github.com/skywind3000/kcp): پروتکل اصلی KCP.
+- [shtorm-7/sing-box-extended](https://github.com/shtorm-7/sing-box-extended): mKCP را هم دارد.
+
 ## همچنین ببینید
 
 - [finalmask](finalmask.fa.md)

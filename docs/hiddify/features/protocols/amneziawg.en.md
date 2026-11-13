@@ -200,6 +200,17 @@ The server needs no change: it ignores the decoy, as it ignores every `i` packet
   fail. For WARP, set only the
   values that change what the client sends: `jc`, `jmin`, `jmax` and i1–i5.
 
+## Sources and credits
+
+Parts of this feature come from these projects. Thanks to their authors.
+
+- [amnezia-vpn/amneziawg-go](https://github.com/amnezia-vpn/amneziawg-go): the AmneziaWG protocol and Go library, used through the fork [hiddifydeveloper/amneziawg-go](https://github.com/hiddifydeveloper/amneziawg-go).
+- [Leadaxe/sing-box-lx](https://github.com/Leadaxe/sing-box-lx): the QUIC masquerade fields (`ip`, `id`, `ib`) follow it.
+
+Related projects:
+
+- [shtorm-7/sing-box-extended](https://github.com/shtorm-7/sing-box-extended): also has AmneziaWG.
+
 ## See also
 
 - [WireGuard: Hiddify additions](wireguard-hiddify.en.md)

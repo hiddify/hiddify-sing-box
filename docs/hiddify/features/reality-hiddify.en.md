@@ -103,6 +103,18 @@ Compatibility: tested with the chrome, firefox, safari and edge fingerprints aga
 by 26.10.21. `fragment` and `record_fragment` work with both. The older-browser classical
 ClientHellos and `auto` are tested against the sing-box REALITY server only so far.
 
+## Sources and credits
+
+Parts of this feature come from these projects. Thanks to their authors.
+
+- [XTLS/REALITY](https://github.com/XTLS/REALITY): the REALITY protocol.
+- [Leadaxe/sing-box-lx](https://github.com/Leadaxe/sing-box-lx): `key_share` and fragmentation on REALITY follow it.
+- [Leadaxe/utls-lx](https://github.com/Leadaxe/utls-lx): the uTLS fork with current browser fingerprints, a fork of [metacubex/utls](https://github.com/metacubex/utls) and [refraction-networking/utls](https://github.com/refraction-networking/utls).
+
+Related projects:
+
+- [XTLS/Xray-core](https://github.com/XTLS/Xray-core): the REALITY server Hiddify connects to.
+
 ## See also
 
 - [TLS fragment](tls-fragment.en.md)

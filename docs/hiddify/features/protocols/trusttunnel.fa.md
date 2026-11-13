@@ -90,6 +90,19 @@ HTTP/2 یا HTTP/3. ترافیک پروکسی‌شده داخل جریان‌ه�
   بارگذاری نمی‌شود.
 - هر نام کاربر باید رمز عبور داشته باشد.
 
+## منبع‌ها و قدردانی
+
+بخش‌هایی از این قابلیت از این پروژه‌ها آمده است. از نویسندگان آن‌ها سپاسگزاریم.
+
+- [TrustTunnel/TrustTunnel](https://github.com/TrustTunnel/TrustTunnel): پروتکل TrustTunnel.
+- [xchacha20-poly1305/sing-trusttunnel](https://github.com/xchacha20-poly1305/sing-trusttunnel): کتابخانهٔ Go که هیدیفای از آن استفاده می‌کند.
+- [xchacha20-poly1305/sing-box](https://github.com/xchacha20-poly1305/sing-box): outbound و inbound از [این commit](https://github.com/xchacha20-poly1305/sing-box/commit/45d3fe09f66cab657cfb9a037ebf7412c12845d9) برداشته شده‌اند.
+
+پروژه‌های مرتبط:
+
+- [shtorm-7/sing-box-extended](https://github.com/shtorm-7/sing-box-extended): TrustTunnel را هم دارد.
+- [MetaCubeX/mihomo](https://github.com/MetaCubeX/mihomo): از TrustTunnel هم پشتیبانی می‌کند.
+
 ## همچنین ببینید
 
 - [همهٔ قابلیت‌های هیدیفای](../../index.fa.md)

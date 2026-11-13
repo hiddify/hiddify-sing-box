@@ -195,6 +195,18 @@ resolverهایی که کار می‌کنند جاری نگه می‌دارد.
 - مجموعه فقط روی 127.0.0.1 و روی درگاهی که در شروع انتخاب می‌شود گوش می‌دهد و با خروجی بسته
   می‌شود.
 
+## منبع‌ها و قدردانی
+
+بخش‌هایی از این قابلیت از این پروژه‌ها آمده است. از نویسندگان آن‌ها سپاسگزاریم.
+
+- [hiddify/hmrd_multi_resolver_dns](https://github.com/hiddify/hmrd_multi_resolver_dns): خود این pool که برای هیدیفای نوشته شده است.
+- [getlantern/soar](https://github.com/getlantern/soar): کشف resolver آن برای resolverهای `auto` استفاده می‌شود.
+
+پروژه‌های مرتبط:
+
+- [net2share/vaydns](https://github.com/net2share/vaydns): کلاینت DNSTT که این pool به آن خدمت می‌دهد.
+- [masterking32/MasterDnsVPN](https://github.com/masterking32/MasterDnsVPN): تونل MasterDNS که این pool به آن خدمت می‌دهد.
+
 ## همچنین ببینید
 
 - [DNSTT](../protocols/dnstt.fa.md)

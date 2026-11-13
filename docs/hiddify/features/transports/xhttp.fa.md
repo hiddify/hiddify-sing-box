@@ -156,6 +156,17 @@ POST با User-Agent کروم، پدینگ تصادفی با طول تصادفی
 Xray است (`xPaddingBytes` می‌شود `x_padding_bytes`). دو طرف باید مسیر، جای پدینگ و جای session/seq
 یکسان داشته باشند. گزینهٔ نادرست هنگام بارگذاری کانفیگ خطای پیکربندی می‌دهد.
 
+## منبع‌ها و قدردانی
+
+بخش‌هایی از این قابلیت از این پروژه‌ها آمده است. از نویسندگان آن‌ها سپاسگزاریم.
+
+- [XTLS/Xray-core](https://github.com/XTLS/Xray-core): transport مربوط به XHTTP و حالت‌های آن از این پروژه آمده‌اند.
+
+پروژه‌های مرتبط:
+
+- [shtorm-7/sing-box-extended](https://github.com/shtorm-7/sing-box-extended): XHTTP را هم دارد.
+- [Leadaxe/sing-box-lx](https://github.com/Leadaxe/sing-box-lx): XHTTP را هم دارد.
+
 ## همچنین ببینید
 
 - [REALITY در هیدیفای](../reality-hiddify.fa.md)
