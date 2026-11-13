@@ -167,6 +167,7 @@ func (e *Endpoint) Start(postStart bool) error {
 		if egressEnabled {
 			egressPoolOptions := e.options.EgressPoolOptions
 			egressPoolOptions.Control = listenerControl
+			egressPoolOptions.EphemeralPorts = e.options.ListenPort == 0 //H: a client's members on port 0, as its bind (Windows firewall prompt)
 			e.egressPool = tun.NewUDPEgressPool(egressPoolOptions)
 			standardBind.SetEgressProvider(e.egressPool)
 		}
