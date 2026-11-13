@@ -163,7 +163,7 @@ func (s *ECHClientConfig) fetchConfigLocked(ctx context.Context) error {
 			},
 		},
 	}
-	response, err := s.dnsRouter.Exchange(ctx, message, adapter.DNSQueryOptions{})
+	response, err := s.dnsRouter.Exchange(ctx, message, echQueryOptions()) //H
 	if err != nil {
 		return E.Cause(err, "fetch ECH config list")
 	}
@@ -180,7 +180,7 @@ match:
 					if err != nil {
 						return E.Cause(err, "decode ECH config")
 					}
-					s.lastTTL = time.Duration(rr.Header().Ttl) * time.Second
+					s.lastTTL = echConfigTTL(rr.Header().Ttl) //H
 					s.lastUpdate = time.Now()
 					s.SetECHConfigList(echConfigList)
 					break match
@@ -200,6 +200,7 @@ func (s *ECHClientConfig) Clone() Config {
 		dnsRouter:        s.dnsRouter,
 		queryServerName:  s.queryServerName,
 		lastUpdate:       s.lastUpdate,
+		lastTTL:          s.lastTTL, //H the DNS cache is bypassed: a clone keeps the config until it expires
 	}
 }
 
