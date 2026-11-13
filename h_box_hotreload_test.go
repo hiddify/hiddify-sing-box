@@ -234,6 +234,18 @@ func TestH_HotReloadRejectsOtherChanges(t *testing.T) {
 	require.Same(t, a, hOutbound(t, instance, "a"), "nothing is applied")
 }
 
+// a refused experimental change names the field, not just "experimental"
+func TestH_HotReloadNamesExperimentalField(t *testing.T) {
+	ctx := include.Context(context.Background())
+	parse := func(content string) option.Options {
+		return hParseOptions(t, ctx, content)
+	}
+	oldOptions := parse(`{"experimental": {"monitoring": {"urls": ["http://a"], "verify_ipv6": true}}}`)
+	newOptions := parse(`{"experimental": {"monitoring": {"urls": ["http://a"]}, "cache_file": {"enabled": true}}}`)
+	err := box.CheckHotReload(ctx, oldOptions, newOptions)
+	require.EqualError(t, err, "hot reload cannot change: experimental.cache_file, experimental.monitoring.verify_ipv6")
+}
+
 // a TUN change is reloadable; IsTunChanged tells it apart so a caller can choose to restart instead
 func TestH_HotReloadTUNChanges(t *testing.T) {
 	ctx := include.Context(context.Background())

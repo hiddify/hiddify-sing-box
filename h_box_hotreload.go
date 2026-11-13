@@ -98,7 +98,19 @@ func CheckHotReload(ctx context.Context, oldOptions, newOptions option.Options) 
 	if err != nil {
 		return err
 	}
-	changed = append(changed, keys...)
+	for _, key := range keys {
+		if key != "experimental" {
+			changed = append(changed, key)
+			continue
+		}
+		// experimental holds many settings (monitoring, clash api, cache file): name the one
+		// that changed, or the log says only "experimental"
+		paths, err := changedPaths(ctx, oldRest.Experimental, newRest.Experimental, "experimental")
+		if err != nil {
+			return err
+		}
+		changed = append(changed, paths...)
+	}
 
 	oldRoute, newRoute := common.PtrValueOrDefault(oldOptions.Route), common.PtrValueOrDefault(newOptions.Route)
 	for _, route := range []*option.RouteOptions{&oldRoute, &newRoute} {
@@ -178,6 +190,43 @@ func changedKeys(ctx context.Context, oldValue, newValue any) ([]string, error) 
 	}
 	sort.Strings(keys)
 	return keys, nil
+}
+
+// changedPaths returns the dotted paths of the JSON fields that differ, down to the deepest object
+// both sides have; prefix names the values themselves.
+func changedPaths(ctx context.Context, oldValue, newValue any, prefix string) ([]string, error) {
+	oldContent, err := json.MarshalContext(ctx, oldValue)
+	if err != nil {
+		return nil, err
+	}
+	newContent, err := json.MarshalContext(ctx, newValue)
+	if err != nil {
+		return nil, err
+	}
+	paths := changedRawPaths(oldContent, newContent, prefix)
+	sort.Strings(paths)
+	return paths, nil
+}
+
+func changedRawPaths(oldContent, newContent []byte, prefix string) []string {
+	if bytes.Equal(oldContent, newContent) {
+		return nil
+	}
+	var oldFields, newFields map[string]json.RawMessage
+	if json.Unmarshal(oldContent, &oldFields) != nil || json.Unmarshal(newContent, &newFields) != nil ||
+		oldFields == nil || newFields == nil {
+		return []string{prefix}
+	}
+	var paths []string
+	for key, value := range newFields {
+		paths = append(paths, changedRawPaths(oldFields[key], value, prefix+"."+key)...)
+	}
+	for key, value := range oldFields {
+		if _, ok := newFields[key]; !ok {
+			paths = append(paths, changedRawPaths(value, nil, prefix+"."+key)...)
+		}
+	}
+	return paths
 }
 
 func tunInbounds(ctx context.Context, options option.Options) ([]byte, error) {
