@@ -301,7 +301,9 @@ do about it. Items marked **Required** break or misbehave until they are handled
   ping tests it; a URL test or a speed test of a group is of the ones in use. The proxies the
   user keeps loaded (`keep-top-pinned`, a list of tags, from the proxy's details) are always in
   use beside the fastest. `OutboundGroup.keep_top_picking` says a pick is under way, for the
-  footer of the list. While the first pick still has proxies
+  footer of the list; it is also true while keep top fills a free place or tests the proxies at
+  rest again (after 10 and 30 minutes, then 1, 2, 4 and every 6 hours), which needs nothing from the app. A proxy at
+  rest that answers a test of the list is used at once while a place is free. While the first pick still has proxies
   to test, the core reports `WAITING`, not `NO_AVAILABLE_PROXIES`
   (`OutboundMonitoring.KeepTopSearching`). Keep top manages the outbound proxies whose start is
   cheap (VLESS, VMess, Trojan, Shadowsocks, SOCKS, HTTP, Hysteria, Hysteria2, TUIC, AnyTLS,

@@ -38,6 +38,8 @@ type topPing struct {
 	// pick is the pick this result is of; 0 for one of a previous run, or of an outbound that
 	// was replaced since: such a result orders the tests and decides nothing.
 	pick uint64
+	// fails is how many tests in a row failed: a kept outbound rests after keepTopDeadAfter
+	fails int
 }
 
 // hint is what the ping was the last time, to tell whether the outbound may beat the ones that
@@ -111,6 +113,7 @@ type topPlanInput struct {
 	quick     bool                // keep_top.quick
 	pinned    []string            // the ones a selector has selected: always in use
 	loading   []string            // the batch of the stage before: what it still tests stays
+	fill      bool                // the pick ends once count answer (h_keep_top_refill.go)
 	now       time.Time
 }
 
@@ -174,6 +177,8 @@ func planKeepTop(in topPlanInput) topPlan {
 		return plan
 	case len(left) == 0:
 		plan.final = true
+	case in.fill && len(best) >= in.count && in.count > 0:
+		plan.final, plan.early = true, true
 	case in.quick && len(best) >= in.count && in.count > 0:
 		delays := make(map[string]int32, len(best)+len(left))
 		hints := make(map[string]int32, len(left))

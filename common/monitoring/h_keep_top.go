@@ -37,6 +37,10 @@ type topOrder struct {
 	keep    []string // the kept outbounds to go on with; nil for all
 	// asIs: the kept outbounds stay whatever their pings say; only the pinned ones join them
 	asIs bool
+	// fill: the new pick only fills the places that are free, and ends once they are
+	fill bool
+	// add: outbounds at rest that answered a test just now, to keep beside the kept ones
+	add []string
 }
 
 // keepTopState is what keep top does: nothing (no options, or nothing to leave out), a pick
@@ -64,7 +68,12 @@ type keepTopState struct {
 	loaded  []string             // the outbounds in use: the others rest
 	batch   []string             // the ones of loaded the stage tests
 	batchAt map[string]time.Time // when each of batch came into it
-	timer   *time.Timer          // the deadline of a test of the batch, or the end of the hold
+	timer   *time.Timer          // the deadline of a test of the batch, the end of the hold, or recheckAt
+	// After the pick, while fewer are kept than may be and others rest (h_keep_top_refill.go):
+	fill      bool      // the pick under way only fills the free places
+	had       int       // how many of the kept answered when that pick began
+	rechecks  int       // how many times in a row the ones at rest were gone through for nothing
+	recheckAt time.Time // when they are gone through again
 }
 
 // KeepTopSearching reports a first pick still going through the outbounds: the ones in use all
@@ -156,8 +165,11 @@ func (m *OutboundMonitoring) keepTopNoted(tag string) {
 	ping.Delay, ping.Time, ping.pick = int32(history.Delay), history.Time.Unix(), k.pick
 	if pingTimedOut(ping.Delay) {
 		ping.Delay = timeoutPing
+		ping.fails++
+		m.keepTopOnceMoreLocked(tag, ping)
 	} else {
 		ping.Good = ping.Delay
+		ping.fails = 0
 	}
 	if country := proxyCountry(tag, &history); country != "" {
 		ping.Country = country
@@ -192,13 +204,20 @@ func (m *OutboundMonitoring) keepTopEvaluateLocked() {
 	case k.picking:
 		step = m.keepTopStageOverLocked(time.Now())
 	default:
+		now := time.Now()
 		delays := make(map[string]int32, len(k.kept))
-		dead := 0
+		dead, deadOthers, alive := 0, 0, 0
 		for tag := range k.kept {
-			if ping := k.pings[tag]; ping != nil && ping.pick != 0 {
+			if ping := k.pings[tag]; ping != nil && ping.pick != 0 && !ping.failedOnce() {
 				delays[tag] = ping.Delay
 				if pingTimedOut(ping.Delay) {
 					dead++
+					// one that is used only because it is, or was, pinned takes no place
+					if _, guest := k.guests[tag]; !guest && !slices.Contains(pinned, tag) {
+						deadOthers++
+					}
+				} else if _, guest := k.guests[tag]; !guest && pingAlive(ping.Delay) {
+					alive++
 				}
 			} else {
 				delays[tag] = 0
@@ -223,6 +242,25 @@ func (m *OutboundMonitoring) keepTopEvaluateLocked() {
 				}
 				step, order.keep = true, keep
 				m.logger.Info("KEEP TOP ", dropped, " of the ", len(k.kept), " kept outbounds stopped answering, they rest")
+			}
+		case deadOthers > 0:
+			// one of the fastest few stopped answering: another takes its place
+			step, order.restart, order.fill = true, true, true
+			k.had = alive
+			m.logger.Info("KEEP TOP ", deadOthers, " of the ", len(k.kept), " kept outbounds stopped answering, looking for others in their place")
+		}
+		if !step && !k.recheckAt.IsZero() && !now.Before(k.recheckAt) {
+			if room, resting := m.keepTopRoomLocked(); room > 0 && len(resting) > 0 {
+				step, order.restart, order.fill = true, true, true
+				k.had = alive
+				k.rechecks++
+				m.logger.Info("KEEP TOP ", room, " more may be kept: testing the ", len(resting), " at rest again")
+			}
+		}
+		if !step {
+			if back := m.keepTopBackLocked(now); len(back) > 0 {
+				step, order.add = true, back
+				m.logger.Info("KEEP TOP ", len(back), " outbounds at rest answer again, they are used")
 			}
 		}
 	}
@@ -307,6 +345,7 @@ func (m *OutboundMonitoring) keepTopStopLocked() {
 	k := &m.keepTop
 	k.on, k.kept, k.picking, k.round, k.hold, k.loaded, k.batch = false, nil, false, 0, time.Time{}, nil, nil
 	k.guests = nil
+	k.fill, k.had, k.rechecks, k.recheckAt = false, 0, 0, time.Time{}
 	if k.timer != nil {
 		k.timer.Stop()
 	}
@@ -415,6 +454,7 @@ func (m *OutboundMonitoring) keepTopArmLocked() {
 			at = k.hold
 		}
 	}
+	at = m.keepTopRecheckLocked(at)
 	if at.IsZero() {
 		if k.timer != nil {
 			k.timer.Stop()
@@ -533,6 +573,8 @@ func (m *OutboundMonitoring) keepTopStepLocked(order topOrder) {
 	}{k.count, k.countries, k.kept, k.picking, k.pick, k.round, k.hold, k.loaded, k.batch}
 	k.on, k.count, k.countries = true, count, countries
 	k.kept, k.picking, k.round, k.hold, k.batch = nil, false, 0, time.Time{}, nil
+	fill := k.fill
+	k.fill = false
 	apply := func(loaded []string, what string) {
 		batchAt := make(map[string]time.Time, len(k.batch))
 		for _, tag := range k.batch {
@@ -602,6 +644,12 @@ func (m *OutboundMonitoring) keepTopStepLocked(order topOrder) {
 				guests[tag] = struct{}{}
 			}
 		}
+		for _, tag := range order.add {
+			if _, managed := k.owners[tag]; managed {
+				kept[tag] = struct{}{}
+				delete(guests, tag)
+			}
+		}
 		// no more than count beside the pinned: fewer are asked for, or one is no longer pinned
 		others := make(map[string]struct{}, len(kept))
 		for tag := range kept {
@@ -620,6 +668,9 @@ func (m *OutboundMonitoring) keepTopStepLocked(order topOrder) {
 		// a pinned one is used whatever its ping: it is the others that must be good
 		if order.asIs || keptStillGood(others, k.pings) {
 			k.kept, k.pick, k.guests = kept, current.pick, guests
+			if len(order.add) > 0 {
+				k.rechecks = 0
+			}
 			loaded := make([]string, 0, len(kept))
 			for tag := range kept {
 				loaded = append(loaded, tag)
@@ -634,7 +685,12 @@ func (m *OutboundMonitoring) keepTopStepLocked(order topOrder) {
 	if warm && !order.restart && current.picking && current.count == count && slices.Equal(current.countries, countries) {
 		// the pick under way goes on
 		k.pick, k.round, k.hold, loading = current.pick, current.round, current.hold, current.batch
+		k.fill = fill
 	} else {
+		k.fill = order.fill
+		if !order.fill {
+			k.had = 0
+		}
 		k.pickSeq++
 		k.pick = k.pickSeq
 		if warm {
@@ -660,7 +716,7 @@ func (m *OutboundMonitoring) keepTopStepLocked(order topOrder) {
 	}
 	input := topPlanInput{
 		tags: tags, pings: k.pings, pick: k.pick, count: count, batch: options.Batch, countries: countries,
-		quick: options.Quick, pinned: pinned, loading: loading, now: now,
+		quick: options.Quick, pinned: pinned, loading: loading, now: now, fill: k.fill,
 	}
 	if input.batch == 0 {
 		input.batch = keepTopBatchDefault
@@ -674,7 +730,8 @@ func (m *OutboundMonitoring) keepTopStepLocked(order topOrder) {
 		k.pick = k.pickSeq
 		k.round++
 		k.hold = now.Add(keepTopRoundWait(k.round))
-		input.pick, input.loading = k.pick, nil
+		k.fill = false
+		input.pick, input.loading, input.fill = k.pick, nil, false
 		plan = planKeepTop(input)
 		again = "none of them answered, going through them again: "
 	}
@@ -721,9 +778,16 @@ func (m *OutboundMonitoring) keepTopStepLocked(order topOrder) {
 			k.guests[tag] = struct{}{}
 		}
 		how := "keeping "
-		if plan.early {
+		switch {
+		case plan.early && k.fill:
+			how = "the free places are filled: keeping "
+		case plan.early:
 			how = "the rest were slower by their last pings: keeping "
 		}
+		if plan.best > k.had {
+			k.rechecks = 0 // it found some: the next look at the ones at rest is the first again
+		}
+		k.fill = false
 		apply(plan.load, fmt.Sprint(how, len(plan.load), " of the ", total, " lazy outbounds", where, ", the others rest"))
 	default:
 		k.picking = true

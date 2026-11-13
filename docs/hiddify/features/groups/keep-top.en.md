@@ -63,6 +63,17 @@ It does not. It only decides which outbounds exist and which are used.
   answer stay in use while it looks. When none answers at all, it goes through them again after
   30 seconds, then 1, 2, 4 and at most 5 minutes, and goes on at once when one of those in use
   answers (after a network change the monitoring tests them again).
+- A kept outbound stops answering when two tests in a row failed: after the first failed test
+  it is tested once more 5 seconds later, so one lost test does not cost it its place.
+- With a `count`, a kept outbound that stops answering is replaced: a pick that only fills its
+  place keeps the ones that answer, tests the ones at rest in the order of their last pings, and
+  ends as soon as `count` answer. With `answering`, the one that stopped goes to rest.
+- While fewer are kept than may be (`count`, or all of them with `answering`) and others rest,
+  the ones at rest are tested again 10 minutes after the last time, then 30 minutes, then 1, 2, 4
+  and every 6 hours while none of them answers; once one does, the wait is 10 minutes again. The ones
+  in use are not tested for it.
+- An outbound at rest that answers a test asked for by its tag (the user tests the list) is used
+  at once, while there is a place for it.
 - An outbound with no result 30 seconds into its stage counts as not answering (10 seconds more
   for every 10 outbounds of a batch above 10).
 - A hot reload keeps the pick while the kept outbounds are unchanged; a replaced or removed one
