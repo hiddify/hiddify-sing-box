@@ -12,7 +12,6 @@ import (
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
-	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
@@ -111,7 +110,11 @@ func (o *Outbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (n
 }
 
 func (o *Outbound) Close() error {
-	return common.Close(o.client)
+	// The mieru client has Stop, not Close: common.Close did nothing with it, so the multiplexer
+	// of every outbound that was closed stayed for good, with its goroutine and the ticker that
+	// wakes it every 5 s. Keep top closes each lazy outbound after its test, and a profile's
+	// mieru proxies leaked again at every pick. //H
+	return o.client.Stop() //H
 }
 
 // mieruDialer is an adapter to mieru dialer interface.
