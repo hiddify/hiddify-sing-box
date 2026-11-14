@@ -45,6 +45,7 @@ func hostAllowed(host string, hosts []string) bool {
 	if name, _, err := net.SplitHostPort(host); err == nil {
 		host = name
 	}
+	host = strings.Trim(host, "[]") //H: an IPv6 Host without a port keeps its brackets
 	for _, allowed := range hosts {
 		if strings.EqualFold(strings.TrimSpace(allowed), host) {
 			return true

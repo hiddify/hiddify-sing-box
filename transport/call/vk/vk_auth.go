@@ -35,7 +35,10 @@ type vkCaptchaError struct {
 func RunVKAuth(dialer N.Dialer, joinLink, displayName string, logger logger.ContextLogger) (string, error) {
 	client := common.HttpClient(dialer)
 	httpPost := func(targetURL string, form url.Values, extraHeaders map[string]string) (map[string]any, error) {
-		req, _ := http.NewRequest("POST", targetURL, strings.NewReader(form.Encode()))
+		req, err := http.NewRequest("POST", targetURL, strings.NewReader(form.Encode())) //H
+		if err != nil {                                                                  //H: the URL can come from VK's reply; a nil request crashed the app
+			return nil, err //H
+		} //H
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.Header.Set("User-Agent", headless.ChromeWindows.UserAgent())
 		req.Header.Set("Origin", "https://vk.ru")

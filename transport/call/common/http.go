@@ -89,7 +89,10 @@ func HttpClient(dialer N.Dialer) *http.Client {
 }
 
 func HttpGet(dialer N.Dialer, endpoint string) ([]byte, error) {
-	req, _ := http.NewRequest("GET", endpoint, nil)
+	req, err := http.NewRequest("GET", endpoint, nil) //H
+	if err != nil {                                   //H: the URL can come from a scraped page; a nil request crashed the app
+		return nil, err //H
+	} //H
 	req.Header.Set("User-Agent", UserAgent)
 	resp, err := HttpClient(dialer).Do(req)
 	if err != nil {
