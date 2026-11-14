@@ -51,6 +51,14 @@ you put a CDN in front of it. Without TLS (or REALITY), the requests are readabl
   speaks HTTP/1.1. REALITY keeps its own ALPN.
 - XMUX reuses HTTP connections for several proxy connections; the `xmux` options limit how much
   one HTTP connection is reused.
+- An HTTP connection that no proxy connection uses is closed after one minute; the one used last
+  is kept for five, so that the next proxy connection still starts without a handshake. Closing
+  the outbound, or a change of network, closes them all at once. With `max_concurrency` 1 every
+  proxy connection has an HTTP connection of its own, and these stayed open until
+  `h_max_reusable_secs` was over, an HTTP/3 one sending a keepalive every 10 seconds.
+- Over HTTP/1.1 the uploads of `packet-up` go on a connection of their own. The client dials it
+  while it dials the download's connection, so a new proxy connection starts after the time of
+  one TCP and TLS handshake, not two.
 
 ## Configuration
 
