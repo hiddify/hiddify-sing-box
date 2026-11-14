@@ -18,6 +18,7 @@ import (
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/tls"
 	"github.com/sagernet/sing-box/common/xray/buf"
+	Xbadoption "github.com/sagernet/sing-box/common/xray/json/badoption"
 	"github.com/sagernet/sing-box/common/xray/net"
 	"github.com/sagernet/sing-box/common/xray/pipe"
 	"github.com/sagernet/sing-box/common/xray/signal/done"
@@ -179,11 +180,8 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 		}
 		return &conn, nil
 	}
-	scMaxEachPostBytes := options.GetNormalizedScMaxEachPostBytes()
+	scMaxEachPostBytes := hMinScMaxEachPostBytes(options.GetNormalizedScMaxEachPostBytes()) //H: was a panic that took the whole app down
 	scMinPostsIntervalMs := options.GetNormalizedScMinPostsIntervalMs()
-	if scMaxEachPostBytes.From <= buf.Size {
-		panic("`scMaxEachPostBytes` should be bigger than " + strconv.Itoa(buf.Size))
-	}
 	maxUploadSize := scMaxEachPostBytes.Rand()
 	// WithSizeLimit(0) will still allow single bytes to pass, and a lot of
 	// code relies on this behavior. Subtract 1 so that together with
@@ -383,4 +381,18 @@ func autoMode(reality bool, splitDownload bool) string {
 		return "stream-up"
 	}
 	return "stream-one"
+}
+
+// hMinScMaxEachPostBytes raises an sc_max_each_post_bytes too small to hold one buffer, which
+// packet-up cannot split into posts. Xray panics on it at the first dial, and a subscription
+// carrying such a server ("4096-4096", "1536-6144") crashed the app as soon as it was tested.
+// The posts get a little bigger than the link asks for; a server takes up to 1 MB by default.
+func hMinScMaxEachPostBytes(value Xbadoption.Range) Xbadoption.Range {
+	if value.From <= buf.Size {
+		value.From = buf.Size + 1
+	}
+	if value.To < value.From {
+		value.To = value.From
+	}
+	return value
 }
