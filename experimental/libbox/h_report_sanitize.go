@@ -86,11 +86,64 @@ func trimSingleColons(s string) string {
 	return s
 }
 
-// sanitizeReportText removes addresses, links, user IDs and secrets from report text.
+// domainCandidate is text that may be a domain name: two or more labels and a top-level domain
+// of letters. scrubDomains keeps only those with a known top-level domain, so a file name
+// (configuration.json) or a call in a trace (ref.read) stays.
+var domainCandidate = regexp.MustCompile(`(?i)\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+([a-z]{2,24})\b\.?`)
+
+// genericTLDs are the top-level domains of more than two letters that are taken for domains;
+// any two-letter one is a country's, except the file extensions in fileExtensionTLDs.
+var genericTLDs = map[string]bool{
+	"ir":  true,
+	"com": true, "net": true, "org": true, "info": true, "biz": true, "edu": true, "gov": true,
+	"mil": true, "int": true, "xyz": true, "top": true, "online": true, "site": true,
+	"cloud": true, "club": true, "shop": true, "store": true, "tech": true, "space": true,
+	"website": true, "icu": true, "vip": true, "pro": true, "live": true, "link": true,
+	"click": true, "fun": true, "life": true, "world": true, "today": true, "news": true,
+	"blog": true, "host": true, "network": true, "digital": true, "media": true, "work": true,
+	"cyou": true, "buzz": true, "sbs": true, "lol": true, "monster": true, "rest": true,
+	"best": true, "asia": true, "mobi": true, "name": true, "email": true, "lat": true,
+	"uno": true, "run": true, "hair": true, "beauty": true, "quest": true, "skin": true,
+}
+
+// fileExtensionTLDs are two-letter top-level domains that are mostly file extensions in logs.
+var fileExtensionTLDs = map[string]bool{
+	"so": true, "sh": true, "py": true, "rs": true, "md": true, "pl": true, "cc": true,
+	"mm": true, "js": true, "ts": true, "go": true, "kt": true, "gz": true, "xz": true,
+	"db": true, "rb": true, "cs": true, "hh": true,
+}
+
+// scrubDomains hides domain names, keeping their top-level domain (<domain>.ir), which tells a
+// local site from a foreign one. Hosts in a path (github.com/sagernet/sing-box in a trace,
+// /Applications/Hiddify.app/) are kept.
+func scrubDomains(text string) string {
+	var builder strings.Builder
+	last := 0
+	for _, match := range domainCandidate.FindAllStringSubmatchIndex(text, -1) {
+		start, end := match[0], match[1]
+		tld := strings.ToLower(text[match[2]:match[3]])
+		if !genericTLDs[tld] && (len(tld) != 2 || fileExtensionTLDs[tld]) {
+			continue
+		}
+		if start > 0 && strings.ContainsRune("/\\<@", rune(text[start-1])) || end < len(text) && text[end] == '/' {
+			continue
+		}
+		builder.WriteString(text[last:start])
+		builder.WriteString("<domain>." + text[match[2]:match[3]])
+		if text[end-1] == '.' {
+			builder.WriteByte('.')
+		}
+		last = end
+	}
+	builder.WriteString(text[last:])
+	return builder.String()
+}
+
+// sanitizeReportText removes addresses, domains, links, user IDs and secrets from report text.
 func sanitizeReportText(content []byte) []byte {
 	text := string(content)
 	for _, scrubber := range reportScrubbers {
 		text = scrubber.pattern.ReplaceAllString(text, scrubber.replacement)
 	}
-	return []byte(scrubIPv6(text))
+	return []byte(scrubDomains(scrubIPv6(text)))
 }

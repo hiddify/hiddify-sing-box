@@ -24,3 +24,23 @@ func TestH_SanitizeReportKeepsTimes(t *testing.T) {
 		require.Equal(t, expected, string(sanitizeReportText([]byte(input))), input)
 	}
 }
+
+// Domains are the sites the user opened; their top-level domain stays, and file names, traces
+// and paths are not domains.
+func TestH_SanitizeReportHidesDomains(t *testing.T) {
+	for input, expected := range map[string]string{
+		"connection download closed: remote error: resolve error: lookup ire-oneid.shalltry.com on 10.0.0.1:53: no such host": "connection download closed: remote error: resolve error: lookup <domain>.com on <ipv4>:53: no such host",
+		"dns: exchanged A www.digikala.ir. 60 IN A 192.0.2.1":                                                                 "dns: exchanged A <domain>.ir. 60 IN A <ipv4>",
+		"outbound/vless[proxy]: outbound connection to Example.CO.uk:443":                                                     "outbound/vless[proxy]: outbound connection to <domain>.uk:443",
+		"sniffed domain=api.telegram.org protocol=tls":                                                                        "sniffed domain=<domain>.org protocol=tls",
+		"open configuration.json and libbox.so failed":                                                                        "open configuration.json and libbox.so failed",
+		"github.com/sagernet/sing-box/route.(*Router).Start":                                                                  "github.com/sagernet/sing-box/route.(*Router).Start",
+		"/Applications/Hiddify.app/Contents/MacOS/Hiddify":                                                                    "/Applications/Hiddify.app/Contents/MacOS/Hiddify",
+		"#0 ref.read (package:hiddify/main.dart:12)":                                                                          "#0 ref.read (package:hiddify/main.dart:12)",
+		"version 5.9.2 build 1.2.3":                                                                                           "version 5.9.2 build 1.2.3",
+		"send to bug@hiddify.com":                                                                                             "send to <email>",
+		"fetch https://sub.example.com/x?token=1":                                                                             "fetch https://<host>",
+	} {
+		require.Equal(t, expected, string(sanitizeReportText([]byte(input))), input)
+	}
+}
