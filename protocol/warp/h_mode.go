@@ -137,6 +137,8 @@ func (w *WARPEndpoint) endSession() {
 
 // start registers or loads a device and runs the tunnel of the mode, choosing it in auto mode.
 func (w *WARPEndpoint) start() {
+	w.starting.Store(true)        //H: see Status
+	defer w.starting.Store(false) //H: also when it ends before connecting
 	done := w.beginSession()
 	mode := w.mode
 	if mode == modeAuto {
@@ -168,6 +170,7 @@ func (w *WARPEndpoint) start() {
 	} else {
 		w.connect(done, profile.WireGuard)
 	}
+	w.starting.Store(false) //H: connected; the checks run from here on
 	select {
 	case <-done:
 		return

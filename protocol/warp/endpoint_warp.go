@@ -70,6 +70,7 @@ type WARPEndpoint struct {
 	candidate     bool          // H: a new tunnel next to the one in use, see h_switch.go
 	discarded     atomic.Bool   // H: the candidate is not used
 	linkRefused   atomic.Bool   // H: Cloudflare refused masque.device, see h_link_device.go
+	starting      atomic.Bool   // H: a start is on its way to the tunnel, see Status
 }
 
 func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.WARPEndpointOptions) (adapter.Endpoint, error) {
@@ -203,10 +204,20 @@ const (
 )
 
 // Status is registering while a device is registered; ready only while the peer answers, not
-// once the endpoint exists; searching while the scanner looks for an endpoint; reconnecting
-// after it was ready; failed when the config cannot work. Over MASQUE, once registered, it is the
-// tunnel's status. //H
+// once the endpoint exists; searching while the scanner looks for an endpoint, and while a start
+// is on its way to the tunnel (it chooses the tunnel, reads its device, connects), as it is all
+// one search for a way in; reconnecting after it was ready; failed when the config cannot work.
+// Over MASQUE, once registered, it is the tunnel's status. Keep top and the lazy endpoint leave
+// it alone while it searches (adapter.IsWarming). //H
 func (w *WARPEndpoint) Status() adapter.Status {
+	status := w.status()
+	if status == adapter.StatusConnecting && w.starting.Load() {
+		return adapter.StatusSearching
+	}
+	return status
+}
+
+func (w *WARPEndpoint) status() adapter.Status { //H
 	if w.failed.Load() {
 		return adapter.StatusFailed
 	}
@@ -254,6 +265,7 @@ func (w *WARPEndpoint) Start(stage adapter.StartStage, scope *adapter.Scope) err
 	if stage != adapter.StartStatePostStart {
 		return nil
 	}
+	w.starting.Store(true) //H: searching from now on, not once the goroutine runs
 	go w.startHandler()
 	return nil
 }

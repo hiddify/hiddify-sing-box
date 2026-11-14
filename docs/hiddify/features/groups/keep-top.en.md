@@ -37,12 +37,39 @@ It does not. It only decides which outbounds exist and which are used.
   that error, the outbound shows as failed with the reason, and it is tried again after 30
   seconds.
 - A hot reload leaves an unchanged lazy outbound alone, and replaces a changed one.
-- Groups, `direct`, `block` and endpoints (WireGuard, WARP, ...) are never lazy; the option is
-  ignored on a group, `direct` and `block`, and endpoints do not have it.
+- Groups, `direct` and `block` are never lazy; the option is ignored on them.
+
+### Lazy endpoints
+
+- A client endpoint takes `"lazy": true` too: WireGuard, AmneziaWG, OpenVPN, OpenConnect, MASQUE
+  and WARP. It works as a lazy outbound: under its tag from the start, the real endpoint, with
+  its tunnel, created by the first connection or test and closed when nothing uses it.
+- An OpenVPN, OpenConnect or MASQUE client is created `on_demand`, so the first connection
+  waits for the tunnel instead of failing while it comes up.
+- An endpoint in server mode is never lazy, and the option is ignored on it: a WireGuard or
+  AmneziaWG with `listen_port`, an OpenVPN or MASQUE server, a tunnel, a Tailscale node. Peers
+  reach it, and nothing would create it for them.
+- A DNS server that resolves through a lazy endpoint (its `endpoint`) holds it: the real
+  endpoint is created at the start, from the config's own options, and runs as without lazy for
+  as long as the server does. Keep top counts it as pinned.
+- While it rests a lazy endpoint is only an outbound by its tag: no packets are routed to it
+  directly, and it has no preferred routes.
+
+### What is used with them
+
+- What a proxy in use goes through is in use too: its detour, and that one's, also for a proxy
+  that is in use only to be tested. So is what an outbound that runs anyway (not lazy) goes
+  through. A group's members are not: a group chooses among the ones in use.
+- An outbound that registers or searches before it works (WARP: it registers a device and scans
+  for an endpoint that answers) is not put to rest for failing while it does, as long as fewer
+  answer than are kept (or a pick is under way): it is used beside the kept ones and goes on.
+  The lazy outbound does not close it for being idle either. Once it is through it is tested at
+  once, and if it answers it takes a free place. When enough answer, it rests, and its search
+  stops.
 
 ### Keep top
 
-- It manages the lazy outbounds, and only them. The ones it does not use **rest**: the cycles do
+- It manages the lazy outbounds and endpoints, and only them. The ones it does not use **rest**: the cycles do
   not test them and no balancer sees their results, so nothing dials through them and they are
   never created. The app still sees them, with their last ping.
 - It finds the fastest a few at a time, a stage: the best `count` found so far plus the next
@@ -112,7 +139,7 @@ Outbound field:
 
 | Field | Type | Default | Meaning |
 |---|---|---|---|
-| `lazy` | bool | `false` | Create the outbound when it is first used and close it when it is idle. |
+| `lazy` | bool | `false` | Create the outbound when it is first used and close it when it is idle. Also on a client endpoint. |
 
 `experimental.monitoring.keep_top`:
 

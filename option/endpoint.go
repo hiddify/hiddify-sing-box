@@ -19,6 +19,7 @@ type EndpointOptionsRegistry interface {
 type _Endpoint struct {
 	Type    string `json:"type"`
 	Tag     string `json:"tag,omitempty"`
+	Lazy    bool   `json:"lazy,omitempty"` //H: a client created when first used, closed when idle, see HLazyOptions
 	Options any    `json:"-"`
 }
 

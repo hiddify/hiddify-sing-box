@@ -100,3 +100,10 @@ func (l *LastError) Get() error {
 	}
 	return nil
 }
+
+// IsWarming reports a status of something still finding its way in: it registers an account or
+// a device, or it searches for a server or an endpoint that answers (WARP's scanner). Its tests
+// fail until it is through, and closing it would start that over.
+func IsWarming(status Status) bool {
+	return status == StatusSearching || status == StatusRegistering
+}

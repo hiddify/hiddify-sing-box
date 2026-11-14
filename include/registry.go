@@ -158,6 +158,7 @@ func EndpointRegistry() *endpoint.Registry {
 	registerWarpEndpoint(registry)
 	registerAwgEndpoint(registry)
 	hinvalid.RegisterEndpoint(registry)
+	endpoint.Register[option.HLazyOptions](registry, C.TypeHLazy, outbound.NewLazyEndpoint) //H: a lazy endpoint's stand-in
 
 	return registry
 }

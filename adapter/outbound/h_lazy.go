@@ -41,19 +41,28 @@ func RegisterLazy(registry *Registry) {
 	Register[option.HLazyOptions](registry, C.TypeHLazy, NewLazy)
 }
 
+// A lazy endpoint (an endpoint with "lazy": true, a client: WireGuard, OpenVPN, ...) is the same
+// stand-in in the endpoint manager: it keeps the endpoint's options and creates the real endpoint,
+// with its tunnel, when a connection or a test first goes through it. While it rests it is only an
+// outbound by its tag: no tunnel, no packets routed to it, no preferred routes.
+
 var (
 	_ adapter.LazyOutbound            = (*Lazy)(nil)
 	_ adapter.Lifecycle               = (*Lazy)(nil)
 	_ adapter.InterfaceUpdateListener = (*Lazy)(nil)
 	_ adapter.StatusErrorer           = (*Lazy)(nil)
 	_ adapter.OutboundWithMultiplex   = (*Lazy)(nil)
+	_ adapter.Endpoint                = (*Lazy)(nil)
+	_ adapter.HeldLazy                = (*Lazy)(nil)
 )
 
 type Lazy struct {
 	ctx          context.Context
 	router       adapter.Router
 	logger       log.ContextLogger
-	registry     adapter.OutboundRegistry
+	kind         string // "outbound" or "endpoint": what the real one is
+	create       func(options any) (adapter.Outbound, error)
+	heldOptions  any // what a hold before the start creates the real one from
 	tag          string
 	typ          string
 	options      any
@@ -66,7 +75,9 @@ type Lazy struct {
 	scope      *adapter.Scope // inner's
 	network    []string       // inner's, once it was created
 	users      int            // everything that holds it: connections, dials under way, tests
-	conns      int            // of users, the connections that are open
+	conns      int            // of users, the connections that are open, and the holds
+	holds      int            // of conns, the holds (Hold)
+	pending    bool           // inner was created by a hold before the box started: it starts with the stand-in
 	idleAt     time.Time      // inner stays until then
 	timer      *time.Timer
 	failure    error // why inner could not be created the last time
@@ -85,10 +96,39 @@ func NewLazy(ctx context.Context, router adapter.Router, logger log.ContextLogge
 	}
 	option.MigrateTLSFragment(options.Options) // as the manager does for an outbound it creates
 	return &Lazy{
-		ctx:          ctx,
-		router:       router,
-		logger:       logger,
-		registry:     registry,
+		ctx:    ctx,
+		router: router,
+		logger: logger,
+		kind:   "outbound",
+		create: func(createOptions any) (adapter.Outbound, error) {
+			return registry.CreateOutbound(ctx, router, logger, tag, options.Type, createOptions)
+		},
+		heldOptions:  options.HeldOptions,
+		tag:          tag,
+		typ:          options.Type,
+		options:      options.Options,
+		dependencies: options.Dependencies,
+	}, nil
+}
+
+// NewLazyEndpoint is the stand-in of a lazy endpoint, created by the endpoint registry.
+func NewLazyEndpoint(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.HLazyOptions) (adapter.Endpoint, error) {
+	registry := service.FromContext[adapter.EndpointRegistry](ctx)
+	if registry == nil {
+		return nil, E.New("missing endpoint registry in context")
+	}
+	if options.Type == "" || options.Type == C.TypeHLazy {
+		return nil, E.New("lazy endpoint: missing type")
+	}
+	return &Lazy{
+		ctx:    ctx,
+		router: router,
+		logger: logger,
+		kind:   "endpoint",
+		create: func(createOptions any) (adapter.Outbound, error) {
+			return registry.Create(ctx, router, logger, tag, options.Type, createOptions)
+		},
+		heldOptions:  options.HeldOptions,
 		tag:          tag,
 		typ:          options.Type,
 		options:      options.Options,
@@ -155,14 +195,84 @@ func (l *Lazy) StatusError() error {
 }
 
 func (l *Lazy) Start(stage adapter.StartStage, scope *adapter.Scope) error {
-	if stage != adapter.StartStateInitialize {
+	l.access.Lock()
+	if stage == adapter.StartStateInitialize {
+		l.parent = scope.Context()
+		if l.pending {
+			l.scope = adapter.NewScope(l.parent, l.logger)
+		}
+	}
+	inner, innerScope, pending := l.inner, l.scope, l.pending
+	if pending && stage == adapter.StartStateStarted {
+		l.pending = false
+	}
+	l.access.Unlock()
+	if stage == adapter.StartStateInitialize {
+		scope.Add(l.Close)
+	}
+	if !pending {
 		return nil
 	}
-	l.access.Lock()
-	l.parent = scope.Context()
-	l.access.Unlock()
-	scope.Add(l.Close)
+	// held before the box started: the real one starts with the box, a stage at a time
+	if lifecycle, isLifecycle := adapter.AsLifecycle(inner); isLifecycle {
+		return innerScope.Start(l.kind+"/"+l.typ+"["+l.tag+"]", lifecycle, stage)
+	}
 	return nil
+}
+
+// Hold creates the real one now, when it is not there, and keeps it until release: it is never
+// unloaded while held. Before the box starts it is only created, and starts with the stand-in.
+func (l *Lazy) Hold() (adapter.Outbound, func(), error) {
+	l.loadAccess.Lock()
+	l.access.Lock()
+	inner, parent, closed := l.inner, l.parent, l.closed
+	l.access.Unlock()
+	var err error
+	switch {
+	case closed:
+		err = E.New(l.kind, " closed")
+	case inner == nil && parent == nil:
+		// created at the start, as the endpoint would be without lazy: from the config's own options
+		createOptions := l.options
+		if l.heldOptions != nil {
+			createOptions = l.heldOptions
+		}
+		inner, err = l.create(createOptions)
+		if err == nil {
+			l.access.Lock()
+			l.inner, l.network, l.pending = inner, inner.Network(), true
+			l.access.Unlock()
+		}
+	case inner == nil:
+		inner, err = l.loadLocked()
+	}
+	if err == nil {
+		l.access.Lock()
+		l.holds++
+		l.conns++
+		l.users++
+		l.access.Unlock()
+	}
+	l.loadAccess.Unlock()
+	if err != nil {
+		return nil, nil, err
+	}
+	var once sync.Once
+	return inner, func() {
+		once.Do(func() {
+			l.access.Lock()
+			l.holds--
+			l.access.Unlock()
+			l.connClosed()
+		})
+	}, nil
+}
+
+// Held reports whether something holds the real one (Hold).
+func (l *Lazy) Held() bool {
+	l.access.Lock()
+	defer l.access.Unlock()
+	return l.holds > 0
 }
 
 // Close closes the real outbound, whatever uses it, for good.
@@ -179,7 +289,7 @@ func (l *Lazy) Close() error {
 	inner, scope := l.inner, l.scope
 	l.inner, l.scope = nil, nil
 	l.access.Unlock()
-	if inner == nil {
+	if inner == nil || scope == nil { // held, created, and the box never started
 		return nil
 	}
 	return scope.Close()
@@ -311,6 +421,11 @@ func (l *Lazy) acquire() (adapter.Outbound, error) {
 func (l *Lazy) load() (adapter.Outbound, error) {
 	l.loadAccess.Lock()
 	defer l.loadAccess.Unlock()
+	return l.loadLocked()
+}
+
+// loadLocked is load with loadAccess held.
+func (l *Lazy) loadLocked() (adapter.Outbound, error) {
 	l.access.Lock()
 	inner, parent, closed := l.inner, l.parent, l.closed
 	failure := l.failure
@@ -322,15 +437,15 @@ func (l *Lazy) load() (adapter.Outbound, error) {
 	case inner != nil:
 		return inner, nil
 	case closed:
-		return nil, E.New("outbound closed")
+		return nil, E.New(l.kind, " closed")
 	case parent == nil:
-		return nil, E.New("outbound not started")
+		return nil, E.New(l.kind, " not started")
 	case failure != nil:
 		return nil, failure
 	}
-	name := "outbound/" + l.typ + "[" + l.tag + "]"
+	name := l.kind + "/" + l.typ + "[" + l.tag + "]"
 	scope := adapter.NewScope(parent, l.logger)
-	created, err := l.registry.CreateOutbound(l.ctx, l.router, l.logger, l.tag, l.typ, l.options)
+	created, err := l.create(l.options)
 	if err == nil {
 		if lifecycle, isLifecycle := adapter.AsLifecycle(created); isLifecycle {
 			for _, stage := range adapter.ListStartStages {
@@ -342,7 +457,7 @@ func (l *Lazy) load() (adapter.Outbound, error) {
 	}
 	l.access.Lock()
 	if err == nil && l.closed {
-		err = E.New("outbound closed")
+		err = E.New(l.kind, " closed")
 	}
 	if err != nil {
 		if !l.closed {
@@ -357,7 +472,7 @@ func (l *Lazy) load() (adapter.Outbound, error) {
 	l.inner, l.scope, l.network, l.failure = created, scope, created.Network(), nil
 	l.loads++
 	l.access.Unlock()
-	l.logger.Debug("lazy outbound loaded")
+	l.logger.Debug("lazy ", l.kind, " loaded")
 	return created, nil
 }
 
@@ -407,6 +522,13 @@ func (l *Lazy) unload(now bool) {
 		l.access.Unlock()
 		return
 	}
+	// still registering or searching (WARP): closing it would start that over, so it stays
+	// until it is through, or until it is unloaded on purpose (keep top puts it to rest)
+	if !now && adapter.IsWarming(l.inner.Status()) {
+		l.armLocked(lazyLinger)
+		l.access.Unlock()
+		return
+	}
 	if wait := time.Until(l.idleAt); wait > 0 {
 		l.armLocked(wait)
 		l.access.Unlock()
@@ -416,10 +538,10 @@ func (l *Lazy) unload(now bool) {
 	l.inner, l.scope = nil, nil
 	l.access.Unlock()
 	if err := scope.Close(); err != nil {
-		l.logger.Debug("lazy outbound unloaded: ", err)
+		l.logger.Debug("lazy ", l.kind, " unloaded: ", err)
 		return
 	}
-	l.logger.Debug("lazy outbound unloaded")
+	l.logger.Debug("lazy ", l.kind, " unloaded")
 }
 
 type lazyConn struct {

@@ -306,3 +306,47 @@ func TestH_KeepTopStartsWithTheFastestOfTheLastRun(t *testing.T) {
 	second, lazies := run()
 	require.Equal(t, []string{"p4", "p5"}, usedLazies(second, lazies), "the two that answered")
 }
+
+// topLazyEndpoint is a lazy client endpoint (a WireGuard, an OpenVPN) as keep top sees it: a
+// lazy outbound in the endpoint manager.
+type topLazyEndpoint struct {
+	*topLazy
+}
+
+func (e topLazyEndpoint) Type() string                                               { return "wireguard" }
+func (e topLazyEndpoint) Start(stage adapter.StartStage, scope *adapter.Scope) error { return nil }
+
+// Keep top picks among the lazy endpoints as among the lazy outbounds: a slow endpoint rests like
+// a slow outbound, a fast one is kept, and an endpoint that is not lazy is not its business.
+func TestH_KeepTopPicksAmongEndpoints(t *testing.T) {
+	link, addr := slowServer(t)
+	fastOutbound := newTopLazy("vless", addr, 30)
+	deadOutbound := newTopLazy("trojan", addr, -1)
+	fastEndpoint := newTopLazy("wg-fast", addr, 10)
+	slowEndpoint := newTopLazy("wg-slow", addr, 150)
+	deadEndpoint := newTopLazy("ovpn-dead", addr, -1)
+	lazies := []*topLazy{fastOutbound, deadOutbound, fastEndpoint, slowEndpoint, deadEndpoint}
+	server := &fakeEndpoint{fakeOutbound{tag: "wg-server", dial: dialTo(addr, nil)}}
+	endpoints := []adapter.Endpoint{topLazyEndpoint{fastEndpoint}, topLazyEndpoint{slowEndpoint}, topLazyEndpoint{deadEndpoint}, server}
+	m := newTestMonitorWithEndpoints(t, nil, option.MonitoringOptions{
+		URLs:           []string{link},
+		Interval:       badoption.Duration(time.Hour),
+		DebounceWindow: badoption.Duration(10 * time.Millisecond),
+		URLTestTimeout: badoption.Duration(2 * time.Second),
+		KeepTop:        &option.KeepTopOptions{Count: 2, Batch: 5},
+	}, endpoints, fastOutbound, deadOutbound)
+	require.NoError(t, htest.Start(m, adapter.StartStateInitialize))
+	require.NoError(t, htest.Start(m, adapter.StartStatePostStart))
+	require.Eventually(t, func() bool { return keptLazies(m) != nil }, 20*time.Second, 2*time.Millisecond, "the pick ends")
+	require.Equal(t, []string{"vless", "wg-fast"}, keptLazies(m), "the two fastest, an outbound and an endpoint")
+	require.Equal(t, []string{"vless", "wg-fast"}, usedLazies(m, lazies))
+	require.True(t, m.Parked("wg-slow"), "a slow endpoint rests")
+	require.True(t, m.Parked("ovpn-dead"), "a dead endpoint rests")
+	require.False(t, m.Parked("wg-server"), "an endpoint that is not lazy never rests")
+}
+
+type fakeEndpoint struct {
+	fakeOutbound
+}
+
+func (e *fakeEndpoint) Start(stage adapter.StartStage, scope *adapter.Scope) error { return nil }

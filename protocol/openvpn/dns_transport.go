@@ -77,6 +77,16 @@ func (t *DNSTransport) Start(stage adapter.StartStage, scope *adapter.Scope) err
 	if !loaded {
 		return E.New("endpoint not found: ", t.endpointTag)
 	}
+	// H: a lazy endpoint (keep top) is held: its real one is created now, starts with the box,
+	// and stays while this server does
+	rawEndpoint, release, err := adapter.HoldEndpoint(rawEndpoint)
+	if err != nil {
+		return E.Cause(err, "endpoint ", t.endpointTag)
+	}
+	scope.Add(func() error {
+		release()
+		return nil
+	})
 	endpoint, isOpenVPN := rawEndpoint.(*ClientEndpoint)
 	if !isOpenVPN {
 		return E.New("endpoint is not an OpenVPN client: ", t.endpointTag)
@@ -99,7 +109,7 @@ func (t *DNSTransport) Start(stage adapter.StartStage, scope *adapter.Scope) err
 		}
 		return nil
 	})
-	err := endpoint.installDNSTransport(t)
+	err = endpoint.installDNSTransport(t)
 	if err != nil {
 		return err
 	}

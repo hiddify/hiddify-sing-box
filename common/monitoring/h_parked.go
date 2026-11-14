@@ -36,21 +36,19 @@ func (m *OutboundMonitoring) parked(tag string, state *outboundState) bool {
 	return !isActive
 }
 
-// setActive names the lazy outbounds to use; the others rest. One that comes out of rest is
+// setActive names the lazy outbounds to use; the others rest, but what one in use goes through
+// (withDetours). One that comes out of rest is
 // tested now, by the workers, as many at a time as a cycle tests, and until its result is in, its
 // last one counts as a cached one does: the groups can fall back on it and the app shows it as
 // waiting. One that goes to rest is closed as soon as no connection uses it, and its connections
 // are left to end. Before Start it only names them: the first cycle tests them.
 // It returns the ones it took out of rest.
 func (m *OutboundMonitoring) setActive(tags []string) []string {
-	next := make(map[string]struct{}, len(tags))
-	for _, tag := range tags {
-		next[tag] = struct{}{}
-	}
 	m.parkAccess.Lock()
 	defer m.parkAccess.Unlock()
-	previous := m.active.Swap(&next)
 	registry := m.reg()
+	next := withDetours(registry, tags)
+	previous := m.active.Swap(&next)
 	var woken []string
 	changed := false
 	for tag, state := range registry.outbounds {
@@ -106,4 +104,35 @@ func (m *OutboundMonitoring) TestOutbounds(tags []string, reason string) {
 		}
 		m.enqueueTask(&testTask{outboundTag: tag, cycleID: cycleID, reason: reason})
 	}
+}
+
+// withDetours is tags with what they go through: the detours of each, and theirs, and those of
+// the outbounds that run anyway (not lazy), as these dial through them all the time. A proxy in
+// use, or tested, works only with its detour in use too. Not a group's members: a group chooses
+// among the ones in use.
+func withDetours(registry *monitoringRegistry, tags []string) map[string]struct{} {
+	next := make(map[string]struct{}, len(tags))
+	queue := slices.Clone(tags)
+	for tag, state := range registry.outbounds {
+		if _, isLazy := state.outbound.(adapter.LazyOutbound); !isLazy {
+			if _, isGroup := registry.groups[tag]; !isGroup {
+				queue = append(queue, state.dependencies...)
+			}
+		}
+	}
+	for len(queue) > 0 {
+		tag := queue[len(queue)-1]
+		queue = queue[:len(queue)-1]
+		if _, seen := next[tag]; seen {
+			continue
+		}
+		next[tag] = struct{}{}
+		if _, isGroup := registry.groups[tag]; isGroup {
+			continue
+		}
+		if state := registry.outbounds[tag]; state != nil {
+			queue = append(queue, state.dependencies...)
+		}
+	}
+	return next
 }

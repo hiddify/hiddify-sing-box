@@ -311,13 +311,15 @@ func New(options Options) (*Box, error) {
 			})
 		}
 		endpointLogger := logFactory.NewLogger(F.ToString("endpoint/", endpointOptions.Type, "[", tag, "]"))
+		endpointOptions.Tag = tag                                       //H
+		createType, createOptions := lazyEndpoint(ctx, endpointOptions) //H: a lazy endpoint is created as its stand-in
 		err = endpointManager.Create(
 			endpointCtx,
 			router,
 			endpointLogger,
 			tag,
-			endpointOptions.Type,
-			endpointOptions.Options,
+			createType,    //H
+			createOptions, //H
 		)
 		if err != nil {
 			// H: replace a broken endpoint with an invalid placeholder instead of failing the whole config

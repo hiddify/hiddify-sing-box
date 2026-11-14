@@ -74,6 +74,10 @@ type keepTopState struct {
 	had       int       // how many of the kept answered when that pick began
 	rechecks  int       // how many times in a row the ones at rest were gone through for nothing
 	recheckAt time.Time // when they are gone through again
+	// searching are the ones at rest that register or search before they work (WARP), used while
+	// there is a place for them (h_keep_top_search.go): the zero time while they search, else when
+	// they were through
+	searching map[string]time.Time
 }
 
 // KeepTopSearching reports a first pick still going through the outbounds: the ones in use all
@@ -197,6 +201,7 @@ func (m *OutboundMonitoring) keepTopEvaluateLocked() {
 		return
 	}
 	defer m.keepTopArmLocked()
+	searchChanged := m.keepTopWatchSearchersLocked(time.Now())
 	pinned := m.keepTopPinnedLocked()
 	var order topOrder
 	step := false
@@ -272,6 +277,10 @@ func (m *OutboundMonitoring) keepTopEvaluateLocked() {
 			}
 		}
 	}
+	if !step && searchChanged {
+		// one began searching, or is through, or has no place any more: what is used changes
+		step, order.asIs = true, true
+	}
 	if !step && !k.picking {
 		// one that was used only because it was pinned, or selected, is so no longer
 		for tag := range k.guests {
@@ -286,9 +295,9 @@ func (m *OutboundMonitoring) keepTopEvaluateLocked() {
 	}
 }
 
-// keepTopRefreshLocked reads the lazy outbounds of registry. An outbound that is new, or was
-// replaced, has no ping of this run: its last result, cached, only orders the tests. It reports
-// whether a kept outbound was replaced or is gone.
+// keepTopRefreshLocked reads the lazy outbounds and endpoints of registry. An outbound that is new,
+// or was replaced, has no ping of this run: its last result, cached, only orders the tests. It
+// reports whether a kept outbound was replaced or is gone.
 func (m *OutboundMonitoring) keepTopRefreshLocked(registry *monitoringRegistry) bool {
 	k := &m.keepTop
 	if k.owners == nil {
@@ -299,7 +308,12 @@ func (m *OutboundMonitoring) keepTopRefreshLocked(registry *monitoringRegistry) 
 	}
 	var tags []string
 	changed := false
-	for _, outbound := range m.outboundManager.Outbounds() {
+	// the lazy endpoints too (the clients: WireGuard, OpenVPN, ...), after the outbounds
+	candidates := m.outboundManager.Outbounds()
+	for _, endpoint := range m.endpointManager.Endpoints() {
+		candidates = append(candidates, endpoint)
+	}
+	for _, outbound := range candidates {
 		tag := outbound.Tag()
 		state := registry.outbounds[tag]
 		if _, isLazy := outbound.(adapter.LazyOutbound); !isLazy || state == nil || state.outbound != outbound {
@@ -346,13 +360,14 @@ func (m *OutboundMonitoring) keepTopStopLocked() {
 	k.on, k.kept, k.picking, k.round, k.hold, k.loaded, k.batch = false, nil, false, 0, time.Time{}, nil, nil
 	k.guests = nil
 	k.fill, k.had, k.rechecks, k.recheckAt = false, 0, 0, time.Time{}
+	k.searching = nil
 	if k.timer != nil {
 		k.timer.Stop()
 	}
 }
 
-// keepTopPinnedLocked are the lazy outbounds a selector has selected, and the ones the options
-// pin, sorted: what the user chose is used, whatever its ping, beside the fastest.
+// keepTopPinnedLocked are the lazy outbounds a selector has selected, the ones the options pin,
+// and the ones held (adapter.HeldLazy), sorted: what the user chose is used, whatever its ping, beside the fastest.
 func (m *OutboundMonitoring) keepTopPinnedLocked() []string {
 	k := &m.keepTop
 	var pinned []string
@@ -361,6 +376,12 @@ func (m *OutboundMonitoring) keepTopPinnedLocked() []string {
 			if _, managed := k.owners[tag]; managed && !slices.Contains(pinned, tag) {
 				pinned = append(pinned, tag)
 			}
+		}
+	}
+	// held by what needs the real one (a DNS server its endpoint): it runs anyway
+	for tag, owner := range k.owners {
+		if held, isHeld := owner.(adapter.HeldLazy); isHeld && held.Held() && !slices.Contains(pinned, tag) {
+			pinned = append(pinned, tag)
 		}
 	}
 	for _, outbound := range m.outboundManager.Outbounds() {
@@ -455,6 +476,12 @@ func (m *OutboundMonitoring) keepTopArmLocked() {
 		}
 	}
 	at = m.keepTopRecheckLocked(at)
+	if k.on && len(k.searching) > 0 {
+		// how the ones that search are doing is not told: it is looked at
+		if poll := time.Now().Add(keepTopSearchPoll); at.IsZero() || poll.Before(at) {
+			at = poll
+		}
+	}
 	if at.IsZero() {
 		if k.timer != nil {
 			k.timer.Stop()
@@ -587,7 +614,7 @@ func (m *OutboundMonitoring) keepTopStepLocked(order topOrder) {
 		k.batchAt = batchAt
 		changed := !warm || !slices.Equal(loaded, current.loaded)
 		k.loaded = loaded
-		woken := m.setActive(loaded)
+		woken := m.setActive(m.keepTopWithSearchersLocked(loaded))
 		// the ones of the batch that were in use already did not come out of rest, which is
 		// what tests the others
 		if m.started {

@@ -75,9 +75,10 @@ func (m *fakeOutboundManager) Outbound(tag string) (adapter.Outbound, bool) {
 
 type fakeEndpointManager struct {
 	adapter.EndpointManager
+	list []adapter.Endpoint
 }
 
-func (m *fakeEndpointManager) Endpoints() []adapter.Endpoint { return nil }
+func (m *fakeEndpointManager) Endpoints() []adapter.Endpoint { return m.list }
 
 type fakeCache struct {
 	adapter.CacheFile
@@ -127,12 +128,17 @@ func dialTo(addr M.Socksaddr, before func(ctx context.Context) error) func(conte
 }
 
 func newTestMonitor(t *testing.T, cache adapter.CacheFile, options option.MonitoringOptions, outbounds ...adapter.Outbound) *OutboundMonitoring {
+	return newTestMonitorWithEndpoints(t, cache, options, nil, outbounds...)
+}
+
+// newTestMonitorWithEndpoints is newTestMonitor with endpoints beside the outbounds.
+func newTestMonitorWithEndpoints(t *testing.T, cache adapter.CacheFile, options option.MonitoringOptions, endpoints []adapter.Endpoint, outbounds ...adapter.Outbound) *OutboundMonitoring {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	ctx = service.ContextWithDefaultRegistry(ctx)
 	ctx = pause.WithDefaultManager(ctx)
 	ctx = service.ContextWith[adapter.OutboundManager](ctx, &fakeOutboundManager{list: outbounds})
-	ctx = service.ContextWith[adapter.EndpointManager](ctx, &fakeEndpointManager{})
+	ctx = service.ContextWith[adapter.EndpointManager](ctx, &fakeEndpointManager{list: endpoints})
 	if cache != nil {
 		ctx = service.ContextWith[adapter.CacheFile](ctx, cache)
 	}

@@ -254,7 +254,8 @@ type hotReloadItem struct {
 	tag     string
 	typ     string
 	options any
-	// what to create for an outbound: typ and options, or the stand-in of a lazy one (lazyOutbound)
+	// what to create for an outbound or endpoint: typ and options, or the stand-in of a lazy one
+	// (lazyOutbound, lazyEndpoint)
 	createType    string
 	createOptions any
 	content       []byte
@@ -298,7 +299,13 @@ func outboundItems(ctx context.Context, options option.Options) (hotReloadItems,
 	}
 	for i := range options.Endpoints {
 		endpoint := &options.Endpoints[i]
-		if err := items.add(ctx, &hotReloadItem{kind: hotReloadEndpoint, tag: endpoint.Tag, typ: endpoint.Type, options: endpoint.Options, index: i}, endpoint); err != nil {
+		item := &hotReloadItem{kind: hotReloadEndpoint, tag: endpoint.Tag, typ: endpoint.Type, options: endpoint.Options, index: i}
+		created := *endpoint
+		if created.Tag == "" {
+			created.Tag = F.ToString(i) // as New does
+		}
+		item.createType, item.createOptions = lazyEndpoint(ctx, created)
+		if err := items.add(ctx, item, endpoint); err != nil {
 			return nil, err
 		}
 	}
