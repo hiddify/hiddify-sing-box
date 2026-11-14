@@ -77,15 +77,15 @@ func (c *Config) Addresses() ([]netip.Prefix, error) {
 	return addresses, nil
 }
 
-// ProbeWARP times a TLS handshake with the MASQUE endpoint of the device in config (HTTP/3, or
-// HTTP/2 with vhttp h2), through options' dialer, at peer when it is set: whether MASQUE gets
-// through, for the warp endpoint's auto mode.
+// ProbeWARP times a handshake with the MASQUE endpoint of the device in config, through
+// options' dialer, at peer when it is set: whether MASQUE gets through, for the warp endpoint's
+// auto mode. vhttp h3 probes QUIC over UDP, h2 TLS over TCP, and auto both at once, answering
+// with the first that gets through.
 func ProbeWARP(ctx context.Context, logger log.ContextLogger, options option.MASQUEOutboundOptions, config *Config, peer M.Socksaddr) (time.Duration, error) {
 	mode, err := tunnelMode(options)
 	if err != nil {
 		return 0, err
 	}
-	http2 := mode == masque.ModeHTTP2
 	tlsConfig, err := warpTLS(ctx, logger, options, config)
 	if err != nil {
 		return 0, err
@@ -94,15 +94,54 @@ func ProbeWARP(ctx context.Context, logger log.ContextLogger, options option.MAS
 	if err != nil {
 		return 0, err
 	}
-	var endpoint net.Addr
-	if hasPeer(peer) && peer.Addr.IsValid() {
-		endpoint, err = fixedEndpoint(config, peer, http2, options.UseIPv6)
-	} else {
-		endpoint, err = config.SelectEndpointFromConfig(http2, options.UseIPv6, config.port())
+	probe := func(ctx context.Context, http2 bool) (time.Duration, error) {
+		var endpoint net.Addr
+		var err error
+		if hasPeer(peer) && peer.Addr.IsValid() {
+			endpoint, err = fixedEndpoint(config, peer, http2, options.UseIPv6)
+		} else {
+			endpoint, err = config.SelectEndpointFromConfig(http2, options.UseIPv6, config.port())
+		}
+		if err != nil {
+			return 0, err
+		}
+		addrPort, _ := addrPortOf(endpoint)
+		return warpscan.MASQUEProbe(probeDialer, tlsConfig, http2)(ctx, addrPort)
 	}
-	if err != nil {
-		return 0, err
+	if mode != masque.ModeAuto {
+		return probe(ctx, mode == masque.ModeHTTP2)
 	}
-	addrPort, _ := addrPortOf(endpoint)
-	return warpscan.MASQUEProbe(probeDialer, tlsConfig, http2)(ctx, addrPort)
+	return firstProbe(ctx, probe)
+}
+
+// firstProbe runs probe over HTTP/3 and HTTP/2 at once and returns the first success, or the
+// errors of both.
+func firstProbe(ctx context.Context, probe func(ctx context.Context, http2 bool) (time.Duration, error)) (time.Duration, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	type result struct {
+		http2 bool
+		rtt   time.Duration
+		err   error
+	}
+	results := make(chan result, 2)
+	for _, http2 := range []bool{false, true} {
+		go func() {
+			rtt, err := probe(ctx, http2)
+			results <- result{http2, rtt, err}
+		}()
+	}
+	var errs [2]error
+	for range 2 {
+		r := <-results
+		if r.err == nil {
+			return r.rtt, nil
+		}
+		if r.http2 {
+			errs[1] = E.Cause(r.err, "HTTP/2")
+		} else {
+			errs[0] = E.Cause(r.err, "HTTP/3")
+		}
+	}
+	return 0, E.Errors(errs[0], errs[1])
 }

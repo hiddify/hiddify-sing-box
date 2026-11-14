@@ -179,9 +179,9 @@ func addrPortOf(addr net.Addr) (netip.AddrPort, bool) {
 	return netip.AddrPort{}, false
 }
 
-// selectEndpoints picks the HTTP/3 and, for auto, the HTTP/2 endpoint: peer when it is set
-// (the warp endpoint's server and server_port), the scanner's choice when it finds one,
-// otherwise the profile's. The profile has no HTTP/2 IPv6 endpoint, so with use_ipv6 and no
+// selectEndpoints picks the HTTP/3 and, for auto, the HTTP/2 endpoint (both at once): peer when
+// it is set (the warp endpoint's server and server_port), the scanner's choice when it finds
+// one, otherwise the profile's. The profile has no HTTP/2 IPv6 endpoint, so with use_ipv6 and no
 // scanner result auto keeps to HTTP/3 instead of failing.
 func selectEndpoints(ctx context.Context, logger log.ContextLogger, config *Config, mode string, useIPv6 bool, peer M.Socksaddr, scan func(http2 bool) (net.Addr, error)) (endpoint net.Addr, h2Endpoint net.Addr, _ string, _ error) {
 	choose := func(http2 bool) (net.Addr, error) {
@@ -197,16 +197,36 @@ func selectEndpoints(ctx context.Context, logger log.ContextLogger, config *Conf
 		}
 		return config.SelectEndpointFromConfig(http2, useIPv6, config.port())
 	}
-	endpoint, err := choose(mode == masque.ModeHTTP2)
-	if err != nil {
-		return nil, nil, "", err
-	}
-	if mode == masque.ModeAuto {
-		h2Endpoint, err = choose(true)
+	if mode != masque.ModeAuto {
+		endpoint, err := choose(mode == masque.ModeHTTP2)
 		if err != nil {
-			logger.WarnContext(ctx, "no HTTP/2 endpoint (", err, "), using HTTP/3 only")
-			return endpoint, nil, masque.ModeHTTP3, nil
+			return nil, nil, "", err
 		}
+		return endpoint, nil, mode, nil
+	}
+	// auto: HTTP/3 (QUIC over UDP) and HTTP/2 (TLS over TCP) are scanned at once, so a network
+	// that drops UDP does not wait out the whole HTTP/3 scan before HTTP/2 is looked for
+	var (
+		h2Err error
+		wait  sync.WaitGroup
+	)
+	wait.Add(1)
+	go func() {
+		defer wait.Done()
+		h2Endpoint, h2Err = choose(true)
+	}()
+	endpoint, err := choose(false)
+	wait.Wait()
+	if err != nil {
+		if h2Err != nil {
+			return nil, nil, "", err
+		}
+		logger.WarnContext(ctx, "no HTTP/3 endpoint (", err, "), using HTTP/2 only")
+		return h2Endpoint, nil, masque.ModeHTTP2, nil
+	}
+	if h2Err != nil {
+		logger.WarnContext(ctx, "no HTTP/2 endpoint (", h2Err, "), using HTTP/3 only")
+		return endpoint, nil, masque.ModeHTTP3, nil
 	}
 	return endpoint, h2Endpoint, mode, nil
 }
