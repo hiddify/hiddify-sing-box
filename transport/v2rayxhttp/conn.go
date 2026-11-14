@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/sagernet/sing-box/common/xray/signal/done"
+	"github.com/sagernet/sing/common/baderror" //H
 )
 
 type splitConn struct {
@@ -20,12 +21,17 @@ type splitConn struct {
 	onClose    func()
 }
 
+// Write and Read wrap HTTP/2 stream errors (baderror.WrapH2), as the gRPC and HTTP transports do:
+// HTTP/2 or TLS over this conn, such as an HTTPS URL test, would otherwise get the bare stream error
+// back from its framer and keep reading, spinning a core for good. //H
 func (c *splitConn) Write(b []byte) (int, error) {
-	return c.writer.Write(b)
+	n, err := c.writer.Write(b)
+	return n, baderror.WrapH2(err) //H
 }
 
 func (c *splitConn) Read(b []byte) (int, error) {
-	return c.reader.Read(b)
+	n, err := c.reader.Read(b)
+	return n, baderror.WrapH2(err) //H
 }
 
 func (c *splitConn) Close() error {
