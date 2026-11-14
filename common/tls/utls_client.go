@@ -95,16 +95,9 @@ func (c *UTLSClientConfig) Client(conn net.Conn) (Conn, error) {
 	if c.tricks != nil && config.ServerName != "" { //H
 		config.ServerName = c.tricks.serverName(config.ServerName) //H
 	} //H
-	id := c.id                               //H
-	if c.tricks != nil && c.tricks.padding { //H: the spec is applied to a custom hello
-		id = utls.HelloCustom //H
-	} //H
-	uConn := utls.UClient(conn, config, id)  //H
-	if c.tricks != nil && c.tricks.padding { //H
-		err = applyTLSTricksPadding(uConn, c.id, c.tricks) //H
-		if err != nil {                                    //H
-			return nil, err //H
-		} //H
+	uConn, err := c.hUClient(conn, config) //H: the fingerprint, edited for padding and ECH
+	if err != nil {                        //H
+		return nil, err //H
 	} //H
 	return &utlsALPNWrapper{utlsConnWrapper{uConn}, c.config.NextProtos}, nil //H
 }
@@ -161,6 +154,7 @@ func (c *utlsConnWrapper) ConnectionState() tls.ConnectionState {
 		SignedCertificateTimestamps: state.SignedCertificateTimestamps,
 		OCSPResponse:                state.OCSPResponse,
 		TLSUnique:                   state.TLSUnique,
+		ECHAccepted:                 state.ECHAccepted, //H
 	}
 }
 
@@ -353,6 +347,7 @@ func newUTLSClient(ctx context.Context, logger logger.ContextLogger, serverAddre
 		if options.Reality != nil && options.Reality.Enabled {
 			return nil, E.New("Reality is conflict with ECH")
 		}
+		config.(*UTLSClientConfig).id = hECHClientHelloID(logger, options.UTLS.Fingerprint, id) //H
 		config, err = parseECHClientConfig(ctx, config.(ECHCapableConfig), options)
 		if err != nil {
 			return nil, err
