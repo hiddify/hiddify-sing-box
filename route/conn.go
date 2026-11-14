@@ -90,6 +90,7 @@ func (m *ConnectionManager) TrackConn(conn net.Conn) net.Conn {
 		socketOwner: socketOwner{original: conn},
 		manager:     m,
 	}
+	tracked.hPace.init(conn) //H
 	m.access.Lock()
 	tracked.element = m.connections.PushBack(tracked)
 	m.access.Unlock()
@@ -492,6 +493,7 @@ type trackedConn struct {
 	socketOwner
 	manager *ConnectionManager
 	element *list.Element[io.Closer]
+	hPace   //H: see h_read_pace.go
 }
 
 func (c *trackedConn) SyscallConn() (syscall.RawConn, error) {
@@ -499,7 +501,7 @@ func (c *trackedConn) SyscallConn() (syscall.RawConn, error) {
 	if !isSyscallConn {
 		return nil, os.ErrInvalid
 	}
-	return syscallConn.SyscallConn()
+	return c.hSyscallConn(syscallConn) //H
 }
 
 func (c *trackedConn) Detach() {
@@ -523,7 +525,7 @@ func (c *trackedConn) Upstream() any {
 }
 
 func (c *trackedConn) ReaderReplaceable() bool {
-	return true
+	return c.stream || pacingDisabled //H: a datagram socket is read through this connection, which paces it
 }
 
 func (c *trackedConn) WriterReplaceable() bool {
@@ -535,6 +537,7 @@ type trackedPacketConn struct {
 	socketOwner
 	manager *ConnectionManager
 	element *list.Element[io.Closer]
+	wake    wakePace //H: see h_wake_pace.go
 }
 
 func (c *trackedPacketConn) SyscallConn() (syscall.RawConn, error) {
@@ -542,7 +545,7 @@ func (c *trackedPacketConn) SyscallConn() (syscall.RawConn, error) {
 	if !isSyscallConn {
 		return nil, os.ErrInvalid
 	}
-	return syscallConn.SyscallConn()
+	return hPacedSyscallConn(syscallConn, &c.wake) //H
 }
 
 func (c *trackedPacketConn) Detach() {
@@ -566,7 +569,7 @@ func (c *trackedPacketConn) Upstream() any {
 }
 
 func (c *trackedPacketConn) ReaderReplaceable() bool {
-	return true
+	return pacingDisabled //H: read through this connection, which paces it
 }
 
 func (c *trackedPacketConn) WriterReplaceable() bool {
