@@ -78,7 +78,11 @@ type keepTopState struct {
 	// there is a place for them (h_keep_top_search.go): the zero time while they search, else when
 	// they were through
 	searching map[string]time.Time
+	saved     time.Time // when a step last saved the pings (keepTopSaveEvery)
 }
+
+// keepTopSaveEvery is how often the steps of a pick save the pings they got so far.
+const keepTopSaveEvery = 5 * time.Second
 
 // KeepTopSearching reports a first pick still going through the outbounds: the ones in use all
 // failing does not mean that none works, while there are others to test.
@@ -634,8 +638,12 @@ func (m *OutboundMonitoring) keepTopStepLocked(order topOrder) {
 			m.logger.Info("KEEP TOP ", what)
 		}
 		// the pings so far order the next run's tests, also when this run ends without a close
-		// (the iOS extension is killed, not stopped)
-		if m.started && m.cacheDirty.Swap(false) {
+		// (the iOS extension is killed, not stopped). A pick steps once for every outbound it
+		// tests, and a save writes them all and syncs the disk: while it goes on they are saved
+		// every keepTopSaveEvery, not at each of its hundreds of steps
+		if m.started && m.cacheDirty.Load() && (!k.picking || now.Sub(k.saved) >= keepTopSaveEvery) {
+			m.cacheDirty.Store(false)
+			k.saved = now
 			_ = m.saveHistory()
 		}
 	}
