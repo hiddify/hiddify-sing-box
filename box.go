@@ -585,6 +585,7 @@ func (s *Box) Start() error {
 		return err
 	}
 	s.logger.Info("sing-box started (", F.Seconds(time.Since(s.createdAt).Seconds()), "s)")
+	s.hStartProcs() //H
 	return nil
 }
 

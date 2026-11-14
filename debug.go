@@ -11,7 +11,7 @@ func checkDebugOptions(options option.DebugOptions) error {
 	if options.OOMKiller != nil {
 		return E.New("legacy oom_killer in debug options is removed, use oom-killer service instead")
 	}
-	return nil
+	return hCheckProcsOptions(options.Procs) //H
 }
 
 func applyDebugOptions(options option.DebugOptions) {

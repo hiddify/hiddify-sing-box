@@ -11,4 +11,5 @@ type DebugOptions struct {
 	TraceBack    string                   `json:"trace_back,omitempty"`
 	MemoryLimit  *byteformats.MemoryBytes `json:"memory_limit,omitempty"`
 	OOMKiller    *bool                    `json:"oom_killer,omitempty"`
+	Procs        *HProcsOptions           `json:"procs,omitempty"` //H: see h_procs.go
 }
