@@ -167,6 +167,9 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 		}
 		return &conn, nil
 	} else { // stream-down
+		if mode == "packet-up" { //H: the first upload's connection is dialled while the download's is
+			hWarmUpload(ctx, httpClient) //H
+		} //H
 		if xmuxClient2 != nil {
 			xmuxClient2.LeftRequests.Add(-1)
 		}

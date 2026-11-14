@@ -113,6 +113,29 @@ func hNewHTTP3Pair(t *testing.T) (tls.ServerConfig, tls.Config) {
 	return serverConfig, clientConfig
 }
 
+// hSettle waits for an upload connection that is being dialled ahead, and a moment more for the
+// server to finish its side of that handshake: the test server's lazy TLS connection must not be
+// closed in the middle of one.
+func hSettle(t *testing.T, transport any) {
+	t.Helper()
+	client := transport.(*Client)
+	for _, manager := range client.xmuxManagers {
+		manager.mtx.Lock()
+		xmuxClients := append([]*XmuxClient(nil), manager.xmuxClients...)
+		manager.mtx.Unlock()
+		for _, xmuxClient := range xmuxClients {
+			if warm := xmuxClient.XmuxConn.(*DefaultDialerClient).warm.Load(); warm != nil {
+				select {
+				case <-warm.done:
+				case <-time.After(3 * time.Second):
+					t.Fatal("the upload connection dialled ahead did not arrive")
+				}
+			}
+		}
+	}
+	time.Sleep(30 * time.Millisecond)
+}
+
 func hStartPacketServer(t *testing.T, options option.V2RayXHTTPOptions, serverTLS tls.ServerConfig) M.Socksaddr {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -155,6 +178,7 @@ func TestH_XHTTPCloseClosesTheConnections(t *testing.T) {
 				time.Sleep(100 * time.Millisecond)
 				require.Positive(t, dialer.open.Load(), "the connection to the server is kept for the next one")
 			}
+			hSettle(t, transport)
 			require.NoError(t, transport.Close())
 			require.Eventually(t, func() bool { return dialer.open.Load() == 0 }, 3*time.Second, 10*time.Millisecond,
 				"%d of %d connections to the server are still open after Close", dialer.open.Load(), dialer.dials.Load())
@@ -162,6 +186,7 @@ func TestH_XHTTPCloseClosesTheConnections(t *testing.T) {
 			// and the transport still works, as after a network change
 			conn = hEcho(t, transport, []byte("again"))
 			require.NoError(t, conn.Close())
+			hSettle(t, transport)
 			require.NoError(t, transport.Close())
 			require.Eventually(t, func() bool { return dialer.open.Load() == 0 }, 3*time.Second, 10*time.Millisecond)
 		})
@@ -190,6 +215,26 @@ func TestH_XHTTPFailedHandshakeClosesTheConnection(t *testing.T) {
 	require.Positive(t, dialer.dials.Load())
 	require.Eventually(t, func() bool { return dialer.open.Load() == 0 }, 2*time.Second, 10*time.Millisecond,
 		"the TCP connection of the failed handshake is still open")
+}
+
+// Over HTTP/1.1 the first upload's connection is dialled while the download's is, not after it:
+// with a server 150 ms away for each connection, the first byte gets there and back in little
+// more than one such time, not two.
+func TestH_XHTTPHTTP1UploadIsDialledAhead(t *testing.T) {
+	const content = `{"mode":"packet-up",` + hBase + `}`
+	serverTLS, clientTLS := hNewTLSPair(t, []string{"http/1.1"})
+	addr := hStartServer(t, hOptions(t, content), serverTLS)
+	dialer := &hCountingDialer{delay: 150 * time.Millisecond}
+	transport, err := NewClient(context.Background(), dialer, addr, hOptions(t, content), clientTLS)
+	require.NoError(t, err)
+	defer transport.Close()
+	started := time.Now()
+	conn := hEcho(t, transport, []byte("hello"))
+	took := time.Since(started)
+	defer conn.Close()
+	require.Equal(t, int32(2), dialer.dials.Load(), "one connection for the download and one for the uploads")
+	require.Less(t, took, 270*time.Millisecond, "the two connections were dialled one after the other")
+	hSettle(t, transport)
 }
 
 type hClosableXmuxConn struct {

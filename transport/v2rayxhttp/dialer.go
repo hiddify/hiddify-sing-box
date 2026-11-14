@@ -223,7 +223,10 @@ func (c *DefaultDialerClient) PostPacket(ctx context.Context, url string, sessio
 		var uploadConn any
 		var h1UploadConn *H1Conn
 		for {
-			uploadConn = c.uploadRawPool.Get()
+			uploadConn = c.hTakeWarm(ctx) //H: the connection dialled ahead, if there is one
+			if uploadConn == nil {        //H
+				uploadConn = c.uploadRawPool.Get()
+			} //H
 			newConnection := uploadConn == nil
 			if newConnection {
 				newConn, err := c.dialUploadConn(context.WithoutCancel(ctx))
