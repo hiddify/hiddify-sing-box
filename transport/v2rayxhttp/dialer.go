@@ -39,6 +39,7 @@ type DefaultDialerClient struct {
 	// pool of net.Conn, created using dialUploadConn
 	uploadRawPool  *sync.Pool
 	dialUploadConn func(ctxInner context.Context) (net.Conn, error)
+	hClientState   //H: see h_client_close.go
 }
 
 func (c *DefaultDialerClient) IsClosed() bool {

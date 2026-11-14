@@ -26,12 +26,12 @@ type splitConn struct {
 // back from its framer and keep reading, spinning a core for good. //H
 func (c *splitConn) Write(b []byte) (int, error) {
 	n, err := c.writer.Write(b)
-	return n, baderror.WrapH2(err) //H
+	return n, hWrapH3(baderror.WrapH2(err)) //H
 }
 
 func (c *splitConn) Read(b []byte) (int, error) {
 	n, err := c.reader.Read(b)
-	return n, baderror.WrapH2(err) //H
+	return n, hWrapH3(baderror.WrapH2(err)) //H
 }
 
 func (c *splitConn) Close() error {

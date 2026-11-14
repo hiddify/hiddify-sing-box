@@ -43,6 +43,7 @@ type Client struct {
 	baseRequestURL2 url.URL
 	getHTTPClient   func() (DialerClient, *XmuxClient)
 	getHTTPClient2  func() (DialerClient, *XmuxClient)
+	xmuxManagers    []*XmuxManager //H: closed with the client
 }
 
 func NewClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr, options option.V2RayXHTTPOptions, tlsConfig tls.Config) (adapter.V2RayClientTransport, error) {
@@ -68,6 +69,7 @@ func NewClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr, opt
 	}
 	baseRequestURL2 := baseRequestURL
 	getHTTPClient2 := getHTTPClient
+	xmuxManagers := []*XmuxManager{xmuxManager} //H
 	if options.Download != nil {
 		options2 := options.Download
 		dialer2 := dialer
@@ -102,6 +104,7 @@ func NewClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr, opt
 			xmuxClient2 := xmuxManager2.GetXmuxClient(ctx)
 			return xmuxClient2.XmuxConn.(DialerClient), xmuxClient2
 		}
+		xmuxManagers = append(xmuxManagers, xmuxManager2) //H
 	}
 	return &Client{
 		ctx:             ctx,
@@ -110,6 +113,7 @@ func NewClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr, opt
 		getHTTPClient2:  getHTTPClient2,
 		baseRequestURL:  baseRequestURL,
 		baseRequestURL2: baseRequestURL2,
+		xmuxManagers:    xmuxManagers, //H
 	}, nil
 }
 
@@ -126,10 +130,10 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 	httpClient, xmuxClient := c.getHTTPClient()
 	httpClient2, xmuxClient2 := c.getHTTPClient2()
 	if xmuxClient != nil {
-		xmuxClient.OpenUsage.Add(1)
+		xmuxClient.AddRunning()
 	}
 	if xmuxClient2 != nil && xmuxClient2 != xmuxClient {
-		xmuxClient2.OpenUsage.Add(1)
+		xmuxClient2.AddRunning()
 	}
 	var closed atomic.Int32
 	reader, writer := io.Pipe()
@@ -140,10 +144,10 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 				return
 			}
 			if xmuxClient != nil {
-				xmuxClient.OpenUsage.Add(-1)
+				xmuxClient.DoneRunning()
 			}
 			if xmuxClient2 != nil && xmuxClient2 != xmuxClient {
-				xmuxClient2.OpenUsage.Add(-1)
+				xmuxClient2.DoneRunning()
 			}
 		},
 	}
@@ -197,6 +201,15 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 	go func() {
 		var seq int64
 		var lastWrite time.Time
+		// the client the uploads go to: the conn's own until its requests are used up, then others,
+		// which are not the conn's to release when it closes
+		dynamicHTTPClient := httpClient
+		dynamicXmuxClient := xmuxClient
+		defer func() { //H: a client taken for the uploads is given back when they end
+			if dynamicXmuxClient != nil && dynamicXmuxClient != xmuxClient {
+				dynamicXmuxClient.DoneRunning()
+			}
+		}()
 		for {
 			wroteRequest := done.New()
 			ctx := httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
@@ -220,11 +233,16 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 				break
 			}
 			lastWrite = time.Now()
-			if xmuxClient != nil && (xmuxClient.LeftRequests.Add(-1) <= 0 ||
-				(xmuxClient.UnreusableAt != time.Time{} && lastWrite.After(xmuxClient.UnreusableAt))) {
-				httpClient, xmuxClient = c.getHTTPClient()
+			if dynamicXmuxClient != nil && (dynamicXmuxClient.LeftRequests.Add(-1) <= 0 ||
+				(dynamicXmuxClient.UnreusableAt != time.Time{} && lastWrite.After(dynamicXmuxClient.UnreusableAt))) {
+				previous := dynamicXmuxClient //H
+				dynamicHTTPClient, dynamicXmuxClient = c.getHTTPClient()
+				dynamicXmuxClient.AddRunning() //H: in use until the uploads end or move on
+				if previous != xmuxClient {    //H
+					previous.DoneRunning() //H
+				} //H
 			}
-			go func() {
+			go func(httpClient DialerClient) {
 				err := httpClient.PostPacket(
 					ctx,
 					url.String(),
@@ -237,8 +255,8 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 				if err != nil {
 					uploadPipeReader.Interrupt()
 				}
-			}()
-			if _, ok := httpClient.(*DefaultDialerClient); ok {
+			}(dynamicHTTPClient)
+			if _, ok := dynamicHTTPClient.(*DefaultDialerClient); ok {
 				select {
 				case <-ctx.Done():
 				case <-wroteRequest.Wait():
@@ -250,8 +268,20 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 	return &conn, nil
 }
 
+// Close closes the connections to the server. The client can be used again, as it is after the
+// network changed: the next connection makes new ones. //H
 func (c *Client) Close() error {
+	for _, xmuxManager := range c.xmuxManagers {
+		xmuxManager.Close()
+	}
 	return nil
+}
+
+// CloseIdleConnections closes the connections to the server that nothing runs on. //H
+func (c *Client) CloseIdleConnections() {
+	for _, xmuxManager := range c.xmuxManagers {
+		xmuxManager.CloseIdleConnections()
+	}
 }
 
 func decideHTTPVersion(tlsConfig tls.Config) string {
@@ -296,15 +326,21 @@ func getBaseRequestURL(options *option.V2RayXHTTPBaseOptions, dest M.Socksaddr, 
 
 func createHTTPClient(dest M.Socksaddr, dialer N.Dialer, options *option.V2RayXHTTPBaseOptions, tlsConfig tls.Config) DialerClient {
 	httpVersion := decideHTTPVersion(tlsConfig)
+	var trackConn func(net.Conn) net.Conn //H: set below, once the client exists
 	dialContext := func(ctxInner context.Context) (net.Conn, error) {
 		conn, err := dialer.DialContext(ctxInner, "tcp", dest)
 		if err != nil {
 			return nil, err
 		}
 		if httpVersion != "3" && tlsConfig != nil {
-			return tls.ClientHandshake(ctxInner, conn, tlsConfig)
+			tlsConn, err := tls.ClientHandshake(ctxInner, conn, tlsConfig) //H
+			if err != nil {                                                //H
+				conn.Close()    //H: a failed handshake left the TCP connection open
+				return nil, err //H
+			} //H
+			return trackConn(tlsConn), nil //H
 		}
-		return conn, nil
+		return trackConn(conn), nil //H
 	}
 	var keepAlivePeriod time.Duration
 	if options.Xmux != nil {
@@ -334,7 +370,14 @@ func createHTTPClient(dest M.Socksaddr, dialer N.Dialer, options *option.V2RayXH
 				if dErr != nil {
 					return nil, dErr
 				}
-				return qtls.DialEarly(ctx, udpConn, tlsConfig, cfg)
+				quicConn, dErr := qtls.DialEarly(ctx, udpConn, tlsConfig, cfg) //H
+				if dErr != nil {                                               //H
+					udpConn.Close()  //H
+					return nil, dErr //H
+				} //H
+				// quic-go does not close a socket it was given: it stayed open after the connection ended
+				context.AfterFunc(quicConn.Context(), func() { udpConn.Close() }) //H
+				return quicConn, nil                                              //H
 			},
 		}
 	case "2":
@@ -373,6 +416,7 @@ func createHTTPClient(dest M.Socksaddr, dialer N.Dialer, options *option.V2RayXH
 		uploadRawPool:  &sync.Pool{},
 		dialUploadConn: dialContext,
 	}
+	trackConn = client.hTrack //H
 	return client
 }
 
