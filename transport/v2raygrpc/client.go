@@ -26,6 +26,7 @@ var _ adapter.V2RayClientTransport = (*Client)(nil)
 
 type Client struct {
 	ctx         context.Context
+	cancel      context.CancelFunc //H: ends a dial under way when the client closes
 	dialer      N.Dialer
 	serverAddr  string
 	serviceName string
@@ -70,8 +71,10 @@ func NewClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr, opt
 	//nolint:staticcheck
 	dialOptions = append(dialOptions, grpc.WithReturnConnectionError())
 	serviceName, streamName := grpcname.Names(options.ServiceName) //H
+	ctx, cancel := context.WithCancel(ctx)                         //H
 	return &Client{
 		ctx:         ctx,
+		cancel:      cancel, //H
 		dialer:      dialer,
 		serverAddr:  serverAddr.String(),
 		serviceName: serviceName, //H: Xray's custom paths
@@ -80,7 +83,15 @@ func NewClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr, opt
 	}, nil
 }
 
-func (c *Client) connect() (*grpc.ClientConn, error) {
+// connect is the connection to the server, dialed when there is none.
+//
+// H: the dial waits until the server answers (WithReturnConnectionError blocks). It ran on the
+// client's own context, which never ends, so a server that does not answer held it for good: the
+// caller hung whatever its deadline, everyone after it hung behind connAccess, and gRPC went on
+// redialing the dead server in the background, also after Close, which found no connection to
+// close yet. Every URL test of a dead gRPC proxy left a goroutine and such a connection behind.
+// The dial now ends with the caller's context, or when the client closes.
+func (c *Client) connect(ctx context.Context) (*grpc.ClientConn, error) {
 	conn := c.conn.Load()
 	if conn != nil && conn.GetState() != connectivity.Shutdown {
 		return conn, nil
@@ -91,17 +102,29 @@ func (c *Client) connect() (*grpc.ClientConn, error) {
 	if conn != nil && conn.GetState() != connectivity.Shutdown {
 		return conn, nil
 	}
+	if err := ctx.Err(); err != nil { //H: its time passed while it waited for the dial before it
+		return nil, context.Cause(ctx)
+	}
+	// the context only matters until the dial returns: gRPC ignores it from then on
+	dialCtx, cancelDial := context.WithCancel(c.ctx)      //H
+	stopPropagation := context.AfterFunc(ctx, cancelDial) //H
 	//nolint:staticcheck
-	conn, err := grpc.DialContext(c.ctx, c.serverAddr, c.dialOptions...)
+	conn, err := grpc.DialContext(dialCtx, c.serverAddr, c.dialOptions...)
+	stopPropagation() //H
+	cancelDial()      //H
 	if err != nil {
 		return nil, err
+	}
+	if c.ctx.Err() != nil { //H: closed while it dialed
+		conn.Close()
+		return nil, net.ErrClosed
 	}
 	c.conn.Store(conn)
 	return conn, nil
 }
 
 func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
-	clientConn, err := c.connect()
+	clientConn, err := c.connect(ctx) //H
 	if err != nil {
 		return nil, err
 	}
@@ -123,6 +146,7 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 }
 
 func (c *Client) Close() error {
+	c.cancel() //H: a dial still under way has no connection here to close
 	conn := c.conn.Swap(nil)
 	if conn != nil {
 		conn.Close()
