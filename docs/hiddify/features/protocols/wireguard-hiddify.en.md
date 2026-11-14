@@ -215,3 +215,4 @@ Related projects:
 
 - [AmneziaWG](amneziawg.en.md)
 - [WARP](warp.en.md)
+- [Paced reads](../paced-reads.en.md)

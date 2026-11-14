@@ -363,6 +363,19 @@ do about it. Items marked **Required** break or misbehave until they are handled
   every 30 min. Rules that depend on it apply only once it arrives.
 - **Reverse tunnel.** `tunnel_server` / `tunnel_client` now carry traffic: route rules must set
   `override_tunnel_destination` on the server.
+- **Adaptive processors.** hiddify-core sets `experimental.debug.procs` to `{"enabled": true}` in
+  the config it builds (`setProcs`), so the core runs on one Go processor while it has little to
+  do and takes more under load, see [adaptive processors](features/adaptive-processors.en.md).
+  The number is the whole process's, but only Go code runs on it: on Android and iOS, where the
+  core shares a process with the app, Dart and the UI are not touched. It is off for a config
+  that does not set it. `GOMAXPROCS` in the environment is left alone, `HIDDIFY_PROCS=off` turns
+  the governor off whatever the config says, and the core logs
+  `procs: 1 Go processor(s) while there is little to do, up to N under load` when it starts. If
+  users report stutter in calls or games during heavy downloads, `"min": 2` is the setting to
+  offer.
+- **Paced reads.** No setting: a connection that brings megabytes a second is read a moment
+  later (at most 2 ms), see [paced reads](features/paced-reads.en.md).
+  `HIDDIFY_NO_READ_PACE=1` in the environment turns it off, to compare.
 
 ## Call tunnel (if shipped)
 

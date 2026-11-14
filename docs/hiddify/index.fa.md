@@ -13,6 +13,8 @@
 - [ترفندهای TLS](features/tls-tricks.fa.md): نام سرور با حروف بزرگ و کوچک درهم و یک افزونهٔ padding در ClientHello.
 - [REALITY در هیدیفای](features/reality-hiddify.fa.md): key share پساکوانتومی، گزینهٔ `key_share` و تکه‌تکه کردن روی REALITY.
 - [پروتکل PROXY](features/proxy-protocol.fa.md): ورودی‌ها هدر PROXY protocol را می‌خوانند و خروجی direct آن را می‌فرستد.
+- [پردازنده‌های تطبیقی](features/adaptive-processors.fa.md): هسته تا وقتی کار کمی دارد روی یک پردازندهٔ Go اجرا می‌شود و زیر بار پردازندهٔ بیشتری می‌گیرد؛ این کار مصرف CPU تونل‌های QUIC، WireGuard و OpenVPN را در macOS نصف می‌کند.
+- [خواندن زمان‌بندی‌شده](features/paced-reads.fa.md): اتصال پرترافیک لحظه‌ای دیرتر خوانده می‌شود تا هر خواندن به‌جای یک بسته، دسته‌ای از بسته‌ها بیاورد؛ این کار در دانلودهای سریع CPU کمتری مصرف می‌کند.
 
 ## پروتکل‌ها
 

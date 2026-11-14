@@ -90,6 +90,14 @@ its changes small and close to upstream so it can follow every sing-box release.
   fastest few proxies of a large profile exist and are tested),
   [unified delay](docs/hiddify/features/groups/unified-delay.en.md).
 
+### Performance
+
+- [Adaptive processors](docs/hiddify/features/adaptive-processors.en.md): the core runs on one Go
+  processor while it has little to do and takes more under load, about half the CPU for a QUIC,
+  WireGuard or OpenVPN tunnel on macOS.
+- [Paced reads](docs/hiddify/features/paced-reads.en.md): a busy connection is read a moment
+  later, so that each read brings a batch of packets instead of one.
+
 ### Fixes
 
 Many crash, leak and stability fixes on top of sing-box, each with its commit:

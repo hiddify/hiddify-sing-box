@@ -11,6 +11,8 @@ an English and a Persian version.
 - [TLS tricks](features/tls-tricks.en.md): a mixed-case server name and a padding extension in the ClientHello.
 - [REALITY in Hiddify](features/reality-hiddify.en.md): the post-quantum key share, the `key_share` option, and fragmentation on REALITY.
 - [PROXY protocol](features/proxy-protocol.en.md): inbounds read the PROXY protocol header and the direct outbound sends it.
+- [Adaptive processors](features/adaptive-processors.en.md): the core runs on one Go processor while it has little to do and takes more under load, which halves the CPU a QUIC, WireGuard or OpenVPN tunnel uses on macOS.
+- [Paced reads](features/paced-reads.en.md): a busy connection is read a moment later, so that each read brings a batch of packets instead of one, which saves CPU on fast downloads.
 
 ## Protocols
 

@@ -213,5 +213,6 @@ WireGuard بسته‌ای را از یک peer فقط وقتی می‌پذیرد 
 
 - [AmneziaWG](amneziawg.fa.md)
 - [WARP](warp.fa.md)
+- [خواندن زمان‌بندی‌شده](../paced-reads.fa.md)
 
 </div>
