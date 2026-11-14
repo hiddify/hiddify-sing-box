@@ -64,7 +64,11 @@ func (c *DefaultDialerClient) OpenStream(ctx context.Context, url string, sessio
 		method = c.options.GetNormalizedUplinkHTTPMethod() // stream-up/one
 	}
 	requestCtx, cancelRequest := context.WithCancel(context.WithoutCancel(ctx)) //H: the stream lives until Close, not until the dial context ends
-	req, _ := http.NewRequestWithContext(requestCtx, method, url, body)         //H
+	req, err := http.NewRequestWithContext(requestCtx, method, url, body)       //H
+	if err != nil {                                                             //H: a nil request crashed the whole app
+		cancelRequest()           //H
+		return nil, nil, nil, err //H
+	} //H
 	req.Header = c.options.GetRequestHeader()
 	length := int(c.options.GetNormalizedXPaddingBytes().Rand())
 	config := XPaddingConfig{Length: length}

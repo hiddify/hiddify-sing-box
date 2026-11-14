@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptrace"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -277,6 +278,7 @@ func getBaseRequestURL(options *option.V2RayXHTTPBaseOptions, dest M.Socksaddr, 
 	if requestURL.Host == "" {
 		requestURL.Host = dest.AddrString()
 	}
+	requestURL.Host = hURLHost(requestURL.Host) //H: a bare IPv6 host made an unparsable URL and a nil request that took the whole app down
 	requestURL.Path = options.Path
 	if err := sHTTP.URLSetPath(&requestURL, options.Path); err != nil {
 		return requestURL, E.New(err, "parse path")
@@ -286,6 +288,9 @@ func getBaseRequestURL(options *option.V2RayXHTTPBaseOptions, dest M.Socksaddr, 
 	}
 	requestURL.Path = options.GetNormalizedPath()
 	requestURL.RawQuery = options.GetNormalizedQuery()
+	if _, err := url.Parse(requestURL.String()); err != nil { //H: refused when the outbound is made, not on every dial
+		return requestURL, E.Cause(err, "xhttp request url") //H
+	} //H
 	return requestURL, nil
 }
 
@@ -395,4 +400,13 @@ func hMinScMaxEachPostBytes(value Xbadoption.Range) Xbadoption.Range {
 		value.To = value.From
 	}
 	return value
+}
+
+// hURLHost brackets a bare IPv6 address, which a URL host needs: "2001:db8::1" -> "[2001:db8::1]".
+func hURLHost(host string) string {
+	addr, err := netip.ParseAddr(host)
+	if err != nil || !addr.Is6() {
+		return host
+	}
+	return "[" + strings.ReplaceAll(addr.String(), "%", "%25") + "]"
 }
