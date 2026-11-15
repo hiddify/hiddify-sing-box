@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"net"
 	"net/netip"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -232,7 +233,7 @@ func (p *devicePath) round(ctx context.Context, target netip.Addr, header int, s
 			return 0
 		}
 	}
-	best, largest := 0, sizes[len(sizes)-1]
+	best, largest := 0, slices.Max(sizes)
 	reply := make([]byte, largest)
 	for best < largest {
 		n, _, err := conn.ReadFrom(reply)
