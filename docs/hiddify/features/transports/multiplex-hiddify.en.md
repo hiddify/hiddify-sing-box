@@ -24,11 +24,13 @@ network sees.
   Gbit/s; with the window allowed to grow to 1 MB it runs at 12.4 to 13.2, with 7% less CPU. A
   window is what the receiver allows, so any yamux server follows it. A stream whose reader stops
   can hold up to 1 MB, which is why it stops there: at 4 MB the same download ran at 13.4 Gbit/s,
-  but the process took 23 MB more memory.
+  but the process took 23 MB more memory. Under a memory limit (always on in the iOS network
+  extension, which may use 50 MB) or in low-memory mode, the window stays at 256 KB.
 
 ## Configuration
 
-There is none: the window applies to every yamux stream, on clients and servers.
+There is none: the window applies to every yamux stream, on clients and servers, except under a
+memory limit or in low-memory mode.
 
 ## See also
 
