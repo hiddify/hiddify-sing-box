@@ -10,6 +10,7 @@ import (
 	"github.com/sagernet/sing-box/common/mux"
 	"github.com/sagernet/sing-box/common/wholepacket"
 	C "github.com/sagernet/sing-box/constant"
+	"github.com/sagernet/sing-box/hiddify/readahead" //H
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-box/transport/sip003"
@@ -184,6 +185,9 @@ func (h *shadowsocksDialer) DialContext(ctx context.Context, network string, des
 		if err != nil {
 			return nil, err
 		}
+		if h.plugin == nil { //H: the chunks are read from the socket 64 KB at a time
+			outConn = readahead.New(outConn) //H
+		} //H
 		if _, is2022 := h.method.(*shadowaead_2022.Method); is2022 { //H
 			return dialShadowsocks2022(ctx, h.method, outConn, destination) //H
 		} //H

@@ -205,6 +205,7 @@ func (h *vmessDialer) DialContext(ctx context.Context, network string, destinati
 		conn, err = h.tlsDialer.DialTLSContext(ctx, h.serverAddr)
 	} else {
 		conn, err = h.dialer.DialContext(ctx, N.NetworkTCP, h.serverAddr)
+		conn = hReadAhead(conn, err) //H: the chunks are read from the socket 64 KB at a time
 	}
 	if err != nil {
 		common.Close(conn)
@@ -232,6 +233,7 @@ func (h *vmessDialer) ListenPacket(ctx context.Context, destination M.Socksaddr)
 		conn, err = h.tlsDialer.DialTLSContext(ctx, h.serverAddr)
 	} else {
 		conn, err = h.dialer.DialContext(ctx, N.NetworkTCP, h.serverAddr)
+		conn = hReadAhead(conn, err) //H
 	}
 	if err != nil {
 		return nil, err
