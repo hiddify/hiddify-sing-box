@@ -204,6 +204,7 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 	go func() {
 		var seq int64
 		var lastWrite time.Time
+		var requestOnly bool //H: the upload before carried the proxy protocol's request and nothing else
 		// the client the uploads go to: the conn's own until its requests are used up, then others,
 		// which are not the conn's to release when it closes
 		dynamicHTTPClient := httpClient
@@ -225,8 +226,8 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 			url := requestURL
 			seqStr := strconv.FormatInt(seq, 10)
 			seq += 1
-			if scMinPostsIntervalMs.From > 0 {
-				time.Sleep(time.Duration(scMinPostsIntervalMs.Rand())*time.Millisecond - time.Since(lastWrite))
+			if scMinPostsIntervalMs.From > 0 && !requestOnly { //H
+				hSleepUntil(lastWrite.Add(time.Duration(scMinPostsIntervalMs.Rand()) * time.Millisecond)) //H
 			}
 			// by offloading the uploads into a buffered pipe, multiple conn.Write
 			// calls get automatically batched together into larger POST requests.
@@ -236,6 +237,7 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 				break
 			}
 			lastWrite = time.Now()
+			requestOnly = seq == 1 && chunk.Len() < hRequestOnly //H: seq was counted up above: this is the first upload
 			if dynamicXmuxClient != nil && (dynamicXmuxClient.LeftRequests.Add(-1) <= 0 ||
 				(dynamicXmuxClient.UnreusableAt != time.Time{} && lastWrite.After(dynamicXmuxClient.UnreusableAt))) {
 				previous := dynamicXmuxClient //H
