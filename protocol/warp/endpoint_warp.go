@@ -134,7 +134,8 @@ func GetWarpProfile(ctx context.Context, profile *option.WARPProfile) (*cloudfla
 }
 
 // withWARPAPI calls register with the dialer to reach the WARP API through: profile.detour (a
-// direct connection when unset), then every outbound until one works. //H
+// direct connection when unset), then every outbound until one works, the ones that answer their
+// ping first, each awake while it is tried (registerDetours). //H
 func withWARPAPI(ctx context.Context, profile *option.WARPProfile, register func(dialer N.Dialer) error) error {
 	var dialer N.Dialer
 	outmanager := service.FromContext[adapter.OutboundManager](ctx)
@@ -154,13 +155,13 @@ func withWARPAPI(ctx context.Context, profile *option.WARPProfile, register func
 		return err //H
 	} //H
 
-	for _, dialer := range outmanager.Outbounds() {
+	for _, dialer := range registerDetours(ctx, outmanager.Outbounds()) { //H
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
 		}
-		if register(dialer) == nil {
+		if registerThrough(dialer, register) == nil { //H
 			return nil
 		}
 	}
