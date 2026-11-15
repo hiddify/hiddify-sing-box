@@ -103,6 +103,7 @@ func (m *ConnectionManager) TrackPacketConn(conn net.PacketConn) net.PacketConn 
 		socketOwner:   socketOwner{original: conn},
 		manager:       m,
 	}
+	tracked.wake.path.init(conn) //H
 	m.access.Lock()
 	tracked.element = m.connections.PushBack(tracked)
 	m.access.Unlock()

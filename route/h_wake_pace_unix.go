@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"syscall"
+	"time"
 
 	"github.com/sagernet/sing/common/control"
 )
@@ -42,6 +43,9 @@ func (r *datagramRead) try(fd uintptr) bool {
 // connection's own read; a busy socket's goes through the paced raw connection.
 func (c *trackedConn) readDatagram(b []byte) (int, error) {
 	if !c.rate.busy || c.raw == nil {
+		if c.raw != nil && !c.wake.path.answered.Load() {
+			return c.readFirstDatagram(b)
+		}
 		n, err := c.Conn.Read(b)
 		if n > 0 && c.raw != nil {
 			c.rate.count()
@@ -70,4 +74,23 @@ func (c *trackedConn) readDatagram(b []byte) (int, error) {
 		c.rate.count()
 	}
 	return read.n, nil
+}
+
+// datagramWaited is how long a plain read takes at least when it had to wait for its datagram.
+const datagramWaited = 50 * time.Microsecond
+
+// readFirstDatagram reads the first datagram of a socket, the answer to the first one written,
+// and times it for the round trip of the socket's path.
+func (c *trackedConn) readFirstDatagram(b []byte) (int, error) {
+	since := time.Now()
+	n, err := c.Conn.Read(b)
+	if n > 0 {
+		if now := time.Now(); now.Sub(since) >= datagramWaited {
+			c.wake.path.arrived(since, now)
+		} else {
+			c.wake.path.read() // it was there already: nothing tells when it arrived
+		}
+		c.rate.count()
+	}
+	return n, err
 }

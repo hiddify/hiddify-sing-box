@@ -10,6 +10,28 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// pacingKept starts a test that needs pacing with pacing on, and returns what tells afterwards
+// whether it stayed on: on a machine whose processors are all busy short waits come late, pacing
+// goes off as it should, and such a test has nothing to look at.
+func pacingKept(t *testing.T) (kept func()) {
+	t.Helper()
+	if pacingDisabled {
+		t.Skip("pacing is off")
+	}
+	off, trips := pacingOff.Load(), pacingTrips.Load()
+	pacingOff.Store(0)
+	t.Cleanup(func() {
+		pacingOff.Store(off)
+		pacingTrips.Store(trips)
+	})
+	return func() {
+		t.Helper()
+		if pacingOff.Load() != 0 {
+			t.Skip("this machine did not keep its short waits, so pacing went off")
+		}
+	}
+}
+
 // segmentConn is a socket that data arrives on in TCP segments: a Read returns what has arrived,
 // and waits for the next segment when nothing has.
 type segmentConn struct {
@@ -91,9 +113,7 @@ func readAll(t *testing.T, conn *segmentConn, pace *readPace) (total int, calls 
 // A fast download is read in batches: the reads of a connection that brings 20 MB a second find
 // tens of segments waiting, not one, and nothing of it is lost or held back.
 func TestH_ReadPaceBatchesAFastDownload(t *testing.T) {
-	if pacingDisabled {
-		t.Skip("pacing is off")
-	}
+	kept := pacingKept(t)
 	const rate = 20 << 20
 	conn := newSegmentConn()
 	var sent int
@@ -105,6 +125,7 @@ func TestH_ReadPaceBatchesAFastDownload(t *testing.T) {
 	started := time.Now()
 	total, calls := readAll(t, conn, &pace)
 	took := time.Since(started)
+	kept()
 	require.Equal(t, sent, total, "every byte is read")
 	require.Less(t, took, 1700*time.Millisecond, "the download is not held back")
 	perRead := total / calls
@@ -134,9 +155,7 @@ func TestH_ReadPaceLeavesASlowConnectionAlone(t *testing.T) {
 
 // A connection that was fast and then slows down is read at once again.
 func TestH_ReadPaceStopsWhenTheDownloadSlows(t *testing.T) {
-	if pacingDisabled {
-		t.Skip("pacing is off")
-	}
+	kept := pacingKept(t)
 	conn := newSegmentConn()
 	var pace readPace
 	done := make(chan struct{})
@@ -146,17 +165,23 @@ func TestH_ReadPaceStopsWhenTheDownloadSlows(t *testing.T) {
 		conn.arrive(1400) // a read that began as the feed ended is not left waiting
 	}()
 	buffer := make([]byte, 64<<10)
+	var waited bool
 	for {
 		select {
 		case <-done:
 		default:
 			_, err := pace.read(conn, buffer)
 			require.NoError(t, err)
+			waited = waited || pace.wait > 0
 			continue
 		}
 		break
 	}
-	require.NotZero(t, pace.wait, "paced while it was fast")
+	kept()
+	if pace.aloneFor != 0 {
+		t.Skip("this machine is too busy to feed the connection evenly")
+	}
+	require.True(t, waited, "paced while it was fast")
 	// now a trickle
 	for range 30 {
 		go func() {
@@ -177,7 +202,8 @@ func TestH_ReadPaceGoesOffWhenWaitsComeLate(t *testing.T) {
 	}
 	defer func(sleep func(time.Duration)) { paceSleep = sleep }(paceSleep)
 	defer pacingOff.Store(0)
-	paceSleep = func(time.Duration) { time.Sleep(paceLate + 5*time.Millisecond) }
+	const late = 2*time.Millisecond + paceSlack + 3*time.Millisecond
+	paceSleep = func(time.Duration) { time.Sleep(late) }
 	conn := newSegmentConn()
 	pace := readPace{wait: time.Millisecond, drained: true}
 	buffer := make([]byte, 64<<10)
@@ -198,7 +224,7 @@ func TestH_ReadPaceGoesOffWhenWaitsComeLate(t *testing.T) {
 	asked := time.Now()
 	_, err := other.read(conn, buffer)
 	require.NoError(t, err)
-	require.Less(t, time.Since(asked), paceLate)
+	require.Less(t, time.Since(asked), late)
 	require.Zero(t, other.wait)
 }
 
@@ -224,9 +250,7 @@ func (c *answerConn) Read(b []byte) (int, error) {
 // server on the local network) is fast enough to be paced, and pacing only makes every answer
 // late. The trial sees that it got slower and leaves it alone, for longer each time.
 func TestH_ReadPaceLeavesAnExchangeAlone(t *testing.T) {
-	if pacingDisabled {
-		t.Skip("pacing is off")
-	}
+	kept := pacingKept(t)
 	conn := &answerConn{answer: 100 * time.Microsecond, size: 8 << 10, last: time.Now()}
 	var pace readPace
 	buffer := make([]byte, 64<<10)
@@ -241,6 +265,7 @@ func TestH_ReadPaceLeavesAnExchangeAlone(t *testing.T) {
 		return
 	}
 	_, waited := run(200 * time.Millisecond)
+	kept()
 	require.True(t, waited, "it is fast enough to be paced")
 	require.Zero(t, pace.wait, "pacing slowed it, so it is left alone")
 	require.Equal(t, paceAloneFor, pace.aloneFor)
@@ -252,8 +277,188 @@ func TestH_ReadPaceLeavesAnExchangeAlone(t *testing.T) {
 	// when it is tried again and slows again, it is left alone twice as long
 	pace.alone = time.Now()
 	run(200 * time.Millisecond)
+	kept()
 	require.Zero(t, pace.wait)
 	require.Equal(t, 2*paceAloneFor, pace.aloneFor)
+}
+
+// A connection that pacing slows is found out whenever that happens, not only when it is paced
+// anew: a download that turns into an exchange of questions and answers on the same connection
+// (the next request on a kept-alive connection) is left alone too.
+func TestH_ReadPaceWatchesAPacedConnection(t *testing.T) {
+	kept := pacingKept(t)
+	conn := newSegmentConn()
+	var pace readPace
+	done := make(chan struct{})
+	go func() {
+		feed(conn, 20<<20, 600*time.Millisecond)
+		close(done)
+		conn.arrive(1400)
+	}()
+	buffer := make([]byte, 64<<10)
+	var waited bool
+	for {
+		select {
+		case <-done:
+		default:
+			_, err := pace.read(conn, buffer)
+			require.NoError(t, err)
+			waited = waited || pace.wait > 0
+			continue
+		}
+		break
+	}
+	kept()
+	if pace.aloneFor != 0 {
+		t.Skip("this machine is too busy to feed the connection evenly")
+	}
+	require.True(t, waited, "the download is paced")
+	require.Positive(t, pace.tries, "and was tried without the waits, which cost it nothing")
+	// now the peer answers at once, 16 KB a question: 16 MB a second if nothing holds it back
+	exchange := &answerConn{answer: time.Millisecond, size: 16 << 10, last: time.Now()}
+	deadline := time.Now().Add(300 * time.Millisecond)
+	for time.Now().Before(deadline) && pace.aloneFor == 0 {
+		_, err := pace.read(exchange, buffer)
+		require.NoError(t, err)
+	}
+	kept()
+	require.Equal(t, paceAloneFor, pace.aloneFor, "pacing slowed it, so it is left alone")
+	require.Zero(t, pace.wait)
+}
+
+// windowConn is a sender behind a window, as a multiplexer's stream is: it sends at rate until
+// window bytes wait to be read, and then no more until they are read. While full is set it has
+// more than any read asks for, as a reader slower than the sender finds it.
+type windowConn struct {
+	net.Conn
+	rate    float64 // bytes a second
+	window  int
+	full    bool
+	waiting int
+	last    time.Time // when waiting was last brought up to date
+}
+
+func (c *windowConn) Read(b []byte) (int, error) {
+	if c.full {
+		c.last = time.Now()
+		return len(b), nil
+	}
+	for {
+		now := time.Now()
+		c.waiting = min(c.window, c.waiting+int(c.rate*now.Sub(c.last).Seconds()))
+		c.last = now
+		if c.waiting > 0 {
+			break
+		}
+		time.Sleep(5 * time.Microsecond)
+	}
+	n := min(len(b), c.waiting)
+	c.waiting -= n
+	return n, nil
+}
+
+// A sender behind a window, whose reads pacing holds back, is found out and read at once. A
+// yamux download over loopback ran at 4 Gbit/s instead of 11: at first its reader was the slower
+// side and never found the socket empty, so it kept its speed while paced; then it found the
+// socket empty once, waited 250 microseconds while the stream's 256 KB window filled and the
+// sender stopped, and from then on waited before every read, past the trial that watched only
+// the first windows of pacing.
+func TestH_ReadPaceFindsASenderBehindAWindow(t *testing.T) {
+	kept := pacingKept(t)
+	require.Equal(t, paceMinWait, paceWait(1<<30), "a very fast connection waits the shortest wait")
+	require.Equal(t, paceMaxWait, paceWait(paceFrom))
+	require.Zero(t, paceWait(paceFrom-1))
+
+	const rate = 1 << 30
+	buffer := make([]byte, 64<<10)
+	// run reads as a reader that is the slower side for a while, and then has caught up and finds
+	// what the window lets the sender send
+	run := func(pace *readPace) (bytes int) {
+		// getting up to speed: paced first at 8 MB a second, the rate a slower start takes the
+		// place of the connection's own
+		ramp := &windowConn{rate: 8 << 20, window: 256 << 10, last: time.Now()}
+		for deadline := time.Now().Add(3 * paceWindow); time.Now().Before(deadline); {
+			_, err := pace.read(ramp, buffer)
+			require.NoError(t, err)
+		}
+		conn := &windowConn{rate: rate, window: 256 << 10, full: true, last: time.Now()}
+		read := func(d time.Duration) (bytes int) {
+			deadline := time.Now().Add(d)
+			for time.Now().Before(deadline) {
+				n, err := pace.read(conn, buffer)
+				require.NoError(t, err)
+				bytes += n
+				if conn.full {
+					time.Sleep(50 * time.Microsecond) // about 1 GB a second
+				}
+			}
+			return bytes
+		}
+		read(8 * paceWindow)
+		conn.full = false
+		return read(600 * time.Millisecond)
+	}
+	never := run(&readPace{alone: time.Now().Add(time.Hour)}) // a connection that is left alone
+	var pace readPace
+	bytes := run(&pace)
+	kept()
+	t.Logf("%d MB read, %d MB by a connection that is never paced", bytes>>20, never>>20)
+	require.Greater(t, float64(bytes), 0.85*float64(never), "the reads of a sender behind a window waited")
+	require.Zero(t, pace.wait, "found out, it is read at once")
+	require.NotZero(t, pace.aloneFor)
+}
+
+// A connection that sends more than it receives is not paced: what comes in, acknowledgements
+// and window updates of an upload over HTTP/2 or a multiplexer, is read at once. Read late, they
+// held an XHTTP upload at 6.8 Gbit/s where it ran at 9.1.
+func TestH_ReadPaceLeavesAnUploadAlone(t *testing.T) {
+	kept := pacingKept(t)
+	conn := newSegmentConn()
+	var pace readPace
+	done := make(chan struct{})
+	go func() {
+		// window updates of 13 bytes, 8 MB a second of them: fast enough to be paced on their own
+		feed(conn, 8<<20, 300*time.Millisecond)
+		close(done)
+		conn.arrive(1400)
+	}()
+	buffer := make([]byte, 64<<10)
+	var waited bool
+	for {
+		select {
+		case <-done:
+		default:
+			pace.written.Add(64 << 20 / 1000) // the upload: 64 MB a second
+			_, err := pace.read(conn, buffer)
+			require.NoError(t, err)
+			waited = waited || pace.wait > 0
+			continue
+		}
+		break
+	}
+	kept()
+	require.False(t, waited, "the reads of a connection that sends more than it receives waited")
+	// the same reads without the upload are paced
+	pace = readPace{}
+	done = make(chan struct{})
+	go func() {
+		feed(conn, 8<<20, 300*time.Millisecond)
+		close(done)
+		conn.arrive(1400)
+	}()
+	for {
+		select {
+		case <-done:
+		default:
+			_, err := pace.read(conn, buffer)
+			require.NoError(t, err)
+			waited = waited || pace.wait > 0
+			continue
+		}
+		break
+	}
+	kept()
+	require.True(t, waited, "a download as fast is paced")
 }
 
 // datagramConn is a connected UDP socket: a read returns one datagram.
@@ -263,6 +468,10 @@ type datagramConn struct {
 }
 
 func (c *datagramConn) LocalAddr() net.Addr { return &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1} }
+
+func (c *datagramConn) RemoteAddr() net.Addr {
+	return &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 2}
+}
 
 func (c *datagramConn) Read(b []byte) (int, error) {
 	c.reads++

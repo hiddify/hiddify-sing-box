@@ -61,6 +61,8 @@ func TestH_BusyDatagramSocketReads(t *testing.T) {
 		usedRaw = usedRaw || tracked.rate.busy
 	}
 	require.True(t, usedRaw, "a busy socket's reads went through the raw connection")
+	require.True(t, tracked.wake.path.local.Load())
+	require.Zero(t, tracked.wake.wait, "a socket whose peer is this machine is never held back")
 
 	// make sure the next reads use the raw connection, whatever the rate was at the end
 	tracked.rate.busy = true

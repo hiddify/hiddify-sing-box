@@ -1,9 +1,13 @@
 package route
 
 import (
-	"sync"
+	"net"
+	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/sagernet/sing/common/buf"
+	M "github.com/sagernet/sing/common/metadata"
 )
 
 // The wake-ups of a busy socket are paced.
@@ -27,16 +31,22 @@ import (
 // (a call, a game, DNS, a page that loads) is read at once, as before, and a paced one that calms
 // down is too after one window. The socket's own buffer holds what arrives during the wait.
 //
+// A wait is never more than a small part of the path's round trip (see h_path_rtt.go): on this
+// machine, on the local network and to a server nearby nothing is paced, because there a wait is
+// several round trips, which slows the peer down and makes every answer late. And a socket so
+// busy that the shortest wait would gather more than wakeBatchMax arrivals is not paced either:
+// its reads find a batch anyway, and more would not fit a small socket buffer.
+//
 // This is what a network card does with its interrupts (interrupt moderation), one level up. It
 // works at the raw connection (syscall.RawConn) every reader below gets its socket from, so it is
 // the same on every system.
 const (
 	wakeBusyGap  = 250 * time.Microsecond // reads waiting this long or less for the next arrival, on average: a busy socket
 	wakeBatch    = 24                     // arrivals a paced wake-up aims to find waiting
+	wakeBatchMax = 64                     // and at most: what a socket buffer of the default size holds
 	wakeMinWait  = 200 * time.Microsecond // the shortest wait worth a timer
 	wakeMaxWait  = time.Millisecond       // the longest: what a paced socket may be late by
 	wakeMinWaits = 8                      // waits a window needs before their average says anything
-	wakeLate     = 5 * time.Millisecond   // a wait that took this long was not kept by the system
 )
 
 // wakePace is the pacing of one socket's wake-ups. The socket's read lock, which every read
@@ -45,13 +55,15 @@ type wakePace struct {
 	start time.Time     // of the window the waits are measured over
 	waits int           // reads in it that found the socket empty and waited
 	idle  time.Duration // how long they waited for the next arrival, together
-	wait  time.Duration // after a wake-up, before the read; 0 while the socket is not busy
+	wait  time.Duration // after a wake-up, before the read; 0 while the socket is not paced
 	late  int           // waits in a row that came late
+	path  pathRTT       // the round trip of the socket's path, which bounds the wait
 }
 
 // woke is called when a read that found the socket empty at since is woken for an arrival.
 func (p *wakePace) woke(since time.Time) {
 	now := time.Now()
+	p.path.arrived(since, now)
 	p.observe(since, now)
 	if p.wait > 0 {
 		p.pause(now)
@@ -78,12 +90,23 @@ func (p *wakePace) measure() {
 		p.wait = 0
 		return
 	}
-	gap := p.idle / time.Duration(p.waits)
+	p.wait = wakeWait(p.idle/time.Duration(p.waits), p.path.longestWait())
+}
+
+// wakeWait is the wait after a wake-up of a socket whose reads wait gap for the next arrival, on
+// a path that allows a wait of longest.
+func wakeWait(gap time.Duration, longest time.Duration) time.Duration {
 	if gap > wakeBusyGap {
-		p.wait = 0
-		return
+		return 0 // not busy
 	}
-	p.wait = min(max(wakeBatch*gap, wakeMinWait), wakeMaxWait)
+	longest = min(longest, wakeMaxWait)
+	if longest < wakeMinWait {
+		return 0 // a short path, or one not measured: the wait would be a large part of its round trip
+	}
+	if wakeBatchMax*gap < wakeMinWait {
+		return 0 // so busy that its reads find a batch anyway
+	}
+	return min(max(wakeBatch*gap, wakeMinWait), longest)
 }
 
 // pause lets more arrive, unless waits have been coming late.
@@ -93,7 +116,7 @@ func (p *wakePace) pause(before time.Time) {
 		return
 	}
 	paceSleep(p.wait)
-	if time.Since(before) < wakeLate {
+	if !paceCameLate(p.wait, time.Since(before)) {
 		p.late = 0
 		return
 	}
@@ -108,7 +131,9 @@ func (p *wakePace) pause(before time.Time) {
 // pacedRawConn is a socket's raw connection whose reads are paced.
 type pacedRawConn struct {
 	syscall.RawConn
-	pace *wakePace
+	pace  *wakePace
+	read  wakeRead    // of the one read that runs at a time, as a rule
+	inUse atomic.Bool // read is taken
 }
 
 // paceRawConn returns rawConn with its reads paced by pace.
@@ -116,7 +141,10 @@ func paceRawConn(rawConn syscall.RawConn, pace *wakePace) syscall.RawConn {
 	if pacingDisabled {
 		return rawConn
 	}
-	return &pacedRawConn{RawConn: rawConn, pace: pace}
+	conn := &pacedRawConn{RawConn: rawConn, pace: pace}
+	conn.read.pace = pace
+	conn.read.step = conn.read.tryRead
+	return conn
 }
 
 // hPacedSyscallConn is the raw connection of a tracked socket: the socket's own, paced by pace.
@@ -128,13 +156,61 @@ func hPacedSyscallConn(conn syscall.Conn, pace *wakePace) (syscall.RawConn, erro
 	return paceRawConn(rawConn, pace), nil
 }
 
+// The writes of a tracked datagram socket tell its path's round trip that something was written,
+// and its plain reads that something arrived.
+
+func (c *trackedPacketConn) WriteTo(p []byte, addr net.Addr) (int, error) {
+	c.wake.path.wroteTo(addr)
+	return c.NetPacketConn.WriteTo(p, addr)
+}
+
+func (c *trackedPacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
+	if c.wake.path.written.Load() == 0 {
+		if destination.Addr.IsLoopback() {
+			c.wake.path.local.Store(true)
+		}
+		c.wake.path.wrote()
+	}
+	return c.NetPacketConn.WritePacket(buffer, destination)
+}
+
+func (c *trackedPacketConn) ReadFrom(p []byte) (int, net.Addr, error) {
+	n, addr, err := c.NetPacketConn.ReadFrom(p)
+	if n > 0 {
+		c.wake.path.read()
+	}
+	return n, addr, err
+}
+
+func (c *trackedPacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
+	destination, err := c.NetPacketConn.ReadPacket(buffer)
+	if err == nil {
+		c.wake.path.read()
+	}
+	return destination, err
+}
+
 func (c *pacedRawConn) Read(f func(fd uintptr) (done bool)) error {
-	read := wakeReads.Get().(*wakeRead)
-	read.pace, read.f, read.waiting = c.pace, f, time.Time{}
+	read := &c.read
+	own := c.inUse.CompareAndSwap(false, true)
+	if !own {
+		// a second read of the same socket at the same time
+		read = &wakeRead{pace: c.pace}
+		read.step = read.tryRead
+	}
+	read.f, read.waiting = f, time.Time{}
 	err := c.RawConn.Read(read.step)
-	read.pace, read.f = nil, nil
-	wakeReads.Put(read)
+	read.f = nil
+	if own {
+		c.inUse.Store(false)
+	}
 	return err
+}
+
+// Write tells the path's round trip that something was written.
+func (c *pacedRawConn) Write(f func(fd uintptr) (done bool)) error {
+	c.pace.path.wrote()
+	return c.RawConn.Write(f)
 }
 
 // wakeRead is one read through a pacedRawConn: f is tried, and each time it finds the socket
@@ -146,17 +222,15 @@ type wakeRead struct {
 	step    func(fd uintptr) bool // tryRead, bound once
 }
 
-var wakeReads = sync.Pool{New: func() any {
-	read := new(wakeRead)
-	read.step = read.tryRead
-	return read
-}}
-
 func (r *wakeRead) tryRead(fd uintptr) bool {
-	if !r.waiting.IsZero() {
+	waited := !r.waiting.IsZero()
+	if waited {
 		r.pace.woke(r.waiting)
 	}
 	if r.f(fd) {
+		if !waited {
+			r.pace.path.read()
+		}
 		return true
 	}
 	r.waiting = time.Now()
@@ -172,14 +246,21 @@ type datagramRate struct {
 	busy      bool
 }
 
-const datagramBusy = 3000 // datagrams a second
+const (
+	datagramBusy = 3000 // datagrams a second
+	datagramLook = 16   // the clock is read once in this many datagrams
+)
 
 func (r *datagramRate) count() {
+	r.datagrams++
+	if r.datagrams%datagramLook != 0 {
+		return
+	}
 	now := time.Now()
 	if r.start.IsZero() {
-		r.start = now
+		r.start, r.datagrams = now, 0
+		return
 	}
-	r.datagrams++
 	elapsed := now.Sub(r.start)
 	if elapsed < paceWindow {
 		return
