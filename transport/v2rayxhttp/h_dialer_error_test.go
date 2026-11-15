@@ -86,3 +86,20 @@ func TestH_XHTTPClosedFlagRace(t *testing.T) {
 	wait.Wait()
 	_ = option.V2RayXHTTPBaseOptions{}
 }
+
+// A download stream the server rejects (non-200) reads as that status, not as a bare
+// "io: read/write on closed pipe" that hides why the server refused it.
+func TestH_XHTTPOpenStreamReportsBadStatus(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer server.Close()
+	client := hDialerClient(t, "2")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	reader, _, _, err := client.OpenStream(ctx, server.URL+"/xh/session", "session", nil, false)
+	require.NoError(t, err)
+	defer reader.Close()
+	_, err = reader.Read(make([]byte, 16))
+	require.ErrorContains(t, err, "400")
+}

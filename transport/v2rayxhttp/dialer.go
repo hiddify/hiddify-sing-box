@@ -111,7 +111,10 @@ func (c *DefaultDialerClient) OpenStream(ctx context.Context, url string, sessio
 		if resp.StatusCode != 200 || uploadOnly { // stream-up
 			io.Copy(io.Discard, resp.Body)
 			resp.Body.Close() // if it is called immediately, the upload will be interrupted also
-			reader.Close()    //H
+			if !uploadOnly {  //H: reads report the server's answer, not a bare "closed pipe"
+				reader.closeWithError(E.New("bad status code: ", resp.Status)) //H
+			} //H
+			reader.Close() //H
 			return
 		}
 		reader.Set(resp.Body) //H
@@ -279,6 +282,7 @@ type WaitReadCloser struct {
 	access sync.Mutex
 	reader io.ReadCloser
 	closed bool
+	err    error //H: why the stream ended without a response body, for Read (h_wait_read_closer.go)
 }
 
 func (w *WaitReadCloser) Set(rc io.ReadCloser) {
@@ -296,9 +300,12 @@ func (w *WaitReadCloser) Set(rc io.ReadCloser) {
 func (w *WaitReadCloser) Read(b []byte) (int, error) {
 	<-w.Wait //H
 	w.access.Lock()
-	reader := w.reader
+	reader, err := w.reader, w.err //H
 	w.access.Unlock()
 	if reader == nil {
+		if err != nil { //H
+			return 0, err //H
+		} //H
 		return 0, io.ErrClosedPipe
 	}
 	return reader.Read(b)
