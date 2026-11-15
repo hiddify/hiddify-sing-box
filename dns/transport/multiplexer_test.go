@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -549,5 +550,86 @@ func TestMultiplexerSlowQueryKeepsActiveConn(t *testing.T) {
 			return
 		case <-time.After(50 * time.Millisecond):
 		}
+	}
+}
+
+func TestMultiplexerSerializesWritesOnSharedConn(t *testing.T) {
+	t.Parallel()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	go func() {
+		for {
+			conn, acceptErr := listener.Accept()
+			if acceptErr != nil {
+				return
+			}
+			go func() {
+				defer conn.Close()
+				for {
+					request, readErr := ReadMessage(conn)
+					if readErr != nil {
+						return
+					}
+					response := new(mDNS.Msg)
+					response.SetReply(request)
+					if WriteMessage(conn, request.Id, response) != nil {
+						return
+					}
+				}
+			}()
+		}
+	}()
+
+	var (
+		inFlight   atomic.Int32
+		overlapped atomic.Bool
+	)
+	multiplexer := newQueryMultiplexer(queryMultiplexerOptions{
+		dial: func(ctx context.Context) (net.Conn, error) {
+			return net.Dial("tcp", listener.Addr().String())
+		},
+		write: func(conn net.Conn, message *mDNS.Msg, queryId uint16) error {
+			// A stream cipher connection such as Shadowsocks CFB corrupts its
+			// state, and can panic, when two writes run at once.
+			if inFlight.Add(1) > 1 {
+				overlapped.Store(true)
+			}
+			time.Sleep(time.Millisecond)
+			defer inFlight.Add(-1)
+			return WriteMessage(conn, queryId, message)
+		},
+		readNext: func(conn net.Conn) (*mDNS.Msg, error) {
+			return ReadMessage(conn)
+		},
+	})
+	defer multiplexer.Close()
+
+	const queries = 32
+	var wg sync.WaitGroup
+	errs := make(chan error, queries)
+	for i := 0; i < queries; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			message := new(mDNS.Msg)
+			message.SetQuestion("example.com.", mDNS.TypeA)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_, exchangeErr := multiplexer.Exchange(ctx, message)
+			errs <- exchangeErr
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for exchangeErr := range errs {
+		if exchangeErr != nil {
+			t.Fatal("query failed: ", exchangeErr)
+		}
+	}
+	if overlapped.Load() {
+		t.Fatal("concurrent queries wrote to the shared connection at the same time")
 	}
 }

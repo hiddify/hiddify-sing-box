@@ -56,7 +56,8 @@ type queryMultiplexer struct {
 
 type multiplexConn struct {
 	net.Conn
-	readEpoch atomic.Uint64
+	readEpoch   atomic.Uint64
+	writeAccess sync.Mutex
 }
 
 type queryMultiplexerReadError struct {
@@ -329,7 +330,7 @@ func (m *queryMultiplexer) exchangeAsync(ctx context.Context, message *mDNS.Msg,
 			callback(nil, err)
 			return
 		}
-		writeErr := m.options.write(conn, message, queryId)
+		writeErr := m.writeShared(conn, message, queryId)
 		if writeErr == nil {
 			return
 		}
@@ -344,6 +345,17 @@ func (m *queryMultiplexer) exchangeAsync(ctx context.Context, message *mDNS.Msg,
 		callback(nil, E.Cause(writeErr, "write request"))
 		return
 	}
+}
+
+// writeShared writes one query to a connection that other queries share.
+// Connections such as Shadowsocks stream ciphers keep cipher state per
+// connection and are not safe for concurrent writes, and a write may be split
+// into several writes underneath, so writes to a shared connection are
+// serialized.
+func (m *queryMultiplexer) writeShared(conn *multiplexConn, message *mDNS.Msg, queryId uint16) error {
+	conn.writeAccess.Lock()
+	defer conn.writeAccess.Unlock()
+	return m.options.write(conn, message, queryId)
 }
 
 func (m *queryMultiplexer) dialConn(ctx context.Context) (*multiplexConn, error) {
