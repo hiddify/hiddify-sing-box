@@ -13,6 +13,7 @@ import (
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/endpoint"
 	"github.com/sagernet/sing-box/common/dialer"
+	"github.com/sagernet/sing-box/common/iponly" //H
 	"github.com/sagernet/sing-box/common/monitoring"
 	"github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/hiddify/peeruser"
@@ -312,20 +313,41 @@ func (e *Endpoint) DialContext(ctx context.Context, network string, destination 
 	return e.Device.DialContext(ctx, network, destination)
 }
 
-func (e *Endpoint) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
+// ListenPacketWithDestination answers the address a domain resolved to, so the router maps it
+// back for the replies, and drops packets to non-IP destinations, which the netstack cannot take:
+// they panicked in gonet.UDPConn.WriteTo (#2569). As the WireGuard endpoint does. //H
+func (e *Endpoint) ListenPacketWithDestination(ctx context.Context, destination M.Socksaddr) (net.PacketConn, netip.Addr, error) { //H
 	e.logger.InfoContext(ctx, "outbound packet connection to ", destination)
 	if destination.IsFqdn() {
 		destinationAddresses, err := e.dnsRouter.Lookup(ctx, destination.Fqdn, adapter.DNSQueryOptions{})
 		if err != nil {
-			return nil, err
+			return nil, netip.Addr{}, err //H
 		}
-		packetConn, _, err := N.ListenSerial(ctx, e.Device, destination, destinationAddresses)
+		packetConn, destinationAddress, err := N.ListenSerial(ctx, e.Device, destination, destinationAddresses) //H
 		if err != nil {
-			return nil, err
+			return nil, netip.Addr{}, err //H
 		}
-		return packetConn, nil
+		return iponly.NewPacketConn(e.logger, packetConn), destinationAddress, nil //H
 	}
-	return e.Device.ListenPacket(ctx, destination)
+	packetConn, err := e.Device.ListenPacket(ctx, destination) //H
+	if err != nil {                                            //H
+		return nil, netip.Addr{}, err //H
+	}
+	if destination.IsIP() { //H
+		return iponly.NewPacketConn(e.logger, packetConn), destination.Addr, nil //H
+	}
+	return iponly.NewPacketConn(e.logger, packetConn), netip.Addr{}, nil //H
+}
+
+func (e *Endpoint) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) { //H
+	packetConn, destinationAddress, err := e.ListenPacketWithDestination(ctx, destination)
+	if err != nil {
+		return nil, err
+	}
+	if destinationAddress.IsValid() && destination != M.SocksaddrFrom(destinationAddress, destination.Port) {
+		return bufio.NewNATPacketConn(bufio.NewPacketConn(packetConn), M.SocksaddrFrom(destinationAddress, destination.Port), destination), nil
+	}
+	return packetConn, nil
 }
 
 func (w *Endpoint) NewConnectionEx(ctx context.Context, conn net.Conn, source M.Socksaddr, destination M.Socksaddr, onClose N.CloseHandlerFunc) {

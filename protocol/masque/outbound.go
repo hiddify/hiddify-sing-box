@@ -10,6 +10,7 @@ import (
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/outbound"
 	"github.com/sagernet/sing-box/common/dialer"
+	"github.com/sagernet/sing-box/common/iponly" //H
 	"github.com/sagernet/sing-box/common/monitoring"
 	"github.com/sagernet/sing-box/common/tls"
 	C "github.com/sagernet/sing-box/constant"
@@ -387,16 +388,22 @@ func (w *Outbound) ListenPacketWithDestination(ctx context.Context, destination 
 		if err != nil {
 			return nil, netip.Addr{}, err
 		}
-		return N.ListenSerial(ctx, tunnel, destination, destinationAddresses)
+		packetConn, destinationAddress, err := N.ListenSerial(ctx, tunnel, destination, destinationAddresses) //H
+		if err != nil {                                                                                       //H
+			return nil, netip.Addr{}, err //H
+		}
+		return iponly.NewPacketConn(w.logger, packetConn), destinationAddress, nil //H
 	}
 	packetConn, err := tunnel.ListenPacket(ctx, destination)
 	if err != nil {
 		return nil, netip.Addr{}, err
 	}
+	// the tunnel's netstack takes IP destinations only: a packet to a domain (Chrome's QUIC to a
+	// FakeIP-mapped name) panicked in gonet.UDPConn.WriteTo and took the core down (#2569) //H
 	if destination.IsIP() {
-		return packetConn, destination.Addr, nil
+		return iponly.NewPacketConn(w.logger, packetConn), destination.Addr, nil //H
 	}
-	return packetConn, netip.Addr{}, nil
+	return iponly.NewPacketConn(w.logger, packetConn), netip.Addr{}, nil //H
 }
 
 func (w *Outbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
