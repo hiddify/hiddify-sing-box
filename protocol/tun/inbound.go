@@ -474,6 +474,11 @@ func (t *Inbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 			return E.Cause(err, "configure tun interface")
 		}
 		scope.Add(tunInterface.Close)
+		if ipv6Tun, isIPv6Tun := tunInterface.(interface{ IPv6Unavailable() bool }); isIPv6Tun && ipv6Tun.IPv6Unavailable() { //H
+			// The system has no IPv6 (Windows), so the interface got no IPv6 //H
+			// address; the stack must not listen on one either. //H
+			t.tunOptions.Inet6Address = nil //H
+		} //H
 		t.logger.Trace("creating stack")
 		t.tunIf = tunInterface
 		if t.platformInterface != nil {
