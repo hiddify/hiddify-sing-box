@@ -191,7 +191,7 @@ func (h *shadowsocksDialer) DialContext(ctx context.Context, network string, des
 		if _, is2022 := h.method.(*shadowaead_2022.Method); is2022 { //H
 			return dialShadowsocks2022(ctx, h.method, outConn, destination) //H
 		} //H
-		return h.method.DialEarlyConn(outConn, destination), nil
+		return hBatch(h.method, h.method.DialEarlyConn(outConn, destination), outConn), nil //H
 	case N.NetworkUDP:
 		outConn, err := h.dialer.DialContext(ctx, N.NetworkUDP, h.serverAddr)
 		if err != nil {

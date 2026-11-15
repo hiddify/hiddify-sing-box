@@ -12,10 +12,15 @@
 package readahead
 
 import (
+	"io"
 	"net"
 
 	"github.com/sagernet/sing/common/buf"
 )
+
+// errNoProgress is a read that brought nothing and no error: a reader that waits for data must
+// not spin on it.
+var errNoProgress = io.ErrNoProgress
 
 // Size is the most one read of the connection takes.
 const Size = 64 << 10
