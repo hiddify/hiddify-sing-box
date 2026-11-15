@@ -290,6 +290,9 @@ func (c *Client) CloseIdleConnections() {
 }
 
 func decideHTTPVersion(tlsConfig tls.Config) string {
+	if tls.IsReality(tlsConfig) { //H: HTTP/2 over REALITY, as Xray's client, see h_alpn.go
+		return "2" //H
+	} //H
 	if tlsConfig == nil || len(tlsConfig.NextProtos()) == 0 || tlsConfig.NextProtos()[0] == "http/1.1" {
 		return "1.1"
 	}

@@ -17,3 +17,9 @@ func hDefaultALPN(tlsConfig tls.Config) tls.Config {
 	tlsConfig.SetNextProtos([]string{"h2", "http/1.1"})
 	return tlsConfig
 }
+
+// Over REALITY the client speaks HTTP/2, as Xray's does. REALITY has no ALPN of its own, and
+// without one the client spoke HTTP/1.1, which XHTTP runs without keep-alive: every proxy
+// connection over REALITY XHTTP opened a TCP connection and made a REALITY handshake of its own,
+// 2 ms over loopback before its first byte, where Xray's client took 1 ms on a connection it kept.
+// The server takes HTTP/2 without ALPN (prior knowledge), as Xray's and this fork's do.
