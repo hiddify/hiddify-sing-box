@@ -107,10 +107,18 @@ connections stall on their first full-size packet.
 - When the endpoint starts, and whenever its path may have changed (the network changed, or its
   connection through the detour was made again because the detour's selector switched or the
   socket was recovered), it sends ICMP
-  echo requests through the tunnel to `1.1.1.1` (`2606:4700:4700::1111` without an IPv4 address):
-  one of each size from 576 (1280 for IPv6) to `mtu`, in steps of 16, all at once. Each goes out
-  as one tunnel packet of that size. The largest size answered becomes the tunnel's MTU, usually
-  within a second.
+  echo requests through the tunnel to `1.1.1.1` (`2606:4700:4700::1111` without an IPv4 address),
+  each as one tunnel packet of its size: first one of 576 bytes (1280 for IPv6), until it is
+  answered, then one of `mtu`. On most paths that one is answered, and the MTU stays as it is.
+  Otherwise a binary search over the sizes between them, in steps of 16, finds the largest that
+  gets through, and that becomes the tunnel's MTU.
+- An echo request is lost for other reasons than its size: the target and the routers on the way
+  answer only so many a second, and a busy tunnel drops packets. So each request goes out with
+  one of the smallest size, and a size counts as too large only when, three times, it is lost and
+  the small one is answered. A try in which neither is answered tells nothing and is made again,
+  and when the path stops answering altogether the search ends with what it knows. All sizes used
+  to go out at once, and of a burst of fifty some were always lost: the MTU came out anywhere from
+  1120 to 1408 on a path that carried 1420, and the connections were closed each time.
 - On a new path it first drops its session keys and starts a handshake, as WireGuard does when a
   peer's endpoint changes. Otherwise the server keeps sending to the old path for about 15
   seconds.

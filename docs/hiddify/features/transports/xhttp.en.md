@@ -45,6 +45,9 @@ you put a CDN in front of it. Without TLS (or REALITY), the requests are readabl
   the sequence number into a query parameter, a header or a cookie.
 - The HTTP version follows the TLS ALPN: no TLS or `http/1.1` is HTTP/1.1, `h2` is HTTP/2, and
   `h3` is HTTP/3 over QUIC (UDP). A server whose only ALPN is `h3` listens on UDP.
+- Over REALITY the client speaks HTTP/2, as Xray's does; REALITY has no ALPN. It spoke HTTP/1.1,
+  which XHTTP runs without keep-alive, so every proxy connection made a REALITY handshake of its
+  own. The server takes HTTP/2 without ALPN (prior knowledge).
 - A TLS client without `alpn` offers `h2` and `http/1.1` and speaks HTTP/2, as Xray's client does.
   A uTLS fingerprint offers the browser's `h2` anyway, so a client that spoke HTTP/1.1 there
   failed against a server that picked `h2`. Set `alpn` to `["http/1.1"]` for a server that only
@@ -59,6 +62,12 @@ you put a CDN in front of it. Without TLS (or REALITY), the requests are readabl
 - Over HTTP/1.1 the uploads of `packet-up` go on a connection of their own. The client dials it
   while it dials the download's connection, so a new proxy connection starts after the time of
   one TCP and TLS handshake, not two.
+- In `packet-up` the uploads are at least `sc_min_posts_interval_ms` apart, except the second
+  after a first one of less than 512 bytes. VLESS, VMess and Trojan write their request as soon as
+  the connection is up, and the application's first bytes (a TLS hello, an HTTP request) in a
+  write of their own a moment later: held back by the interval, they left 30 ms late on every new
+  connection. Xray's client sends the request with the first bytes. The interval itself is kept to
+  the millisecond: a sleep of 30 ms used to end up to a millisecond late.
 
 ## Configuration
 
