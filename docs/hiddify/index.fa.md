@@ -15,6 +15,7 @@
 - [پروتکل PROXY](features/proxy-protocol.fa.md): ورودی‌ها هدر PROXY protocol را می‌خوانند و خروجی direct آن را می‌فرستد.
 - [پردازنده‌های تطبیقی](features/adaptive-processors.fa.md): هسته تا وقتی کار کمی دارد روی یک پردازندهٔ Go اجرا می‌شود و زیر بار پردازندهٔ بیشتری می‌گیرد؛ این کار مصرف CPU تونل‌های QUIC، WireGuard و OpenVPN را در macOS نصف می‌کند.
 - [خواندن زمان‌بندی‌شده](features/paced-reads.fa.md): اتصال پرترافیک لحظه‌ای دیرتر خوانده می‌شود تا هر خواندن به‌جای یک بسته، دسته‌ای از بسته‌ها بیاورد؛ این کار در دانلودهای سریع CPU کمتری مصرف می‌کند.
+- [پیش‌خوانی](features/read-ahead.fa.md): کلاینت VMess یا Shadowsocks روی TCP ساده سوکتش را هر بار تا ۶۴ کیلوبایت می‌خواند، به‌جای دو فراخوانی سیستمی برای هر تکه؛ دانلود یک‌چهارم (VMess) تا دوسوم (Shadowsocks) سریع‌تر.
 
 ## پروتکل‌ها
 
@@ -48,6 +49,7 @@
 - [finalmask](features/transports/finalmask.fa.md): ماسک‌های finalmask از Xray (fragment، noise، header-custom، xdns روی UDP، TCP یا DoH، udphop، merge، oob و موارد دیگر) روی هر اتصالی که یک خروجی برقرار می‌کند.
 - [سرور simple-obfs در Shadowsocks](features/transports/shadowsocks-obfs.fa.md): یک سرور simple-obfs روی ورودی‌های Shadowsocks، با یک مقصد فریب وقتی obfs یا ورود شکست بخورد.
 - [rmux](features/transports/rmux.fa.md): یک پروتکل چندگانه‌سازی دیگر برای بردن چند اتصال در یک اتصال، در کنار smux، yamux و h2mux.
+- [مالتی‌پلکس: افزوده‌های هیدیفای](features/transports/multiplex-hiddify.fa.md): پنجرهٔ streamهای yamux تا ۱ مگابایت بزرگ می‌شود تا دانلود سریع از یک stream هر ۲۵۶ کیلوبایت نایستد.
 
 ## DNS
 

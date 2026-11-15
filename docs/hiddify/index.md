@@ -13,6 +13,7 @@ an English and a Persian version.
 - [PROXY protocol](features/proxy-protocol.en.md): inbounds read the PROXY protocol header and the direct outbound sends it.
 - [Adaptive processors](features/adaptive-processors.en.md): the core runs on one Go processor while it has little to do and takes more under load, which halves the CPU a QUIC, WireGuard or OpenVPN tunnel uses on macOS.
 - [Paced reads](features/paced-reads.en.md): a busy connection is read a moment later, so that each read brings a batch of packets instead of one, which saves CPU on fast downloads.
+- [Read ahead](features/read-ahead.en.md): a VMess or Shadowsocks client over plain TCP reads its socket 64 KB at a time instead of in two system calls per chunk; downloads a quarter (VMess) to two thirds (Shadowsocks) faster.
 
 ## Protocols
 
@@ -46,6 +47,7 @@ an English and a Persian version.
 - [finalmask](features/transports/finalmask.en.md): Xray's finalmask masks (fragment, noise, header-custom, xdns over UDP, TCP or DoH, udphop, merge, oob and more) on every connection an outbound dials.
 - [Shadowsocks simple-obfs server](features/transports/shadowsocks-obfs.en.md): a simple-obfs server on Shadowsocks inbounds, with a decoy when obfs or login fails.
 - [rmux](features/transports/rmux.en.md): one more multiplex protocol for many connections in one, next to smux, yamux and h2mux.
+- [Multiplex: Hiddify additions](features/transports/multiplex-hiddify.en.md): yamux streams let their window grow to 1 MB, so a fast download through one stream is not stopped every 256 KB.
 
 ## DNS
 

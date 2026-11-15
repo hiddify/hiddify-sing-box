@@ -97,6 +97,10 @@ its changes small and close to upstream so it can follow every sing-box release.
   WireGuard or OpenVPN tunnel on macOS.
 - [Paced reads](docs/hiddify/features/paced-reads.en.md): a busy connection is read a moment
   later, so that each read brings a batch of packets instead of one.
+- [Read ahead](docs/hiddify/features/read-ahead.en.md): a VMess or Shadowsocks client over plain
+  TCP reads its socket 64 KB at a time, not in two system calls per chunk.
+- [Multiplex: Hiddify additions](docs/hiddify/features/transports/multiplex-hiddify.en.md): yamux
+  streams let their window grow to 1 MB.
 
 ### Fixes
 
