@@ -2,6 +2,7 @@ package transport
 
 import (
 	"context"
+	"slices"
 	"sync"
 	"time"
 
@@ -17,64 +18,72 @@ import (
 // shared among the servers still to ask.
 const defaultSequentialMemberFloor = 2 * time.Second
 
-// groupSequential keeps what the sequential mode learnt: a server that failed is asked after the
-// others for error_ttl, so a dead first server does not open every query, and each server gets
-// a bounded share of the query's time, so one that hangs cannot spend the whole of it: before,
-// a TCP server whose port was black-holed took the full DNS timeout and the query failed without
+// The score of a server in sequential mode: servers are asked from the highest score down. //H
+const (
+	sequentialScoreMin = -10
+	sequentialScoreMax = 10
+)
+
+// groupSequential keeps what the sequential mode learnt: a score per server from -10 to 10, which
+// orders the servers. A server that answers gains a point and is at least 1 after it, so one
+// answer puts a server that kept failing ahead of every server that did not answer; a server
+// that failed loses a point, but only when another server answered that query, as a query no
+// server answers says more about the network than about the servers. Each server also gets a
+// bounded share of the query's time, so one that hangs cannot spend the whole of it: before, a
+// TCP server whose port was black-holed took the full DNS timeout and the query failed without
 // the servers behind it ever being asked.
 type groupSequential struct {
-	errorTTL      time.Duration
 	memberTimeout time.Duration
 
-	access      sync.Mutex
-	failedUntil map[string]time.Time
+	access sync.Mutex
+	scores map[string]int
 }
 
 func newGroupSequential(options option.GroupDNSServerOptions) *groupSequential {
-	sequential := &groupSequential{
-		errorTTL:      time.Duration(options.ErrorTTL),
+	return &groupSequential{
 		memberTimeout: time.Duration(options.MemberTimeout),
-		failedUntil:   make(map[string]time.Time),
+		scores:        make(map[string]int),
 	}
-	if sequential.errorTTL <= 0 {
-		sequential.errorTTL = defaultGroupErrorTTL
-	}
-	return sequential
 }
 
 func (s *groupSequential) reset() {
 	s.access.Lock()
 	defer s.access.Unlock()
-	clear(s.failedUntil)
+	clear(s.scores)
 }
 
-// order is the servers to ask, in order: the ones that did not fail recently first, as listed,
-// then the ones that did, as listed, so every server is still asked when the healthy ones fail.
+// order is the servers to ask, in order: the highest score first, servers with the same score as
+// listed, so every server is still asked when the ones before it fail.
 func (s *groupSequential) order(tags []string) []string {
 	s.access.Lock()
 	defer s.access.Unlock()
-	now := time.Now()
-	ordered := make([]string, 0, len(tags))
-	var failed []string
-	for _, tag := range tags {
-		if now.Before(s.failedUntil[tag]) {
-			failed = append(failed, tag)
-		} else {
-			ordered = append(ordered, tag)
-		}
-	}
-	return append(ordered, failed...)
+	ordered := slices.Clone(tags)
+	slices.SortStableFunc(ordered, func(a, b string) int {
+		return s.scores[b] - s.scores[a]
+	})
+	return ordered
 }
 
-func (s *groupSequential) record(tag string, outcome groupOutcome) {
+// record scores a query: answered is the server whose answer was used, "" when none answered;
+// failed are the servers that failed before it. Servers that answered without an address do not
+// move.
+func (s *groupSequential) record(answered string, failed []string) {
+	if answered == "" {
+		return
+	}
 	s.access.Lock()
 	defer s.access.Unlock()
-	switch outcome {
-	case groupAccepted:
-		delete(s.failedUntil, tag)
-	case groupFailed:
-		s.failedUntil[tag] = time.Now().Add(s.errorTTL)
+	s.scores[answered] = max(min(s.scores[answered]+1, sequentialScoreMax), 1)
+	for _, tag := range failed {
+		s.scores[tag] = max(s.scores[tag]-1, sequentialScoreMin)
 	}
+}
+
+// score is a server's current score, for tests and the log. //H
+func (s *groupSequential) score(tag string) int {
+	s.access.Lock()
+	defer s.access.Unlock()
+	return s.scores[tag]
 }
 
 // budget is how long the next server is waited for, with left servers still to ask: member_timeout
@@ -94,6 +103,7 @@ func (s *groupSequential) budget(ctx context.Context, left int) time.Duration {
 func (t *GroupTransport) exchangeSequential(ctx context.Context, transportManager adapter.DNSTransportManager, message *mDNS.Msg, callback func(response *mDNS.Msg, err error)) {
 	collector := groupCollector{transport: t}
 	order := t.sequential.order(t.serverTags)
+	var failed []string
 	for i, tag := range order {
 		memberContext, cancel := context.WithTimeout(ctx, t.sequential.budget(ctx, len(order)-i))
 		result := t.exchangeOne(memberContext, transportManager, tag, message)
@@ -106,10 +116,13 @@ func (t *GroupTransport) exchangeSequential(ctx context.Context, transportManage
 			result.err = E.Cause(result.err, "waiting for ", tag)
 		}
 		response, outcome := collector.classify(ctx, result, false)
-		t.sequential.record(tag, outcome)
-		if outcome == groupAccepted {
+		switch outcome {
+		case groupAccepted:
+			t.sequential.record(tag, failed)
 			callback(response, nil)
 			return
+		case groupFailed:
+			failed = append(failed, tag)
 		}
 	}
 	callback(collector.finish())

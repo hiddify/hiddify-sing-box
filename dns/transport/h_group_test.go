@@ -392,32 +392,75 @@ func TestH_GroupIsIgnored(t *testing.T) {
 	require.True(t, group.isIgnored(nil), "invalid address is ignored")
 }
 
-// A server that failed is asked after the others for error_ttl, so a dead first server does not
-// open every query; once it answers again it is back in its place.
-func TestH_GroupSequentialAsksRecentFailuresLast(t *testing.T) {
+// A server that failed loses a point when another server answers, so the one that answers is
+// asked first from then on; a server keeps its listed place while the scores are equal.
+func TestH_GroupSequentialScoresOrderTheServers(t *testing.T) {
 	first := hMember("first", hFail(hErrMember))
 	second := hMember("second", hReply("2.2.2.2"))
-	group := hNewGroup(t, option.GroupDNSServerOptions{Mode: C.DNSGroupModeSequential, ErrorTTL: badoption.Duration(time.Minute)}, first, second)
+	group := hNewGroup(t, option.GroupDNSServerOptions{Mode: C.DNSGroupModeSequential}, first, second)
 	for i := 0; i < 3; i++ {
 		response, err := hExchange(t, group)
 		require.NoError(t, err)
 		require.Equal(t, []string{"2.2.2.2"}, hAnswerIPs(response))
 	}
-	require.EqualValues(t, 1, first.calls.Load(), "the failed server is not asked first again within error_ttl")
+	require.EqualValues(t, 1, first.calls.Load(), "the failed server is asked after the one that answers")
 	require.EqualValues(t, 3, second.calls.Load())
+	require.Equal(t, -1, group.sequential.score("first"))
+	require.Equal(t, 3, group.sequential.score("second"))
 
-	// every server failed recently: all of them are still asked, in their order
-	second.exchange = hFail(hErrMember)
-	_, err := hExchange(t, group)
-	require.Error(t, err)
-	require.EqualValues(t, 2, first.calls.Load())
-
-	// the network changed: the record is forgotten and the first server is first again
-	second.exchange = hReply("2.2.2.2")
+	// the network changed: the scores are forgotten and the first server is first again
 	group.Reset()
-	_, err = hExchange(t, group)
+	first.exchange = hReply("1.1.1.1")
+	response, err := hExchange(t, group)
 	require.NoError(t, err)
-	require.EqualValues(t, 3, first.calls.Load())
+	require.Equal(t, []string{"1.1.1.1"}, hAnswerIPs(response))
+	require.EqualValues(t, 3, second.calls.Load(), "second was not asked after the reset")
+}
+
+// No server loses a point for a query no server answers: that says more about the network.
+func TestH_GroupSequentialNoAnswerScoresNothing(t *testing.T) {
+	first := hMember("first", hFail(hErrMember))
+	second := hMember("second", hFail(hErrMember))
+	group := hNewGroup(t, option.GroupDNSServerOptions{Mode: C.DNSGroupModeSequential}, first, second)
+	for i := 0; i < 3; i++ {
+		_, err := hExchange(t, group)
+		require.Error(t, err)
+	}
+	require.Equal(t, 0, group.sequential.score("first"))
+	require.Equal(t, 0, group.sequential.score("second"))
+	require.EqualValues(t, 3, first.calls.Load(), "the order stays as listed")
+}
+
+// Scores stay within -10 and 10, and one answer lifts a server to at least 1, ahead of every
+// server that did not answer.
+func TestH_GroupSequentialScoreBounds(t *testing.T) {
+	sequential := newGroupSequential(option.GroupDNSServerOptions{Mode: C.DNSGroupModeSequential})
+	for i := 0; i < 15; i++ {
+		sequential.record("good", []string{"bad"})
+	}
+	require.Equal(t, 10, sequential.score("good"))
+	require.Equal(t, -10, sequential.score("bad"))
+
+	sequential.record("bad", nil)
+	require.Equal(t, 1, sequential.score("bad"), "the first answer after failing gives at least 1")
+	sequential.record("bad", nil)
+	require.Equal(t, 2, sequential.score("bad"))
+
+	sequential.record("", []string{"good"})
+	require.Equal(t, 10, sequential.score("good"), "no answer: no point lost")
+
+	require.Equal(t, []string{"good", "bad", "new"}, sequential.order([]string{"new", "bad", "good"}))
+}
+
+// A server that answers without an address neither gains nor loses.
+func TestH_GroupSequentialEmptyAnswerKeepsScore(t *testing.T) {
+	empty := hMember("empty", hReply())
+	next := hMember("next", hReply("3.3.3.3"))
+	group := hNewGroup(t, option.GroupDNSServerOptions{Mode: C.DNSGroupModeSequential}, empty, next)
+	_, err := hExchange(t, group)
+	require.NoError(t, err)
+	require.Equal(t, 0, group.sequential.score("empty"))
+	require.Equal(t, 1, group.sequential.score("next"))
 }
 
 // A server that hangs gets a share of the query's time, not all of it: the servers behind it are
