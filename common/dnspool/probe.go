@@ -61,6 +61,12 @@ func BuildQuery(name string, qtype uint16) *mDNS.Msg {
 // transports with the given dialer options, so bind_interface and the platform's socket
 // protection apply.
 func Probe(ctx context.Context, logger log.ContextLogger, resolver string, name string, qtype uint16, dialerOptions option.DialerOptions) (*mDNS.Msg, error) {
+	return Exchange(ctx, logger, resolver, BuildQuery(name, qtype), dialerOptions)
+}
+
+// Exchange sends one query to a resolver, written as Probe reads it, and returns the answer, within
+// ProbeTimeout. A tunnel uses it to send its own test query, one only its server answers.
+func Exchange(ctx context.Context, logger log.ContextLogger, resolver string, query *mDNS.Msg, dialerOptions option.DialerOptions) (*mDNS.Msg, error) {
 	config, err := multidns.ParseResolverURL(resolver)
 	if err != nil {
 		return nil, err
@@ -126,7 +132,7 @@ func Probe(ctx context.Context, logger log.ContextLogger, resolver string, name 
 	}
 	queryCtx, cancel := context.WithTimeout(ctx, ProbeTimeout)
 	defer cancel()
-	return trans.Exchange(queryCtx, BuildQuery(name, qtype))
+	return trans.Exchange(queryCtx, query)
 }
 
 // CheckAnswer is the probe's verdict: an error when the answer is missing or empty.

@@ -3,8 +3,11 @@ package masterdns
 import (
 	"context"
 	"net"
+	"strings"
 	"testing"
 	"time"
+
+	"masterdnsvpn-go/lib/testserver"
 
 	"github.com/miekg/dns"
 	C "github.com/sagernet/sing-box/constant"
@@ -207,13 +210,86 @@ func startLocalDNS(t *testing.T) string {
 	return pc.LocalAddr().String()
 }
 
+// startTunnelResolver runs a MasterDnsVPN server for domain and a resolver in front of it, like a
+// public resolver: it answers probe.test itself and passes the queries for domain to the server
+// when forward is set. A resolver without forward answers ordinary names only. It returns the
+// resolver's address and the server's key.
+func startTunnelResolver(t *testing.T, domain string, forward bool) (string, string) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	server, key, err := testserver.Start(ctx, domain, t.TempDir())
+	require.NoError(t, err)
+	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
+	require.NoError(t, err)
+	resolver := &dns.Server{PacketConn: pc, Handler: dns.HandlerFunc(func(w dns.ResponseWriter, r *dns.Msg) {
+		name := r.Question[0].Name
+		if forward && strings.HasSuffix(name, "."+dns.Fqdn(domain)) {
+			client := &dns.Client{Net: "udp", Timeout: 2 * time.Second}
+			if answer, _, err := client.Exchange(r, server); err == nil {
+				_ = w.WriteMsg(answer)
+			}
+			return
+		}
+		m := new(dns.Msg)
+		m.SetReply(r)
+		if name == "probe.test." {
+			rr, _ := dns.NewRR("probe.test. 60 IN A 192.0.2.1")
+			m.Answer = append(m.Answer, rr)
+		}
+		_ = w.WriteMsg(m)
+	})}
+	go resolver.ActivateAndServe()
+	t.Cleanup(func() { resolver.Shutdown() })
+	return pc.LocalAddr().String(), key
+}
+
+// A resolver that answers the plain probe but not the tunnel's queries stays out of the pool:
+// with resolvers "auto", resolvers like it filled the pool and the client never agreed on an MTU
+// (hiddify-app#2588). One that carries the tunnel joins.
+func TestH_MasterDNSSmartPoolTunnelProbe(t *testing.T) {
+	t.Parallel()
+	domain := validOptions().Domains[0]
+	plainOnly, key := startTunnelResolver(t, domain, false)
+	options := validOptions()
+	options.Key = key
+	options.SmartPool = &option.SmartPoolOptions{Enabled: true}
+	options.Resolvers = []string{plainOnly}
+	options.PreTestDomain = "probe.test"
+	options.LogLevel = "error"
+	out := newTestOutbound(t, options)
+	err := out.probeTunnel(context.Background(), plainOnly)
+	require.ErrorContains(t, err, "tunnel upload probe")
+	require.NoError(t, out.PreStart())
+	require.NoError(t, out.PostStart())
+	time.Sleep(3 * time.Second)
+	require.Equal(t, 0, out.PoolResolvers())
+	require.NoError(t, out.Close())
+
+	carrying, key := startTunnelResolver(t, domain, true)
+	options.Key = key
+	options.Resolvers = []string{carrying}
+	out = newTestOutbound(t, options)
+	require.NoError(t, out.probeTunnel(context.Background(), carrying))
+	require.NoError(t, out.PreStart())
+	require.NoError(t, out.PostStart())
+	select {
+	case <-out.poolReady:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the resolver that carries the tunnel did not join the pool")
+	}
+	require.Equal(t, 1, out.PoolResolvers())
+	require.NoError(t, out.Close())
+}
+
 // With smart_pool the client's one resolver is the local pool; DoH, DoT and auto are accepted,
-// and after start the resolvers that answer the probe join the pool.
+// and after start the resolvers that answer the probe and carry the tunnel join the pool.
 func TestH_MasterDNSSmartPool(t *testing.T) {
 	t.Parallel()
-	answering := startLocalDNS(t)
+	answering, key := startTunnelResolver(t, validOptions().Domains[0], true)
 	silent := startLocalDNS(t) // answers, but with no record for the probe name
 	options := validOptions()
+	options.Key = key
 	options.SmartPool = &option.SmartPoolOptions{Enabled: true, LoadBalance: "weighted"}
 	options.Resolvers = []string{answering, "dot://" + silent, "https://dns.example/dns-query", silent}
 	options.PreTestDomain = "probe.test"

@@ -19,6 +19,8 @@ import (
 
 	mdns "masterdnsvpn-go/lib"
 
+	mDNS "github.com/miekg/dns"
+
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/outbound"
 	"github.com/sagernet/sing-box/common/dialer"
@@ -390,7 +392,10 @@ func (h *Outbound) fillPool(ctx context.Context) {
 		Candidates: h.candidates,
 		Probe: func(ctx context.Context, address string) error {
 			response, err := dnspool.Probe(ctx, h.logger, address, h.options.PreTestDomain, qtype, h.options.DialerOptions)
-			return dnspool.CheckAnswer(address, response, err)
+			if err := dnspool.CheckAnswer(address, response, err); err != nil {
+				return err
+			}
+			return h.probeTunnel(ctx, address)
 		},
 		Want:        orDefault(discovery.Want, poolMaxResolvers),
 		Concurrency: orDefault(discovery.Concurrency, poolProbeConcurrency),
@@ -403,6 +408,36 @@ func (h *Outbound) fillPool(ctx context.Context) {
 	if ctx.Err() == nil && added == 0 {
 		h.logger.ErrorContext(ctx, "masterdns: none of the ", len(h.candidates), " resolvers answered the probe")
 	}
+}
+
+// probeTunnel sends the client's smallest upload and download MTU tests through one resolver.
+// Many resolvers answer an ordinary name but drop, cache or rewrite the long TXT queries of a
+// tunnel domain; admitted to the pool, they leave the client's MTU test with nothing to agree on
+// and no session ever opens. Like the dnstt outbound's tunnel test, a resolver joins only once it
+// has carried the tunnel's queries to the server and back.
+func (h *Outbound) probeTunnel(ctx context.Context, address string) error {
+	probes, err := h.client.TunnelProbes()
+	if err != nil {
+		return E.Cause(err, "tunnel probe")
+	}
+	for _, probe := range probes {
+		query := new(mDNS.Msg)
+		if err := query.Unpack(probe.Query); err != nil {
+			return E.Cause(err, "tunnel ", probe.Name, " probe")
+		}
+		response, err := dnspool.Exchange(ctx, h.logger, address, query, h.options.DialerOptions)
+		if err != nil {
+			return E.Cause(err, "tunnel ", probe.Name, " probe")
+		}
+		packed, err := response.Pack()
+		if err != nil {
+			return E.Cause(err, "tunnel ", probe.Name, " probe")
+		}
+		if err := probe.Check(packed); err != nil {
+			return E.Cause(err, "tunnel ", probe.Name, " probe")
+		}
+	}
+	return nil
 }
 
 // orDefault is value, or fallback when value is not set.
