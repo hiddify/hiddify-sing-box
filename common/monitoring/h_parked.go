@@ -2,6 +2,7 @@ package monitoring
 
 import (
 	"slices"
+	"time"
 
 	"github.com/sagernet/sing-box/adapter"
 )
@@ -64,10 +65,17 @@ func (m *OutboundMonitoring) setActive(tags []string) []string {
 		switch {
 		case isActive && !wasActive:
 			state.mu.Lock()
-			state.invalid = true
-			if state.history.Delay != 0 {
-				state.from_cache = true
-				state.history.IpInfoFromCache = state.history.IpInfo != nil
+			// one that answered a test of this run just now (at rest, asked for by its tag, and
+			// keep top takes it out of rest for that answer) keeps it: that test may still be
+			// running its last steps, and the test asked for below then joins it and takes this
+			// result as it is, so a result marked cached here was never replaced, and the app
+			// showed the proxy with no ping until it was tested again
+			if !(state.workedLocked() && time.Since(state.history.Time) < recentResult) {
+				state.invalid = true
+				if state.history.Delay != 0 {
+					state.from_cache = true
+					state.history.IpInfoFromCache = state.history.IpInfo != nil
+				}
 			}
 			state.mu.Unlock()
 			woken = append(woken, tag)

@@ -158,6 +158,7 @@ func TestH_ParkedResultIsCachedWhenTakenOutOfRest(t *testing.T) {
 	require.NoError(t, htest.Start(m, adapter.StartStateInitialize))
 	require.NoError(t, htest.Start(m, adapter.StartStatePostStart))
 	setHistory(m, "a", 40, false, nil)
+	ageResult(m, "a") // from before the rest
 
 	m.setActive([]string{"a"})
 	his := m.OutboundsHistory("")["a"]
@@ -168,4 +169,41 @@ func TestH_ParkedResultIsCachedWhenTakenOutOfRest(t *testing.T) {
 
 	m.setActive([]string{"a"}) // named again: nothing changes
 	require.NotZero(t, delayOf(m, "", "a"))
+}
+
+// An outbound at rest that answers a test asked for by its tag is taken out of rest by keep top
+// while that test is still ending: the test setActive asks for joins it and takes its result.
+// That result was marked cached by setActive and stayed so, and the app showed the proxy with
+// no ping until the user tapped it (hiddify-app#2608).
+func TestH_FreshResultStaysWhenTakenOutOfRest(t *testing.T) {
+	link, addr := slowServer(t)
+	lazy := &fakeLazy{fakeOutbound: fakeOutbound{tag: "a", dial: dialTo(addr, nil)}}
+	m := newTestMonitor(t, nil, option.MonitoringOptions{URLs: []string{link}, URLTestTimeout: badoption.Duration(3 * time.Second)}, lazy)
+	m.parkLazy.Store(true)
+	m.setActive(nil)
+	require.NoError(t, htest.Start(m, adapter.StartStateInitialize))
+	require.NoError(t, htest.Start(m, adapter.StartStatePostStart))
+	require.True(t, m.Parked("a"))
+
+	// the test of it at rest has its result, and has not ended yet
+	state := m.reg().outbounds["a"]
+	state.mu.Lock()
+	state.testing = true
+	state.testDone = make(chan struct{})
+	done := state.testDone
+	state.mu.Unlock()
+	m.applyResult(testOutcome{outboundTag: "a", history: adapter.URLTestHistory{Delay: 25, Time: time.Now()}})
+
+	m.setActive([]string{"a"}) // keep top uses it for that answer
+	require.EqualValues(t, 25, delayOf(m, "", "a"), "its answer of just now is not a cached one")
+
+	state.mu.Lock()
+	state.testing = false
+	close(done)
+	state.mu.Unlock()
+	// the test asked for joins the one that ended, or runs after it: either way a ping shows
+	for range 20 {
+		time.Sleep(10 * time.Millisecond)
+		require.NotZero(t, delayOf(m, "", "a"), "still shown with its ping")
+	}
 }
