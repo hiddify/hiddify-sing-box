@@ -28,6 +28,59 @@ type hGroupMember struct {
 	typ      string
 	calls    atomic.Int32
 	exchange func(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error)
+	detour   string
+}
+
+// References is the member's detour, as a remote DNS server gives it.
+func (m *hGroupMember) References() []string {
+	if m.detour == "" {
+		return nil
+	}
+	return []string{m.detour}
+}
+
+// hStatusOutbound is an outbound or endpoint with the status a test sets.
+type hStatusOutbound struct {
+	adapter.Outbound
+	tag    string
+	status adapter.Status
+}
+
+func (o *hStatusOutbound) Tag() string {
+	return o.tag
+}
+
+func (o *hStatusOutbound) Status() adapter.Status {
+	return o.status
+}
+
+// hGroupOutbound is a ready group (a selector) using selected.
+type hGroupOutbound struct {
+	adapter.OutboundGroup
+	tag      string
+	selected adapter.Outbound
+}
+
+func (g *hGroupOutbound) Tag() string {
+	return g.tag
+}
+
+func (g *hGroupOutbound) Status() adapter.Status {
+	return adapter.StatusReady
+}
+
+func (g *hGroupOutbound) Selected(string) adapter.Outbound {
+	return g.selected
+}
+
+type hOutboundManager struct {
+	adapter.OutboundManager
+	outbounds map[string]adapter.Outbound
+}
+
+func (m hOutboundManager) Outbound(tag string) (adapter.Outbound, bool) {
+	outbound, loaded := m.outbounds[tag]
+	return outbound, loaded
 }
 
 func (m *hGroupMember) Tag() string {
@@ -450,6 +503,70 @@ func TestH_GroupSequentialScoreBounds(t *testing.T) {
 	require.Equal(t, 10, sequential.score("good"), "no answer: no point lost")
 
 	require.Equal(t, []string{"good", "bad", "new"}, sequential.order([]string{"new", "bad", "good"}))
+}
+
+// A server whose detour is not ready, as WARP still connecting, is not asked and loses no point;
+// once the detour is ready, it is asked and a failure costs one.
+func TestH_GroupSequentialDetourNotReadyIsNoFailure(t *testing.T) {
+	hop := &hStatusOutbound{status: adapter.StatusConnecting}
+	viaHop := hMember("via-hop", hFail(errors.New("endpoint not initialized")))
+	viaHop.detour = "hop"
+	profile := hMember("profile", hReply("4.4.4.4"))
+	ctx := service.ContextWith[adapter.OutboundManager](hGroupContext(viaHop, profile), hOutboundManager{outbounds: map[string]adapter.Outbound{"hop": hop}})
+	transport, err := NewGroup(ctx, log.NewNOPFactory().Logger(), "group", option.GroupDNSServerOptions{Mode: C.DNSGroupModeSequential, Servers: []string{"via-hop", "profile"}})
+	require.NoError(t, err)
+	group := transport.(*GroupTransport)
+
+	response, err := hExchange(t, group)
+	require.NoError(t, err)
+	require.Equal(t, []string{"4.4.4.4"}, hAnswerIPs(response))
+	require.EqualValues(t, 0, viaHop.calls.Load(), "a server behind a detour that is not ready is not asked")
+	require.Equal(t, 0, group.sequential.score("via-hop"))
+	require.Equal(t, 1, group.sequential.score("profile"))
+
+	hop.status = adapter.StatusReady
+	group.Reset()
+	_, err = hExchange(t, group)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, viaHop.calls.Load())
+	require.Equal(t, -1, group.sequential.score("via-hop"), "with the detour ready the failure counts")
+
+	// no server has a ready detour: the query fails at once
+	hop.status = adapter.StatusConnecting
+	only, err := NewGroup(ctx, log.NewNOPFactory().Logger(), "only-hop", option.GroupDNSServerOptions{Mode: C.DNSGroupModeSequential, Servers: []string{"via-hop"}})
+	require.NoError(t, err)
+	_, err = hExchange(t, only)
+	require.ErrorContains(t, err, "has a ready detour")
+	require.EqualValues(t, 1, viaHop.calls.Load())
+}
+
+// A selector is ready itself; the proxy selected in it decides, through nested groups too. A
+// group that has not picked one counts as ready.
+func TestH_GroupSequentialDetourGroupFollowsSelected(t *testing.T) {
+	proxy := &hStatusOutbound{tag: "proxy", status: adapter.StatusConnecting}
+	inner := &hGroupOutbound{tag: "auto", selected: proxy}
+	selector := &hGroupOutbound{tag: "select", selected: inner}
+	empty := &hGroupOutbound{tag: "empty"}
+	viaSelect := hMember("via-select", hReply("6.6.6.6"))
+	viaSelect.detour = "select"
+	viaEmpty := hMember("via-empty", hReply("7.7.7.7"))
+	viaEmpty.detour = "empty"
+	outbounds := map[string]adapter.Outbound{"proxy": proxy, "auto": inner, "select": selector, "empty": empty}
+	ctx := service.ContextWith[adapter.OutboundManager](hGroupContext(viaSelect, viaEmpty), hOutboundManager{outbounds: outbounds})
+	transport, err := NewGroup(ctx, log.NewNOPFactory().Logger(), "group", option.GroupDNSServerOptions{Mode: C.DNSGroupModeSequential, Servers: []string{"via-select", "via-empty"}})
+	require.NoError(t, err)
+	group := transport.(*GroupTransport)
+
+	response, err := hExchange(t, group)
+	require.NoError(t, err)
+	require.Equal(t, []string{"7.7.7.7"}, hAnswerIPs(response))
+	require.EqualValues(t, 0, viaSelect.calls.Load(), "the proxy selected in the selector's urltest is connecting")
+
+	proxy.status = adapter.StatusReady
+	group.Reset()
+	response, err = hExchange(t, group)
+	require.NoError(t, err)
+	require.Equal(t, []string{"6.6.6.6"}, hAnswerIPs(response))
 }
 
 // A server that answers without an address neither gains nor loses.

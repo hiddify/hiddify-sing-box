@@ -10,6 +10,8 @@ import (
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
 	E "github.com/sagernet/sing/common/exceptions"
+	N "github.com/sagernet/sing/common/network"
+	"github.com/sagernet/sing/service"
 
 	mDNS "github.com/miekg/dns"
 )
@@ -28,7 +30,8 @@ const (
 // orders the servers. A server that answers gains a point and is at least 1 after it, so one
 // answer puts a server that kept failing ahead of every server that did not answer; a server
 // that failed loses a point, but only when another server answered that query, as a query no
-// server answers says more about the network than about the servers. Each server also gets a
+// server answers says more about the network than about the servers, and only when its detour
+// was ready, as a server cannot answer through an outbound that is not. Each server also gets a
 // bounded share of the query's time, so one that hangs cannot spend the whole of it: before, a
 // TCP server whose port was black-holed took the full DNS timeout and the query failed without
 // the servers behind it ever being asked.
@@ -79,6 +82,64 @@ func (s *groupSequential) record(answered string, failed []string) {
 	}
 }
 
+// detourReady reports whether the outbounds and endpoints a server goes through are ready, and
+// for a group the outbound it uses now (outboundReady). A
+// server whose detour is not ready yet, such as WARP still connecting or Psiphon without a
+// tunnel, is not asked, and when it fails because its detour went down during the query, it
+// loses no point. //H
+func (t *GroupTransport) detourReady(transportManager adapter.DNSTransportManager, tag string) bool {
+	transport, loaded := transportManager.Transport(tag)
+	if !loaded {
+		return true
+	}
+	referrer, isReferrer := transport.(adapter.Referrer)
+	if !isReferrer {
+		return true
+	}
+	outboundManager := service.FromContext[adapter.OutboundManager](t.ctx)
+	if outboundManager == nil {
+		return true
+	}
+	network := N.NetworkTCP
+	if transport.Type() == C.DNSTypeUDP {
+		network = N.NetworkUDP
+	}
+	visited := make(map[string]bool)
+	for _, detour := range referrer.References() {
+		if !outboundReady(outboundManager, detour, network, visited) {
+			return false
+		}
+	}
+	return true
+}
+
+// outboundReady reports whether the outbound tag is ready and, for a group (selector, urltest,
+// fallback, balancer), whether the outbound it uses now for network is, down to the last group:
+// a selector is always ready itself, while the proxy selected in it may still be connecting. A
+// group that has not picked one yet counts as ready. //H
+func outboundReady(outboundManager adapter.OutboundManager, tag string, network string, visited map[string]bool) bool {
+	if visited[tag] {
+		return true
+	}
+	visited[tag] = true
+	outbound, loaded := outboundManager.Outbound(tag)
+	if !loaded {
+		return true
+	}
+	if !adapter.IsReady(outbound) {
+		return false
+	}
+	group, isGroup := outbound.(adapter.OutboundGroup)
+	if !isGroup {
+		return true
+	}
+	selected := group.Selected(network)
+	if selected == nil {
+		return true
+	}
+	return outboundReady(outboundManager, selected.Tag(), network, visited)
+}
+
 // score is a server's current score, for tests and the log. //H
 func (s *groupSequential) score(tag string) int {
 	s.access.Lock()
@@ -102,7 +163,17 @@ func (s *groupSequential) budget(ctx context.Context, left int) time.Duration {
 
 func (t *GroupTransport) exchangeSequential(ctx context.Context, transportManager adapter.DNSTransportManager, message *mDNS.Msg, callback func(response *mDNS.Msg, err error)) {
 	collector := groupCollector{transport: t}
-	order := t.sequential.order(t.serverTags)
+	// a server whose detour is not ready is not asked: it would only fail, or hang for its share
+	var order []string
+	for _, tag := range t.sequential.order(t.serverTags) {
+		if t.detourReady(transportManager, tag) {
+			order = append(order, tag)
+		}
+	}
+	if len(order) == 0 {
+		callback(nil, E.New("no DNS server of ", t.Tag(), " has a ready detour"))
+		return
+	}
 	var failed []string
 	for i, tag := range order {
 		memberContext, cancel := context.WithTimeout(ctx, t.sequential.budget(ctx, len(order)-i))
@@ -122,7 +193,9 @@ func (t *GroupTransport) exchangeSequential(ctx context.Context, transportManage
 			callback(response, nil)
 			return
 		case groupFailed:
-			failed = append(failed, tag)
+			if t.detourReady(transportManager, tag) { // it may have gone down during the query
+				failed = append(failed, tag)
+			}
 		}
 	}
 	callback(collector.finish())
