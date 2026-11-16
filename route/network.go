@@ -506,6 +506,7 @@ func (r *NetworkManager) ResetNetwork(ctx context.Context) {
 		}
 	}
 
+	r.router.ResetNetwork()
 }
 
 func (r *NetworkManager) FlushSystemDNSCache() {
