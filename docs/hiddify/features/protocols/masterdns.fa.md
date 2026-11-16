@@ -53,8 +53,10 @@ base64 داد (`base_encode`).
 - **مجموعهٔ هوشمند.** با `smart_pool`، کلاینت یک resolver می‌بیند: [مجموعهٔ هوشمند
   resolver](../dns/smart-dns-pool.fa.md) خود خروجی، همان کد [DNSTT](dnstt.fa.md). به هر
   resolver در `resolvers` اول یک پرسش ساده فرستاده می‌شود (`pretest_domain`،
-  `pretest_record_type`)، اول آن‌هایی که قبلاً کار کرده‌اند، و آن‌هایی که پاسخ دهند به
-  مجموعه می‌پیوندند تا ۱۰ تا کار کنند؛ وقتی برخی از کار بیفتند، بعدی‌ها بررسی می‌شوند. مجموعه پرسش‌های تونل را میان آن‌ها پخش می‌کند، برای resolverی که محدودیت
+  `pretest_record_type`) و سپس کوچک‌ترین آزمون‌های MTU آپلود و دانلود کلاینت برای دامنهٔ تونل،
+  اول آن‌هایی که قبلاً کار کرده‌اند. فقط آن‌هایی که پاسخشان از سرور برگردد به مجموعه می‌پیوندند تا
+  ۱۰ تا کار کنند، پس resolverی که به نام‌های معمولی پاسخ می‌دهد ولی پرسش‌های تونل را دور می‌اندازد
+  یا تغییر می‌دهد بیرون می‌ماند؛ وقتی برخی از کار بیفتند، بعدی‌ها بررسی می‌شوند. مجموعه پرسش‌های تونل را میان آن‌ها پخش می‌کند، برای resolverی که محدودیت
   نرخ می‌گذارد کند می‌شود و resolverی را که دیگر پاسخ نمی‌دهد کنار می‌گذارد. resolverها آن‌گاه
   می‌توانند DoT (`dot://host:853`)، DoH (`https://host/dns-query`) یا `auto`، فهرست داخلی
   resolverهای عمومی، هم باشند. امتیاز هر resolver در فایل کش ذخیره می‌شود. توازن، تکرار و MTU
@@ -94,7 +96,7 @@ base64 داد (`base_encode`).
 | `key` | string | الزامی مگر با `none` | کلید سرور، محتوای `encrypt_key.txt` آن. |
 | `mode` | string | `"socks5"` | `PROTOCOL_TYPE` سرور: `socks5` یا `tcp`، چنان‌که بالا گفته شد. |
 | `smart_pool` | bool یا object | `false` | مجموعهٔ resolver خود خروجی را اجرا کن، چنان‌که بالا گفته شد: `true`، یا یک شیء با `load_balance`، `deadline`، `per_attempt`، `probe_interval` و `down_after` ([مجموعهٔ هوشمند resolver](../dns/smart-dns-pool.fa.md) را ببینید). برای resolverهای DoT، DoH و `auto` لازم است. |
-| `pretest_domain` | string | `"www.google.com"` | با `smart_pool`: نامی که برای بررسی پاسخ دادن resolver پرسیده می‌شود. |
+| `pretest_domain` | string | `"www.google.com"` | با `smart_pool`: نامی که پیش از آزمون‌های تونل برای بررسی پاسخ دادن resolver پرسیده می‌شود. |
 | `pretest_record_type` | string | `"a"` | با `smart_pool`: نوع رکورد آن پرسش: `a`، `aaaa`، `cname`، `mx`، `ns`، `ptr`، `soa`، `srv` یا `txt`. |
 | `balancing` | string | `"round-robin"` | انتخاب resolver هر پرسش: `random`، `round-robin`، `least-loss`، `lowest-latency`، `hybrid`، `loss-then-latency`، `least-loss-top-random` یا `least-loss-top-round-robin`، یا شمارهٔ ۱ تا ۸ از `RESOLVER_BALANCING_STRATEGY`. `least-loss` برای لینک‌های پرافت با resolverهای زیاد مناسب است. |
 | `packet_duplication` | int | `2` | هر بسته چند بار، از resolverهای متفاوت، فرستاده شود (۱ تا ۱۰). بیشتر یعنی مطمئن‌تر و پرمصرف‌تر. |

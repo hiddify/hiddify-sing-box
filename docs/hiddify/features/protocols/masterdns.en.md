@@ -50,8 +50,11 @@ resolver is blocked and the domestic ones do not forward.
   (`recheck_inactive_resolvers`).
 - **Smart pool.** With `smart_pool`, the client sees one resolver: the outbound's own
   [smart resolver pool](../dns/smart-dns-pool.en.md), the same code as [DNSTT](dnstt.en.md)'s. Each
-  resolver in `resolvers` is first sent a plain query (`pretest_domain`, `pretest_record_type`),
-  the ones that worked before first, and those that answer join the pool until 10 work; when
+  resolver in `resolvers` is first sent a plain query (`pretest_domain`, `pretest_record_type`)
+  and then the client's smallest upload and download MTU probes for the tunnel domain, the ones
+  that worked before first. Only those whose answers come back from the server join the pool, until
+  10 work, so a resolver that answers ordinary names but drops or rewrites the tunnel's queries
+  stays out; when
   some go down, the next ones are checked. The pool spreads
   the tunnel's queries over them, slows down for a resolver that rate-limits, and skips one that
   stops answering. Resolvers may then also be DoT (`dot://host:853`), DoH
@@ -93,7 +96,7 @@ servers that support it.
 | `key` | string | required unless `none` | The server's key, the content of its `encrypt_key.txt`. |
 | `mode` | string | `"socks5"` | The server's `PROTOCOL_TYPE`: `socks5` or `tcp`, as described above. |
 | `smart_pool` | bool or object | `false` | Run the outbound's own resolver pool, as described above: `true`, or an object with `load_balance`, `deadline`, `per_attempt`, `probe_interval` and `down_after` (see [Smart resolver pool](../dns/smart-dns-pool.en.md)). Needed for DoT, DoH and `auto` resolvers. |
-| `pretest_domain` | string | `"www.google.com"` | With `smart_pool`: the name queried to check that a resolver answers. |
+| `pretest_domain` | string | `"www.google.com"` | With `smart_pool`: the name queried to check that a resolver answers, before the tunnel probes. |
 | `pretest_record_type` | string | `"a"` | With `smart_pool`: the record type of that query: `a`, `aaaa`, `cname`, `mx`, `ns`, `ptr`, `soa`, `srv` or `txt`. |
 | `balancing` | string | `"round-robin"` | How the resolver of each query is chosen: `random`, `round-robin`, `least-loss`, `lowest-latency`, `hybrid`, `loss-then-latency`, `least-loss-top-random` or `least-loss-top-round-robin`, or the number 1 to 8 of `RESOLVER_BALANCING_STRATEGY`. `least-loss` suits lossy links with many resolvers. |
 | `packet_duplication` | int | `2` | How many times each packet is sent, over different resolvers (1 to 10). More is more reliable and uses more bandwidth. |
