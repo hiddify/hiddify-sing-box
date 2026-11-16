@@ -30,7 +30,7 @@ The group has four modes:
 | Mode | What it does |
 |---|---|
 | `parallel` (default) | Asks every server at once and returns the first good answer. |
-| `sequential` | Asks the servers one at a time, in order, until one gives a good answer. A server that failed is asked after the others for `error_ttl`, and each server gets a bounded share of the query's time. |
+| `sequential` | Asks the servers one at a time until one gives a good answer, the best scored first. A server that answers moves up and one that fails moves down, and each server gets a bounded share of the query's time. |
 | `stable` | Asks only its current server. When that server fails, asks the others at once; the first to answer becomes the current server. |
 | `fastest` | Like `stable`, but keeps the current server only for `win_ttl`. Then it asks every server at once again and the fastest becomes the current server. |
 
@@ -44,9 +44,22 @@ In every mode:
 
 In `sequential` mode:
 
-- A server that fails, or whose answer `ignore_ranges` empties, is asked after the others for
-  `error_ttl`; it is still asked when they all fail. So a dead first server does not open every
-  query. When the network changes, the group forgets its failures.
+- Each server has a score from -10 to 10, 0 at the start. The servers are asked from the highest
+  score down; servers with the same score keep their listed order.
+- The server whose answer is used gains a point, and is at least 1 after it: one answer puts a
+  server that kept failing ahead of every server that did not answer.
+- A server that fails, or whose answer `ignore_ranges` empties, loses a point, but only when
+  another server answers that query. A query that no server answers says more about the network
+  than about the servers, so it changes no score. A server that answers without an address, such
+  as NXDOMAIN, keeps its score.
+- A server whose detour is not ready is not asked, so the query does not wait for it: WARP still
+  connecting or registering, Psiphon without a tunnel, any outbound or endpoint whose status is not
+  ready. For a group (selector, urltest, fallback, balancer) the outbound it uses now must be
+  ready, through nested groups; a group that has not picked one counts as ready. Its score does
+  not change. A lazy outbound that has not started counts as ready. When no
+  server has a ready detour, the query fails at once.
+- So a dead first server does not open every query, and the group stays on the server that
+  answers. When the network changes, the group forgets the scores.
 - Each server is waited for at most `member_timeout`, or, when that is unset, the query's time
   left shared among the servers still to ask, at least 2 s each. A server that hangs, as a
   TCP or TLS server behind a port that drops packets does, no longer spends the whole query
@@ -87,7 +100,7 @@ In `stable` and `fastest` mode:
 | `servers` | list of strings | required | Tags of the DNS servers in the group, in order. A group cannot hold another group or a `fakeip` server. |
 | `mode` | string | `parallel` | `parallel`, `sequential`, `stable` or `fastest`. |
 | `ignore_ranges` | list of IP prefixes | | A and AAAA records in these ranges are dropped from answers. |
-| `error_ttl` | duration | `1m` | `sequential`: how long a failed server is asked last; `stable` and `fastest`: how long it is skipped. |
+| `error_ttl` | duration | `1m` | `stable` and `fastest`: how long a failed server is skipped. `sequential` orders its servers by score and does not use it. |
 | `member_timeout` | duration | | `sequential`: the longest one server is waited for. Unset shares the query's time left among the servers still to ask, at least 2 s each. |
 | `win_ttl` | duration | `10m` | `fastest`: how long the fastest server stays current. |
 
