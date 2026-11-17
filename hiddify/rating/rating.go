@@ -17,12 +17,19 @@ import (
 	"math"
 	"math/rand/v2"
 	"slices"
+	"strconv"
 	"sync"
 	"time"
 )
 
 // Score is a rating from Min to Max.
 type Score int
+
+// String writes the score as a number. It makes Score a fmt.Stringer, which the loggers need:
+// format.ToString panics on a named type that is not one.
+func (s Score) String() string {
+	return strconv.Itoa(int(s))
+}
 
 const (
 	Min Score = -10

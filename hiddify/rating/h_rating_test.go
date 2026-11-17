@@ -4,8 +4,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sagernet/sing/common/format"
 	"github.com/stretchr/testify/require"
 )
+
+// A score is logged with format.ToString, as WARP auto mode does; it panicked on the bare named int.
+func TestH_ScoreLogs(t *testing.T) {
+	require.Equal(t, "score 3, -2", format.ToString("score ", Score(3), ", ", Score(-2)))
+}
 
 func TestH_ScoreRules(t *testing.T) {
 	var s Score
