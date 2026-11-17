@@ -8,17 +8,18 @@ import (
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/hiddify/rating"
 	"github.com/sagernet/sing/common/logger"
 )
 
 const (
-	// MinScore and MaxScore bound a resolver's score.
-	MinScore = -10
-	MaxScore = 10
+	// MinScore and MaxScore bound a resolver's score (see rating).
+	MinScore = int(rating.Min)
+	MaxScore = int(rating.Max)
 )
 
-// History is the saved score of each resolver, from MinScore to MaxScore: a resolver that passed
-// its tests scores high and is tried first next time. It is kept in the cache file under a key
+// History is the saved score of each resolver (a rating.Score): a resolver that passed its tests
+// scores high and is tried first next time. It is kept in the cache file under a key
 // the tunnel chooses.
 type History struct {
 	mu           sync.Mutex
@@ -76,23 +77,14 @@ func (h *History) Score(address string) int {
 	return h.ResolverRate[address]
 }
 
-// Record adds delta to a resolver's score. A success (positive delta) first forgets earlier
-// failures, so a resolver that works again is not held back by its past; the result stays
-// between MinScore and MaxScore.
+// Record moves a resolver's score by delta (see rating.Score.Add): a success first forgets
+// earlier failures, so a resolver that works again is not held back by its past; a graded
+// failure (a resolver that does not answer at all loses more than one that answers wrong) takes
+// more than a point.
 func (h *History) Record(address string, delta int) int {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	score := h.ResolverRate[address]
-	if delta > 0 && score < 0 {
-		score = 0
-	}
-	score += delta
-	if score > MaxScore {
-		score = MaxScore
-	}
-	if score < MinScore {
-		score = MinScore
-	}
+	score := int(rating.Score(h.ResolverRate[address]).Add(delta))
 	h.ResolverRate[address] = score
 	return score
 }

@@ -2,12 +2,11 @@ package transport
 
 import (
 	"context"
-	"slices"
-	"sync"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
 	C "github.com/sagernet/sing-box/constant"
+	"github.com/sagernet/sing-box/hiddify/rating"
 	"github.com/sagernet/sing-box/option"
 	E "github.com/sagernet/sing/common/exceptions"
 	N "github.com/sagernet/sing/common/network"
@@ -20,14 +19,8 @@ import (
 // shared among the servers still to ask.
 const defaultSequentialMemberFloor = 2 * time.Second
 
-// The score of a server in sequential mode: servers are asked from the highest score down. //H
-const (
-	sequentialScoreMin = -10
-	sequentialScoreMax = 10
-)
-
-// groupSequential keeps what the sequential mode learnt: a score per server from -10 to 10, which
-// orders the servers. A server that answers gains a point and is at least 1 after it, so one
+// groupSequential keeps what the sequential mode learnt: a score per server (a rating.Score),
+// which orders the servers, highest first. A server that answers gains a point and is at least 1 after it, so one
 // answer puts a server that kept failing ahead of every server that did not answer; a server
 // that failed loses a point, but only when another server answered that query, as a query no
 // server answers says more about the network than about the servers, and only when its detour
@@ -38,33 +31,24 @@ const (
 type groupSequential struct {
 	memberTimeout time.Duration
 
-	access sync.Mutex
-	scores map[string]int
+	scores rating.Table[string]
 }
 
 func newGroupSequential(options option.GroupDNSServerOptions) *groupSequential {
 	return &groupSequential{
 		memberTimeout: time.Duration(options.MemberTimeout),
-		scores:        make(map[string]int),
 	}
 }
 
 func (s *groupSequential) reset() {
-	s.access.Lock()
-	defer s.access.Unlock()
-	clear(s.scores)
+	s.scores.Reset()
 }
 
 // order is the servers to ask, in order: the highest score first, servers with the same score as
-// listed, so every server is still asked when the ones before it fail.
+// listed, so every server is still asked when the ones before it fail. The order is not drawn at
+// random (rating.Order): each server asked in vain delays the answer.
 func (s *groupSequential) order(tags []string) []string {
-	s.access.Lock()
-	defer s.access.Unlock()
-	ordered := slices.Clone(tags)
-	slices.SortStableFunc(ordered, func(a, b string) int {
-		return s.scores[b] - s.scores[a]
-	})
-	return ordered
+	return s.scores.Sort(tags)
 }
 
 // record scores a query: answered is the server whose answer was used, "" when none answered;
@@ -74,12 +58,7 @@ func (s *groupSequential) record(answered string, failed []string) {
 	if answered == "" {
 		return
 	}
-	s.access.Lock()
-	defer s.access.Unlock()
-	s.scores[answered] = max(min(s.scores[answered]+1, sequentialScoreMax), 1)
-	for _, tag := range failed {
-		s.scores[tag] = max(s.scores[tag]-1, sequentialScoreMin)
-	}
+	s.scores.Settle(answered, failed)
 }
 
 // detourReady reports whether the outbounds and endpoints a server goes through are ready, and
@@ -142,9 +121,7 @@ func outboundReady(outboundManager adapter.OutboundManager, tag string, network 
 
 // score is a server's current score, for tests and the log. //H
 func (s *groupSequential) score(tag string) int {
-	s.access.Lock()
-	defer s.access.Unlock()
-	return s.scores[tag]
+	return int(s.scores.Score(tag))
 }
 
 // budget is how long the next server is waited for, with left servers still to ask: member_timeout
