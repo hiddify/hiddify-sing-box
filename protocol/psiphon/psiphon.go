@@ -94,19 +94,24 @@ const noActiveTunnels = "no active tunnels"
 // noticeHub is the one notice writer of the process. psiphon-tunnel-core has a single, global
 // notice writer: an instance that set its own and one that reset it on close left the others
 // deaf, so a Psiphon started while another was closing (a reload) never saw its Tunnels notice
-// and showed as connecting with a working tunnel. The hub is installed once, passes every notice
-// to every running instance, and is removed when the last one stops.
+// and showed as connecting with a working tunnel. The hub is installed once for the process and
+// passes every notice to every running instance; with none, a notice goes nowhere.
+//
+// It is never removed. Removing it (ResetNoticeWriter) takes tunnel-core's notice lock, and
+// tunnel-core holds that lock while it writes a notice, which takes the hub's lock: the last
+// instance's Close, removing it under the hub's lock while a stopping controller wrote a notice,
+// deadlocked, and the box never finished closing.
 var noticeHub struct {
+	install   sync.Once
+	installed error
 	access    sync.Mutex
-	installed bool
 	listeners map[*Psiphon]func(NoticeEvent)
 }
 
 func listenNotices(p *Psiphon, listener func(NoticeEvent)) error {
-	noticeHub.access.Lock()
-	defer noticeHub.access.Unlock()
-	if !noticeHub.installed {
-		err := psiphon.SetNoticeWriter(psiphon.NewNoticeReceiver(func(notice []byte) {
+	// installed outside the hub's lock, for the reason above
+	noticeHub.install.Do(func() {
+		noticeHub.installed = psiphon.SetNoticeWriter(psiphon.NewNoticeReceiver(func(notice []byte) {
 			var event NoticeEvent
 			if json.Unmarshal(notice, &event) != nil {
 				return
@@ -121,10 +126,13 @@ func listenNotices(p *Psiphon, listener func(NoticeEvent)) error {
 				listener(event)
 			}
 		}))
-		if err != nil {
-			return err
-		}
-		noticeHub.installed = true
+	})
+	if noticeHub.installed != nil {
+		return noticeHub.installed
+	}
+	noticeHub.access.Lock()
+	defer noticeHub.access.Unlock()
+	if noticeHub.listeners == nil {
 		noticeHub.listeners = make(map[*Psiphon]func(NoticeEvent))
 	}
 	noticeHub.listeners[p] = listener
@@ -141,14 +149,7 @@ func noticeListeners() int {
 func stopListeningNotices(p *Psiphon) {
 	noticeHub.access.Lock()
 	defer noticeHub.access.Unlock()
-	if _, listening := noticeHub.listeners[p]; !listening {
-		return
-	}
 	delete(noticeHub.listeners, p)
-	if len(noticeHub.listeners) == 0 && noticeHub.installed {
-		psiphon.ResetNoticeWriter()
-		noticeHub.installed = false
-	}
 }
 
 // setConnected updates readiness from NoticeTunnels. On first connect it asks
@@ -227,9 +228,17 @@ func (p *Psiphon) NetworkChanged() {
 	}
 }
 
+// Close stops the instance: its controller, which it waits for, the notices and the data store.
+// The data store is closed only once the controller stopped: the controller uses it.
 func (p *Psiphon) Close() error {
+	p.access.Lock()
+	runDone := p.runDone
+	p.access.Unlock()
 	p.stop()
-	stopListeningNotices(p) // the writer is reset only when no other instance listens
+	if runDone != nil {
+		<-runDone
+	}
+	stopListeningNotices(p)
 	p.closeDataStore()
 	return nil
 }
@@ -311,10 +320,8 @@ func (p *Psiphon) hasTunnel() bool {
 // keeps running; Wait returns when it stops.
 func (p *Psiphon) Start() error {
 	ctx, cancel := context.WithCancel(p.ctx)
-	runDone := make(chan struct{})
 	p.access.Lock()
 	p.cancel = cancel
-	p.runDone = runDone
 	p.access.Unlock()
 	// config.Commit must be called before calling config.SetParameters
 	// or attempting to connect.
@@ -347,6 +354,11 @@ func (p *Psiphon) Start() error {
 	}
 	p.controller.Store(controller)
 
+	// set only with the goroutine that closes it: Close waits for it
+	runDone := make(chan struct{})
+	p.access.Lock()
+	p.runDone = runDone
+	p.access.Unlock()
 	go func() {
 		// Run blocks until the controller stops: closed, or it gave up (an establish timeout
 		// stops it too, so its notice, which another instance may have sent, is not needed)

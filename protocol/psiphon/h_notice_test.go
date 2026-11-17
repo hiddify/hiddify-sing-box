@@ -70,7 +70,7 @@ func TestH_NoticeHubSurvivesAnotherClose(t *testing.T) {
 
 	stopListeningNotices(current)
 	noticeHub.access.Lock()
-	require.False(t, noticeHub.installed, "the writer is reset with the last instance")
+	require.Empty(t, noticeHub.listeners, "with the last instance gone, a notice goes nowhere")
 	noticeHub.access.Unlock()
 }
 

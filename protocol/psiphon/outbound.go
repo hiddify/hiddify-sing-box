@@ -51,7 +51,12 @@ type Outbound struct {
 	logger    logger.ContextLogger
 	dialer    N.Dialer
 
-	ctx context.Context
+	// ctx is the outbound's own: Close cancels it, which ends run. It was the box's context,
+	// which a hot reload or a lazy unload does not end, so a closed outbound started its
+	// controller again five seconds later, behind its closed proxy bridge.
+	ctx     context.Context
+	cancel  context.CancelFunc
+	runDone chan struct{} // closed when run returns; nil until Start
 
 	mu          sync.RWMutex
 	reconnectCh chan struct{}
@@ -88,12 +93,14 @@ func NewOutbound(ctx context.Context, _ adapter.Router, logger log.ContextLogger
 	if err != nil {
 		return nil, err
 	}
+	ctx, cancel := context.WithCancel(ctx)
 	psiphon, err := NewPsiphon(ctx, logger, config, tag)
 	if err != nil {
-
+		cancel()
 		return nil, err
 	}
 	outbound := &Outbound{
+		cancel:      cancel,
 		Adapter:     outbound.NewAdapterWithDialerOptions(C.TypePsiphon, tag, []string{N.NetworkTCP}, options.DialerOptions),
 		dialer:      outboundDialer,
 		psiphon:     psiphon,
@@ -124,7 +131,12 @@ func (h *Outbound) Start() error {
 		h.proxy = proxy
 		h.psiphon.config.UpstreamProxyURL = fmt.Sprint("socks5://", proxy.Username(), ":", proxy.Password(), "@127.0.0.1:", proxy.Port())
 	}
-	go h.run()
+	runDone := make(chan struct{})
+	h.runDone = runDone
+	go func() {
+		defer close(runDone)
+		h.run()
+	}()
 	return nil
 }
 
@@ -199,7 +211,10 @@ func (h *Outbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (n
 }
 
 func (h *Outbound) Close() error {
-
+	h.cancel()
+	if h.runDone != nil {
+		<-h.runDone // run ends with the context, and does not start a controller again
+	}
 	h.psiphon.Close()
 	if h.proxy != nil {
 		h.proxy.Close()
