@@ -18,6 +18,7 @@ import (
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	E "github.com/sagernet/sing/common/exceptions"
+	F "github.com/sagernet/sing/common/format"
 	"github.com/sagernet/sing/common/json/badoption"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
@@ -271,28 +272,100 @@ func TestH_WARPMalformedCachedConfig(t *testing.T) {
 	require.ErrorContains(t, err, "endpoint not initialized")
 }
 
-// A profile in the config that cannot run a tunnel fails the config when it loads, and says
-// what is missing. It was only found at each start: the endpoint retried "start WARP endpoint"
-// for good, shown as searching.
-func TestH_WARPIncompleteProfileFailsTheConfig(t *testing.T) {
+// hWarnLogger records the warnings.
+type hWarnLogger struct {
+	log.ContextLogger
+	access   sync.Mutex
+	warnings []string
+}
+
+func (l *hWarnLogger) WarnContext(_ context.Context, args ...any) {
+	l.access.Lock()
+	l.warnings = append(l.warnings, F.ToString(args...))
+	l.access.Unlock()
+}
+
+func (l *hWarnLogger) logged() []string {
+	l.access.Lock()
+	defer l.access.Unlock()
+	return append([]string(nil), l.warnings...)
+}
+
+// A profile in the config that cannot run a tunnel does not stop the config. The endpoint says
+// what is missing and goes on as one without a profile: with a saved device, or a new one. It
+// failed the whole config for a while, and before that the endpoint retried its start for good.
+func TestH_WARPIncompleteProfileIsNotUsed(t *testing.T) {
 	for reason, content := range map[string]string{
+		"no private key":          `{"interface":{"addresses":{"v4":"172.16.0.2"}},"peers":[{"public_key":"p","endpoint":{"host":"h:1"}}]}`,
 		"no peers":                `{"private_key":"x","interface":{"addresses":{"v4":"172.16.0.2"}},"peers":[]}`,
 		"no peer public key":      `{"private_key":"x","interface":{"addresses":{"v4":"172.16.0.2"}},"peers":[{"endpoint":{"host":"h:1"}}]}`,
 		"no interface address":    `{"private_key":"x","peers":[{"public_key":"p","endpoint":{"host":"h:1"}}]}`,
 		"no peer address or port": `{"private_key":"x","interface":{"addresses":{"v4":"172.16.0.2"}},"peers":[{"public_key":"p","endpoint":{"host":"h"}}]}`,
 	} {
-		_, err := NewWARPEndpoint(hTestContext(t), nil, hLogger(), "warp-tag", option.WARPEndpointOptions{WARPConfig: hWARPConfig(t, content)})
-		require.ErrorContains(t, err, reason)
-		require.ErrorContains(t, err, "the profile in the config cannot be used")
+		logger := &hWarnLogger{ContextLogger: hLogger()}
+		created, err := NewWARPEndpoint(hTestContext(t), nil, logger, "warp-tag", option.WARPEndpointOptions{WARPConfig: hWARPConfig(t, content)})
+		require.NoError(t, err, reason)
+		require.Nil(t, created.(*WARPEndpoint).options.WARPConfig, reason)
+		warnings := logger.logged()
+		require.Len(t, warnings, 1, reason)
+		require.Contains(t, warnings[0], "the profile in the config is incomplete")
+		require.Contains(t, warnings[0], reason, "it says what is missing")
 	}
-	// server_port gives the port the profile lacks
-	options := option.WARPEndpointOptions{WARPConfig: hWARPConfig(t, `{"private_key":"x","interface":{"addresses":{"v4":"172.16.0.2"}},"peers":[{"public_key":"p","endpoint":{"host":"h"}}]}`)}
+	const incomplete = `{"private_key":"x","peers":[{"public_key":"p","endpoint":{"host":"h:1"}}]}` // no tunnel address
+
+	// a saved device is taken, as without a profile, and nothing is registered
+	cache := &hFakeCacheFile{store: map[string]*adapter.SavedBinary{}}
+	ctx := service.ContextWith[adapter.CacheFile](hShortContext(t), cache)
+	saved := &warpProfile{Kind: kindWireGuard, ID: "saved", WireGuard: hWARPConfig(t, hWARPConfigJSON)}
+	store := loadWARPProfiles(ctx, hLogger(), "an-earlier-run")
+	store.add(saved)
+	store.release()
+	options := option.WARPEndpointOptions{WARPConfig: hWARPConfig(t, incomplete)}
+	options.Detour = "missing-detour" // the tunnel cannot start: the test stays off the network
+	ep := hNewWARP(t, ctx, options)
+	var registrations int
+	ep.registerWith = func(kind string) (*warpProfile, error) {
+		registrations++
+		return nil, E.New("not expected")
+	}
+	ep.startHandler()
+	require.Same(t, saved, ep.currentProfile(), "the saved device is the one in use")
+	require.False(t, ep.currentProfile().inline)
+	require.Zero(t, registrations)
+
+	// without a saved device a new one is registered, and kept as any registered device is
+	cache = &hFakeCacheFile{store: map[string]*adapter.SavedBinary{}}
+	ctx = service.ContextWith[adapter.CacheFile](hShortContext(t), cache)
+	ep = hNewWARP(t, ctx, options)
+	registered := &warpProfile{Kind: kindWireGuard, ID: "new", Token: "token", WireGuard: hWARPConfig(t, hWARPConfigJSON), Created: time.Now()}
+	ep.registerWith = func(kind string) (*warpProfile, error) {
+		registrations++
+		return registered, nil
+	}
+	ep.startHandler()
+	require.Equal(t, 1, registrations)
+	require.Same(t, registered, ep.currentProfile(), "the registered device is the one in use")
+	require.Contains(t, cache.saves, "warp-profiles", "and it is saved to the pool")
+	require.Same(t, registered, ep.profiles.usable(kindWireGuard))
+
+	// server_port gives the port the profile lacks: the profile is complete, and used
+	logger := &hWarnLogger{ContextLogger: hLogger()}
+	options = option.WARPEndpointOptions{WARPConfig: hWARPConfig(t, `{"private_key":"x","interface":{"addresses":{"v4":"172.16.0.2"}},"peers":[{"public_key":"p","endpoint":{"host":"h"}}]}`)}
 	options.ServerPort = 2408
-	_, err := NewWARPEndpoint(hTestContext(t), nil, hLogger(), "warp-tag", options)
+	created, err := NewWARPEndpoint(hTestContext(t), nil, logger, "warp-tag", options)
 	require.NoError(t, err)
-	// MASQUE does not run on the WireGuard profile
-	_, err = NewWARPEndpoint(hTestContext(t), nil, hLogger(), "warp-tag", option.WARPEndpointOptions{Mode: "masque", WARPConfig: &C.WARPConfig{PrivateKey: "x"}})
-	require.NoError(t, err)
+	require.Same(t, options.WARPConfig, created.(*WARPEndpoint).options.WARPConfig)
+	// MASQUE does not run on the WireGuard profile, and an endpoint without a profile has none
+	// to speak of
+	for _, options := range []option.WARPEndpointOptions{
+		{Mode: "masque", WARPConfig: &C.WARPConfig{PrivateKey: "x"}},
+		{WARPConfig: &C.WARPConfig{}},
+		{},
+	} {
+		_, err = NewWARPEndpoint(hTestContext(t), nil, logger, "warp-tag", options)
+		require.NoError(t, err)
+	}
+	require.Empty(t, logger.logged())
 }
 
 // A device the API returned incomplete ends the start as failed and is not kept: it was saved

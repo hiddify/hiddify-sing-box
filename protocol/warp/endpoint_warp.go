@@ -93,11 +93,6 @@ func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.Cont
 	if err := validateMASQUEDevice(&options); err != nil { //H: a link device that cannot work fails the config
 		return nil, err //H
 	} //H
-	if mode != modeMASQUE && options.WARPConfig != nil && options.WARPConfig.PrivateKey != "" { //H: the profile in the config, see h_validate.go
-		if err := validateWARPConfig(options.WARPConfig, options.ServerOptions); err != nil { //H
-			return nil, E.Cause(err, "warp: the profile in the config cannot be used") //H
-		} //H
-	} //H
 	if err := options.Noise.FakePacket.Validate(); err != nil { //H: a bad template fails the config, not the handshake
 		return nil, E.Cause(err, "warp") //H
 	} //H
@@ -108,6 +103,7 @@ func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.Cont
 			} //H
 		} //H
 	} //H
+	options.WARPConfig = inlineWARPProfile(ctx, logger, mode, &options) //H: an incomplete profile is not used, see h_validate.go
 	warpEndpoint := &WARPEndpoint{
 		Adapter:  endpoint.NewAdapter(C.TypeWARP, tag, []string{N.NetworkTCP, N.NetworkUDP}, dependencies),
 		ctx:      ctx,                                    //H

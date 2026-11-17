@@ -1,7 +1,10 @@
 package warp
 
 import (
+	"context"
+
 	C "github.com/sagernet/sing-box/constant"
+	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	E "github.com/sagernet/sing/common/exceptions"
 )
@@ -12,7 +15,8 @@ import (
 // found by the code that built the inner endpoint, on every try: an incomplete answer of the
 // WARP API was saved to the pool and handed out again at each start, and the start retried
 // "start WARP endpoint" for good, shown as searching. Now:
-//   - the profile written in the config is checked when the config loads;
+//   - the profile written in the config is checked when the endpoint is made: an incomplete one
+//     is not used, see inlineWARPProfile;
 //   - a device the API returned is checked before it is saved: an incomplete one ends the start
 //     as failed, with the reason, and is not kept;
 //   - a saved device that is incomplete is retired when the pool hands out devices.
@@ -50,4 +54,30 @@ func validateWARPConfig(config *C.WARPConfig, server option.ServerOptions) error
 		return invalidDeviceError{err}
 	}
 	return nil
+}
+
+// inlineWARPProfile is the profile written in the config (private_key, interface, peers) when
+// it can run a tunnel. It is nil when the config has none, and when the one it has is
+// incomplete: the endpoint then says what is missing and goes on as an endpoint without a
+// profile does, with a saved device of the pool or a new registration.
+//
+// An incomplete profile is not an error of the config. It was one for a while, and stopped the
+// whole config for one WARP entry: hiddify-core makes this profile from a WireGuard config to
+// WARP, with what that config has.
+func inlineWARPProfile(ctx context.Context, logger log.ContextLogger, mode string, options *option.WARPEndpointOptions) *C.WARPConfig {
+	config := options.WARPConfig
+	if mode == modeMASQUE || !writtenWARPProfile(config) { // MASQUE runs on masque.device, not on this profile
+		return config
+	}
+	if err := validateWARPConfig(config, options.ServerOptions); err != nil {
+		logger.WarnContext(ctx, "WARP: the profile in the config is incomplete and is not used (", err, "): a saved device is taken, or a new one is registered")
+		return nil
+	}
+	return config
+}
+
+// writtenWARPProfile reports whether the config carries any part of a profile.
+func writtenWARPProfile(config *C.WARPConfig) bool {
+	return config != nil && (config.PrivateKey != "" || len(config.Peers) > 0 ||
+		config.Interface.Addresses.V4 != "" || config.Interface.Addresses.V6 != "")
 }
