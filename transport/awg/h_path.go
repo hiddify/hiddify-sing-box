@@ -65,12 +65,16 @@ type devicePath struct {
 	sequence atomic.Uint32
 }
 
-func newDevicePath(ctx context.Context, logger logger.ContextLogger, tun tunAdapter, opts DeviceOpts) *devicePath {
-	p := &devicePath{ctx: ctx, logger: logger, opts: opts, tcp: interrupt.NewGroup()}
-	if networkTun, isNetwork := tun.(*networkTun); isNetwork && opts.MTUDiscovery {
+func newDevicePath(ctx context.Context, logger logger.ContextLogger, opts DeviceOpts) *devicePath {
+	return &devicePath{ctx: ctx, logger: logger, opts: opts, tcp: interrupt.NewGroup()}
+}
+
+// useTun gives the path the device's tunnel, which is made when the device starts: discovery
+// needs the user-space stack.
+func (p *devicePath) useTun(tun tunAdapter) {
+	if networkTun, isNetwork := tun.(*networkTun); isNetwork && p.opts.MTUDiscovery {
 		p.stack = networkTun.conn
 	}
-	return p
 }
 
 // start begins the fallback and the first discovery, once the device is up.

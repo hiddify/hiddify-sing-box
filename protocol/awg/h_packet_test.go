@@ -5,6 +5,7 @@ import (
 	"net/netip"
 	"testing"
 
+	"github.com/sagernet/sing-box/adapter"
 	transportAwg "github.com/sagernet/sing-box/transport/awg"
 	"github.com/sagernet/sing/common/buf"
 	"github.com/sagernet/sing/common/bufio"
@@ -25,6 +26,7 @@ func TestH_EndpointDropsPacketsToDomains(t *testing.T) {
 	})
 	require.NoError(t, err)
 	defer device.Close()
+	require.NoError(t, device.Start(adapter.StartStateStart)) // its tunnel is made at the start
 	endpoint := hTestEndpoint(nil)
 	endpoint.Device = device
 
@@ -38,6 +40,5 @@ func TestH_EndpointDropsPacketsToDomains(t *testing.T) {
 	require.NotPanics(t, func() {
 		require.NoError(t, packetConn.WritePacket(buf.As([]byte("quic")), M.ParseSocksaddr("example.com:443")))
 	})
-	// packets to IP addresses pass through iponly (TestH_OutboundDropsPacketsToDomains in
-	// masque); this device is not started, so nothing drains its netstack to write one here
+	// packets to IP addresses pass through iponly (TestH_OutboundDropsPacketsToDomains in masque)
 }

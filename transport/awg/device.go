@@ -40,7 +40,8 @@ type DeviceOpts struct {
 
 type Device struct {
 	awgDevice *device.Device
-	tun       tunAdapter
+	tun       tunAdapter                 //H: made by Start, nil before
+	newTun    func() (tunAdapter, error) //H
 	bind      conn.Bind
 	logger    *device.Logger
 	ipcConfig string
@@ -48,22 +49,20 @@ type Device struct {
 }
 
 func NewDevice(ctx context.Context, logger logger.ContextLogger, dial network.Dialer, ipcConfig string, opts DeviceOpts) (*Device, error) {
-	var (
-		tun tunAdapter
-		err error
-	)
-
-	if opts.UseIntegratedTun {
-		tun, err = newSystemTun(ctx, opts.Address, opts.AllowedIps, opts.ExcludedIps, opts.MTU, logger)
-		if err != nil {
-			return nil, exceptions.Cause(err, "create tunnel")
+	// H: the tunnel is made when the device starts. It holds a network stack, or a system
+	// interface, and it was made here: a device that is created and never started is never
+	// closed (only what started is, and a config check builds a whole box to drop it), so each
+	// check of a config with an AmneziaWG or WARP endpoint left a network stack behind.
+	newTun := func() (tunAdapter, error) { //H
+		if opts.UseIntegratedTun {
+			tun, err := newSystemTun(ctx, opts.Address, opts.AllowedIps, opts.ExcludedIps, opts.MTU, logger) //H
+			if err != nil {
+				return nil, exceptions.Cause(err, "create tunnel")
+			}
+			return tun, nil //H
 		}
-	} else {
-		tun, err = newNetworkTun(opts.Address, opts.MTU)
-		if err != nil {
-			return nil, err
-		}
-	}
+		return newNetworkTun(opts.Address, opts.MTU) //H
+	} //H
 
 	awgLogger := &device.Logger{
 		Verbosef: func(format string, args ...interface{}) {
@@ -75,11 +74,11 @@ func NewDevice(ctx context.Context, logger logger.ContextLogger, dial network.Di
 	}
 
 	return &Device{
-		tun:       tun,
+		newTun:    newTun,                                 //H
 		bind:      newDeviceBind(ctx, logger, dial, opts), //H: a server listens on its port
 		logger:    awgLogger,
 		ipcConfig: ipcConfig,
-		path:      newDevicePath(ctx, logger, tun, opts), //H
+		path:      newDevicePath(ctx, logger, opts), //H
 	}, nil
 }
 
@@ -88,6 +87,12 @@ func (d *Device) Start(stage adapter.StartStage) error {
 		return nil
 	}
 
+	tun, err := d.newTun() //H
+	if err != nil {        //H
+		return err //H
+	} //H
+	d.tun = tun        //H
+	d.path.useTun(tun) //H
 	d.awgDevice = device.NewDevice(d.tun, d.bind, d.logger)
 	if err := d.awgDevice.IpcSet(d.ipcConfig); err != nil {
 		return E.Cause(err, "set ipc config")
@@ -125,11 +130,17 @@ func (d *Device) Close() error {
 }
 
 func (d *Device) DialContext(ctx context.Context, network string, destination metadata.Socksaddr) (net.Conn, error) {
+	if d.tun == nil { //H: not started, as IpcGet answers
+		return nil, os.ErrInvalid //H
+	} //H
 	conn, err := d.tun.DialContext(ctx, network, destination) //H
 	return d.path.track(network, conn, err)                   //H: closed when discovery lowers the MTU
 }
 
 func (d *Device) ListenPacket(ctx context.Context, destination metadata.Socksaddr) (net.PacketConn, error) {
+	if d.tun == nil { //H
+		return nil, os.ErrInvalid //H
+	} //H
 	return d.tun.ListenPacket(ctx, destination)
 }
 

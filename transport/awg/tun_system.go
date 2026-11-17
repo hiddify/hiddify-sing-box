@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"sync"
 
 	awgTun "github.com/amnezia-vpn/amneziawg-go/v3/tun"
 
@@ -21,11 +22,12 @@ import (
 )
 
 type systemTun struct {
-	mtu     uint32
-	singtun tun.Tun
-	events  chan awgTun.Event
-	name    string
-	dialer  network.Dialer
+	mtu       uint32
+	singtun   tun.Tun
+	events    chan awgTun.Event
+	name      string
+	dialer    network.Dialer
+	closeOnce sync.Once //H
 }
 
 func newSystemTun(ctx context.Context, address []netip.Prefix, allowedIps []netip.Prefix, excludedIps []netip.Prefix, mtu uint32, logger logger.Logger) (tunAdapter, error) {
@@ -128,8 +130,14 @@ func (t *systemTun) Events() <-chan awgTun.Event {
 }
 
 func (t *systemTun) Close() error {
-	close(t.events)
-	return nil
+	// H: once, and with the interface: a second Close (the device's, then the endpoint's)
+	// closed the channel twice, a panic, and the system interface was never closed at all
+	var err error           //H
+	t.closeOnce.Do(func() { //H
+		close(t.events)
+		err = t.singtun.Close() //H
+	}) //H
+	return err //H
 }
 
 func (t *systemTun) BatchSize() int {
