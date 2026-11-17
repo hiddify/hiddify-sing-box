@@ -114,10 +114,7 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 		logger.Debug("encryption initialized: keys=", len(encryptionConfig.keys), " xorMode=", encryptionConfig.xorMode, " seconds=", encryptionConfig.seconds, " padding=", encryptionConfig.padding)
 	}
 
-	if outbound.vision && outbound.tlsConfig == nil && outbound.encryption == nil { //H
-		// H: every dial made a connection to the server and then failed on this, leaving it open
-		return nil, E.New("flow ", options.Flow, " needs TLS, REALITY or VLESS encryption") //H
-	} //H
+	flow := options.Flow //H
 	muxOpts := common.PtrValueOrDefault(options.Multiplex)
 	if muxOpts.Enabled {
 		options.Flow = ""
@@ -126,6 +123,10 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 	if err != nil {
 		return nil, err
 	}
+	if outbound.vision && outbound.tlsConfig == nil && outbound.encryption == nil { //H
+		// H: every dial made a connection to the server and then failed on this, leaving it open
+		return nil, E.New("flow ", flow, " needs TLS, REALITY or VLESS encryption") //H
+	} //H
 	outbound.multiplexDialer, err = mux.NewClientWithOptions((*vlessDialer)(outbound), logger, muxOpts)
 	if err != nil {
 		return nil, err
