@@ -166,6 +166,8 @@ answers before it connects:
 - An endpoint that answers slower than `max_rtt` counts as a failure.
 - The scan ends when an endpoint with a score of 3 or more answers, or when 4 endpoints have
   answered. Among the answers, the higher score wins, then the lower round-trip time.
+- The endpoints that failed lose a point only when another endpoint answered in the same scan:
+  when none answers, the network (or the noise) is to blame, not the endpoints.
 - IPv4 and IPv6 ranges are both scanned when the network has a global address of that family.
   When one family is unreachable, it is skipped for the rest of the scan.
 - If no endpoint answers, WARP uses the profile's endpoint.
@@ -175,7 +177,13 @@ answers before it connects:
 
 - An answer adds 1, up to 10. An answer from a negative score sets it to 1.
 - A failure takes 1, at most once an hour, so one outage costs one point.
+- Only an endpoint that answered on the network before is marked down. The ranges hold millions
+  of address and port pairs, so a random endpoint that failed is all but never drawn again: it is
+  not recorded, and the book keeps its room for endpoints that work.
 - An endpoint that answered in the last 7 days never drops below -5.
+
+The same score rates the noises and the tunnels of auto mode, which are drawn by it (see
+[WARP scanner and noise](warp-scanner.en.md#ratings)).
 
 Scores are kept in the cache file when `cache_file` is enabled. A network not seen for 90 days
 is forgotten, and each network keeps its best 64 endpoints.
@@ -193,10 +201,10 @@ permission. When neither trace answers, the interface type alone names the netwo
 - after a network change (it waits 2 seconds, then names the new network), and
 - every minute, when traffic goes out but no handshake has completed for 3 minutes.
 
-The check probes the endpoint in use twice. If it answers, its score goes up. If not, its score
-goes down, and WARP scans again without it. It starts a new inner WireGuard endpoint on the best
-answer, switches traffic to it, and then closes the old one. If the scan finds nothing, WARP
-keeps the current endpoint. The first handshake of each endpoint also counts as an answer.
+The check probes the endpoint in use twice. If it answers, its score goes up. If not, WARP scans
+again without it. When another endpoint answers, the one in use loses a point, and WARP starts a
+new inner WireGuard endpoint on the best answer, switches traffic to it, and then closes the old
+one. If the scan finds nothing, WARP keeps the current endpoint, and its score stays. The first handshake of each endpoint also counts as an answer.
 
 ## Configuration
 

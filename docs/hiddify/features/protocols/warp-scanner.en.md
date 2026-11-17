@@ -95,19 +95,48 @@ the endpoint in use is probed again and replaced when it no longer answers.
 For MASQUE the scanner probes with a TLS handshake to the MASQUE endpoints, over HTTP/3 and HTTP/2
 apart.
 
+### Ratings
+
+Endpoints, noises and the tunnels of auto mode are each rated on each network, with the same
+score that Hiddify uses for DNS resolvers and the servers of a sequential DNS group: from -10 to 10,
+0 for unknown.
+
+- A success adds 1, up to 10. A success from a negative score sets it to 1, so a choice that
+  works again is not held back by its past.
+- A failure takes 1, at most once an hour, so one outage costs one point. A choice that succeeded
+  in the last 7 days never drops below -5.
+- An endpoint is marked down only when it answered on the network before: a random endpoint that
+  failed is all but never drawn again from ranges this large, so it is not recorded.
+- A failure counts only when another choice succeeded in its place. When nothing answers at all,
+  the network is the likely cause, not the choices, and no score moves: a scan in which no
+  endpoint answers marks no endpoint down, a noise is marked down only when another noise got
+  through, and a tunnel that stayed silent in a race only when another tunnel answered.
+
+Noises and tunnels are drawn in a **weighted random order**: every 2.5 points double the chance
+to come first, so a choice at 10 is 16 times as likely as an unknown one, and 256 times as likely
+as one at -10. The noise or tunnel that works on the network is used most of the time, and the
+others are still tried now and then: when the network starts blocking the one in use, or lets an
+old one through again, the ratings follow without a reset. Endpoints are ranked, not drawn: the
+scan already probes 8 at a time and adds random addresses, and the best answer wins.
+
 ### Noise search
 
 With `scanner.search_noise`, the scanner also looks for a noise:
 
-1. It scans with the noise that got through on this network before, if any.
-2. If no endpoint answers, with the configured noise (`noise`, or the `awg` settings).
-3. If still none, with each preset of `noise_presets` (all, in the order above, by default), on at
-   most 16 endpoints each: the endpoints known to answer come first, so a few are enough to tell.
-4. The first noise that gets an answer is used: the tunnel starts with it, and it is saved for the
-   network and tried first there next time.
+1. The noises to try are the configured one (`noise`, or the `awg` settings) and the presets of
+   `noise_presets` (all by default). They are drawn in a weighted random order by their rating on
+   the network (see Ratings). Where no noise was rated yet, the configured noise counts as 2, so it
+   comes first more often than an untried preset.
+2. The scan runs with the first. It probes up to `count` endpoints when this noise got through on
+   the network before, or when no noise has yet; otherwise at most 16: the endpoints known to
+   answer come first, so a few are enough to tell.
+3. When no endpoint answers, the scan runs with the next noise, on at most 16 endpoints.
+4. The first noise that gets an answer is used: the tunnel starts with it. It gains a point on the
+   network, and the noises tried before it lose one.
 
 The probe always sends what the tunnel sends, so a noise that gets the probe through gets the
-tunnel through. Each search costs at most the number of presets times 16 probes, run 8 at once.
+tunnel through. Each search costs at most the number of presets times 16 probes, run 8 at once,
+beyond the first scan.
 
 ### Auto mode
 
@@ -117,15 +146,19 @@ starts by racing the three tunnels:
 1. One handshake with each at once, to the device's own endpoint: WireGuard with the endpoint's
    `noise`, AmneziaWG with its `awg` settings (or `dns-google`), MASQUE with a TLS handshake. Two
    tries each, within 5 seconds.
-2. The fastest that answered becomes the inner tunnel. `WARP · Auto 🔍 Searching...` shows during
-   the race, then `WARP · WG`, `WARP · AWG` or `WARP · MASQUE`.
+2. One of the tunnels that answered becomes the inner tunnel, drawn by its rating on the network
+   (see Ratings), so the tunnel that connects there is used most of the time. The network is named
+   during the race, and the scanner of the chosen tunnel takes the name over. A tunnel that stayed
+   silent while another answered loses a point. `WARP · Auto 🔍 Searching...` shows during the
+   race, then `WARP · WG`, `WARP · AWG` or `WARP · MASQUE`.
 3. The chosen tunnel then runs as in its own mode: the scanner and the noise search apply to it
    (the WireGuard scanner for WireGuard and AmneziaWG, the MASQUE scanner for MASQUE).
-4. The chosen tunnel has 20 seconds to connect. An answer to one handshake does not prove that
-   the tunnel carries traffic: when it does not connect, the race runs again without it, and when
-   every tunnel failed it starts over.
-5. When none answered, WireGuard is used, so the scanner and the noise search can still look for
-   an endpoint and a noise.
+4. The chosen tunnel has 20 seconds to connect. When it connects, it gains a point on the network.
+   An answer to one handshake does not prove that the tunnel carries traffic: when it does not
+   connect, it loses a point, the race runs again without it, and when every tunnel failed it
+   starts over.
+5. When none answered, one of the tunnels that did not fail to connect is drawn by rating, so the
+   scanner and the noise search can still look for an endpoint and a noise.
 6. When a group `detour` moves to another member, the race runs again: the new proxy may carry
    another tunnel better, or only one (a proxy without UDP, such as SOCKS4, carries MASQUE over
    HTTP/2 only). After a selector the user moved, at once; after a group that moved by itself (a
@@ -161,7 +194,7 @@ Search endpoints and noise, with auto mode:
 }
 ```
 
-Only some presets, in this order:
+Only some presets:
 
 ```json
 "scanner": { "enabled": true, "search_noise": true, "noise_presets": ["dns-google", "sip", "quic-mimic"] }
@@ -185,7 +218,7 @@ A DNS-looking noise for plain WireGuard, written by hand:
 |---|---|---|
 | `scanner.enabled` | warp | Scan for an endpoint that answers, and fail over. |
 | `scanner.search_noise` | warp | Also look for a noise preset that gets through. |
-| `scanner.noise_presets` | warp | The presets to try, in order; all when empty. An unknown name is a config error. |
+| `scanner.noise_presets` | warp | The presets to try, in a weighted random order by their rating; all when empty. An unknown name is a config error. |
 | `noise.fake_packet.mode` | warp, wireguard | `""`, `raw` or `quic`. |
 | `noise.fake_packet.packets` | warp, wireguard | Templates sent first, in the AmneziaWG `i1`–`i5` syntax. |
 | `mode` | warp | `wg`, `awg`, `masque` or `auto`. |
@@ -195,8 +228,8 @@ The other scanner fields (`ports`, `cidrs`, `max_rtt`, `timeout`, `count`, `conc
 
 ## Notes
 
-- The scores and the noise found are kept in the cache file; without `cache_file`, every start
-  scans from nothing.
+- The ratings of endpoints, noises and tunnels are kept in the cache file; without `cache_file`,
+  every start scans from nothing. A noise saved by an older version counts as 3 on its network.
 - The scanner is off when `server` is set.
 - Noise does not help against a filter that blocks all UDP, or all of Cloudflare's WARP ranges:
   then auto mode, or `masque` with `vhttp` `auto` (HTTP/2 over TCP), is the way.

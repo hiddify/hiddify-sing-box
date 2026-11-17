@@ -84,7 +84,8 @@ connects. The scanner works as in [WARP](warp.en.md#how-it-works), with these di
 - A probe is the handshake the tunnel starts with: a QUIC handshake for HTTP/3, or a TLS
   handshake over TCP for HTTP/2. It uses the tunnel's TLS settings and the outbound's dialer.
 - HTTP/3 and HTTP/2 endpoints are different servers, so they are scored apart. In `auto`, both
-  are scanned.
+  are scanned. An endpoint that stops answering loses a point only when the scan finds another
+  one that answers.
 - The default ranges are what Cloudflare serves. Over QUIC only `162.159.198.1`,
   `162.159.198.2`, `2606:4700:103::1` and `2606:4700:103::2` answer. Over HTTP/2 all of
   `162.159.198.0/24` and `2606:4700:103::/64` answer, except the first address. The default

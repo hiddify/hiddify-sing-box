@@ -283,7 +283,8 @@ do about it. Items marked **Required** break or misbehave until they are handled
   `cloudflare.com/cdn-cgi/trace` (or `speedtest.net`), not by SSID, so no location permission is
   needed. The DNS group clears its record of failed servers. All of this relies on the platform
   reporting interface changes as it does today; keep that working.
-- **Cache file.** Scanner scores, the WARP config and the MASQUE profile are kept in the cache
+- **Cache file.** Scanner scores (endpoints, noises, and the tunnels of WARP auto mode, under
+  `<unique id>/tunnels/warp-scanner`), the WARP config and the MASQUE profile are kept in the cache
   file. Keep `experimental.cache_file` enabled, with `store_warp_config` and `store_masque_config`
   where wanted; without the cache file, every start registers a new WARP/MASQUE device and scans
   from scratch.
