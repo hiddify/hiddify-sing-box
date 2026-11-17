@@ -70,6 +70,27 @@ func (m *OutboundMonitoring) settle(task *testTask, state *outboundState, histor
 	m.handResult(task, outcome)
 }
 
+// errNotRegistered: the outbound is no longer monitored (a reload removed it).
+var errNotRegistered = errors.New("outbound not registered")
+
+// abandon ends a task that will not be tested: its outbound is gone, or its retry could not be
+// queued. What waits for it gets a failed outcome; nothing is recorded for the outbound. Every
+// accepted task ends in settle, settleLate or here: a cycle waits for one outcome per task, and
+// one left without it held the cycle for good, so no periodic test ran again.
+func (m *OutboundMonitoring) abandon(task *testTask, err error) {
+	if !task.settled.CompareAndSwap(false, true) {
+		return
+	}
+	m.logger.Debug("outbound ", task.outboundTag, " test given up: ", err)
+	m.handResult(task, testOutcome{
+		outboundTag: task.outboundTag,
+		history:     adapter.URLTestHistory{Time: time.Now(), Delay: TimeoutDelay},
+		err:         err,
+		cycleID:     task.cycleID,
+		priority:    task.priority,
+	})
+}
+
 // settleLate gives up on a test that did not return within testHardLimit: it counts as failed,
 // the worker moves on, and the test's own result, if it ever comes, is dropped.
 func (m *OutboundMonitoring) settleLate(task *testTask, state *outboundState) {
