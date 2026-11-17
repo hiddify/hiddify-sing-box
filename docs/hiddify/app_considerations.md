@@ -46,6 +46,12 @@ do about it. Items marked **Required** break or misbehave until they are handled
 - **Required — WARP by id and auth_token.** A `warp` profile given by `id` and `auth_token` now
   needs `private_key` (the device's own key); without it the endpoint fails at start. Before, it
   started without a key and never worked.
+- **Required — a complete WARP profile.** A `warp` endpoint with its own WireGuard profile (a
+  private key written in the config) now fails to load when the profile cannot run a tunnel: no
+  peer, no peer public key, no tunnel address, or no peer address and port (from the profile or
+  from `server` and `server_port`). The error says which. Before, the config loaded and that
+  endpoint retried its start for good. hiddify-core should drop or repair such a profile before
+  it builds the config, so that one broken WARP entry does not stop the whole config.
 - **Required — AmneziaWG on a wireguard endpoint.** A `wireguard` endpoint with an `awg` block now
   fails to load ("use type awg"); before, the block was ignored and the connection was plain
   WireGuard. Generate `"type": "awg"` for AmneziaWG, or a `warp` endpoint with an `awg` block.
