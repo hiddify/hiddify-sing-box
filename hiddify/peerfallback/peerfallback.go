@@ -41,9 +41,17 @@ type Options struct {
 
 type Fallback struct {
 	options Options
-	cancel  context.CancelFunc
 
-	access   sync.Mutex
+	// moveAccess is held while a move is decided and made. Move goes into the tunnel's device
+	// (it sets the peer's address, makes the connection again and starts a handshake), so only
+	// Check and PathChanged, which run on goroutines of their own, wait for it. Close does not:
+	// it waited behind a move whose device was stuck on a stalled detour, and the endpoint could
+	// not close.
+	moveAccess sync.Mutex
+
+	access   sync.Mutex // the fields below
+	cancel   context.CancelFunc
+	closed   bool
 	index    int
 	since    time.Time // the address in use was set
 	sinceTx  uint64    // and the bytes sent then
@@ -66,6 +74,11 @@ func (f *Fallback) Start(ctx context.Context) {
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	f.access.Lock()
+	if f.closed {
+		f.access.Unlock()
+		cancel()
+		return
+	}
 	f.cancel = cancel
 	f.access.Unlock()
 	go func() {
@@ -82,14 +95,17 @@ func (f *Fallback) Start(ctx context.Context) {
 	}()
 }
 
+// Close stops the checks. It does not wait for a move that is on its way; no move starts after it.
 func (f *Fallback) Close() {
 	if f == nil {
 		return
 	}
 	f.access.Lock()
-	defer f.access.Unlock()
-	if f.cancel != nil {
-		f.cancel()
+	f.closed = true
+	cancel := f.cancel
+	f.access.Unlock()
+	if cancel != nil {
+		cancel()
 	}
 }
 
@@ -99,19 +115,29 @@ func (f *Fallback) Check() {
 		return
 	}
 	handshake, tx := f.options.Status()
+	f.moveAccess.Lock()
+	defer f.moveAccess.Unlock()
 	f.access.Lock()
-	defer f.access.Unlock()
+	if f.closed {
+		f.access.Unlock()
+		return
+	}
 	if f.answered || handshake.After(f.since) {
 		f.answered = true
+		f.access.Unlock()
 		return
 	}
 	if time.Since(f.since) < Wait || tx == f.sinceTx {
+		f.access.Unlock()
 		return
 	}
 	failed := f.options.Addresses[f.index]
 	f.index = (f.index + 1) % len(f.options.Addresses)
-	f.options.Logger.Info("no handshake with ", failed, "; trying ", f.options.Addresses[f.index])
-	f.moveLocked(tx)
+	address := f.options.Addresses[f.index]
+	f.since, f.sinceTx, f.answered = time.Now(), tx, false
+	f.access.Unlock()
+	f.options.Logger.Info("no handshake with ", failed, "; trying ", address)
+	f.move(address)
 }
 
 // PathChanged starts again from the peer's own address. It reports whether the tunnel's
@@ -121,26 +147,38 @@ func (f *Fallback) PathChanged() bool {
 	if f == nil {
 		return false
 	}
+	_, tx := f.options.Status()
+	f.moveAccess.Lock() // after a move on its way: the connection it makes is not a path change
+	defer f.moveAccess.Unlock()
 	f.access.Lock()
-	defer f.access.Unlock()
-	if f.moving {
-		f.moving = false
+	if f.closed {
+		f.access.Unlock()
 		return false
 	}
-	_, tx := f.options.Status()
+	if f.moving {
+		f.moving = false
+		f.access.Unlock()
+		return false
+	}
+	f.since, f.sinceTx, f.answered = time.Now(), tx, false // the first address, on a new path
 	if f.index == 0 {
-		f.since, f.sinceTx, f.answered = time.Now(), tx, false // the first address, on a new path
+		f.access.Unlock()
 		return false
 	}
 	f.index = 0
-	f.options.Logger.Debug("the path changed; trying ", f.options.Addresses[0], " again")
-	return f.moveLocked(tx)
+	address := f.options.Addresses[0]
+	f.access.Unlock()
+	f.options.Logger.Debug("the path changed; trying ", address, " again")
+	return f.move(address)
 }
 
-func (f *Fallback) moveLocked(tx uint64) bool {
-	f.since, f.sinceTx, f.answered = time.Now(), tx, false
-	f.moving = f.options.Move(f.options.Addresses[f.index])
-	return f.moving
+// move sends to address from now on; moveAccess is held, access is not.
+func (f *Fallback) move(address netip.AddrPort) bool {
+	reconnects := f.options.Move(address)
+	f.access.Lock()
+	f.moving = reconnects
+	f.access.Unlock()
+	return reconnects
 }
 
 // ParseStatus reads the latest handshake with any peer and the bytes sent to all from a
