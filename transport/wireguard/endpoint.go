@@ -355,14 +355,14 @@ func (e *Endpoint) Close() error {
 		e.egressPool.Close()
 		e.egressPool = nil
 	}
+	// H: the bind first, and for good: nothing of the device waits on the detour while it
+	// closes (Up sends a peer's keepalive handshake through it under the device's state lock,
+	// which Down takes), and no reconnect on its way opens the bind again //H
+	if clientBind := e.clientBind.Load(); clientBind != nil { //H
+		clientBind.hAbort() //H
+	} //H
 	e.mtuProbe.stop()  //H
 	e.fallback.Close() //H
-	// H: close the detour's connections before Down: Up sends a peer's persistent keepalive, a
-	// handshake through the detour, under the device's state lock, and when the detour's stream
-	// stalled that write never returned, so Down, which takes the lock, waited for good //H
-	if clientBind := e.clientBind.Load(); clientBind != nil { //H
-		clientBind.Close() //H
-	} //H
 	e.stateAccess.Lock()
 	wgDevice := e.device.Swap(nil)
 	if wgDevice != nil {

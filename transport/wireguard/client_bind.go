@@ -8,9 +8,7 @@ import (
 	"sync/atomic" //H
 	"time"
 
-	C "github.com/sagernet/sing-box/constant" //H
 	"github.com/sagernet/sing/common"
-	"github.com/sagernet/sing/common/bufio"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
@@ -39,6 +37,8 @@ type ClientBind struct {
 	reserved            [3]uint8
 	connected           bool   //H
 	onReconnect         func() //H: the connection through the dialer was made again
+	dialing             *hDial //H: the dial on its way, see h_client_bind_dial.go
+	aborted             bool   //H: closed for good, see hAbort
 }
 
 func NewClientBind(ctx context.Context, logger logger.Logger, dialer N.Dialer, isConnect bool, connectAddr netip.AddrPort, reserved [3]uint8) *ClientBind {
@@ -65,59 +65,15 @@ func (c *ClientBind) connect() (*wireConn, error) {
 			return serverConn, nil
 		}
 	}
-	c.connAccess.Lock()
-	defer c.connAccess.Unlock()
-	select {
-	case <-c.done:
-		return nil, net.ErrClosed
-	default:
-	}
-	serverConn = c.conn.Load() //H
-	if serverConn != nil {
-		select {
-		case <-serverConn.done:
-			serverConn = nil
-		default:
-			return serverConn, nil
-		}
-	}
-	// H: sending and receiving wait on this lock, so a detour that hangs must not hold it for good:
-	// give up after the TCP timeout and let the next attempt retry. Only the dial is bounded; the
-	// connection may live on its context, which ends when the connection closes
-	dialCtx, cancelDial := context.WithCancel(c.bindCtx)  //H
-	dialTimer := time.AfterFunc(C.TCPTimeout, cancelDial) //H
-	defer dialTimer.Stop()                                //H
-	if c.isConnect {
-		udpConn, err := c.dialer.DialContext(dialCtx, N.NetworkUDP, M.SocksaddrFromNetIP(c.connectAddr)) //H
-		if err != nil {
-			cancelDial() //H
-			return nil, err
-		}
-		c.conn.Store(&wireConn{ //H
-			PacketConn: bufio.NewUnbindPacketConn(udpConn),
-			done:       make(chan struct{}),
-			cancel:     cancelDial, //H
-		}) //H
-	} else {
-		udpConn, err := c.dialer.ListenPacket(dialCtx, M.Socksaddr{Addr: netip.IPv4Unspecified()}) //H
-		if err != nil {
-			cancelDial() //H
-			return nil, err
-		}
-		c.conn.Store(&wireConn{ //H
-			PacketConn: bufio.NewPacketConn(udpConn),
-			done:       make(chan struct{}),
-			cancel:     cancelDial, //H
-		}) //H
-	}
-	if c.connected && c.onReconnect != nil { //H
-		go c.onReconnect() //H
-	} //H
-	c.connected = true        //H
-	return c.conn.Load(), nil //H
+	return c.hConnect() //H: dialed with no lock held, see h_client_bind_dial.go
 }
 
 func (c *ClientBind) Open(port uint16) (fns []conn.ReceiveFunc, actualPort uint16, err error) {
+	c.connAccess.Lock()         //H: done is also closed by hAbort
+	defer c.connAccess.Unlock() //H
+	if c.aborted {              //H
+		return nil, 0, net.ErrClosed //H
+	} //H
 	select {
 	case <-c.ctx.Done(): // H: a bind whose context ended cannot be opened again
 		return nil, 0, c.ctx.Err()
@@ -168,6 +124,8 @@ func (c *ClientBind) receive(packets [][]byte, sizes []int, eps []conn.Endpoint)
 }
 
 func (c *ClientBind) Close() error {
+	c.connAccess.Lock()         //H: before done, which hAbort closes too
+	defer c.connAccess.Unlock() //H
 	select {
 	case <-c.done:
 	default:
@@ -176,8 +134,6 @@ func (c *ClientBind) Close() error {
 	if c.bindDone != nil {
 		c.bindDone()
 	}
-	c.connAccess.Lock()
-	defer c.connAccess.Unlock()
 	common.Close(common.PtrOrNil(c.conn.Load())) //H
 	return nil
 }
@@ -189,7 +145,7 @@ func (c *ClientBind) SetMark(mark uint32) error {
 func (c *ClientBind) Send(bufs [][]byte, ep conn.Endpoint, offset int) error {
 	udpConn, err := c.connect()
 	if err != nil {
-		time.Sleep(time.Second)
+		c.hWaitAfterFailure() //H: ends when the bind closes: the device's locks are held here
 		return err
 	}
 	destination := netip.AddrPort(ep.(remoteEndpoint))
@@ -220,7 +176,7 @@ func (c *ClientBind) Send(bufs [][]byte, ep conn.Endpoint, offset int) error {
 func (c *ClientBind) SendWithoutModify(bufs [][]byte, ep conn.Endpoint, offset int) error {
 	udpConn, err := c.connect()
 	if err != nil {
-		time.Sleep(time.Second)
+		c.hWaitAfterFailure() //H: ends when the bind closes: the device's locks are held here
 		return err
 	}
 	destination := netip.AddrPort(ep.(remoteEndpoint))
