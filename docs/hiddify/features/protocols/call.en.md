@@ -62,7 +62,8 @@ Limits:
   takes. When a try fails (the login, or creating or joining the call), the side logs the error
   and tries again after 5 seconds, then 10 seconds, then 30 seconds, then every minute until
   sing-box stops. Connections to the outbound wait for its first try. While it is not connected,
-  they fail with "call: not connected to the call yet".
+  they fail with "call: not connected to the call yet". Not every failure is tried again yet:
+  see "Known limitations" below.
 - **Reconnects.** When the call reconnects, or the client joins late, connections that arrive
   through it go to the router, so route rules keep working.
 - **Shutdown.** When the inbound or the outbound is closed, it leaves the call.
@@ -154,6 +155,49 @@ config can use your account.
 - On `vk`, the log does not show the call's join token, which is part of the tunnel key.
 - When the server side creates a new call, the link changes each time it connects. Set
   `join_link` on the inbound to keep it the same.
+
+## Known limitations
+
+These gaps are known and not fixed yet. They were found by reading the code. Like the rest of
+this feature, they have not been seen on a real call. Each one is marked `TODO(hiddify)` in the
+source, at the place named here.
+
+1. **A call session that ends by itself is not started again.** The inbound and the outbound
+   connect once and keep what that connect gave them. When the session ends without being
+   closed, nothing connects again. The tunnel is down until sing-box restarts, and connections
+   through it wait until they time out.
+    - Server side, `dion`: there is no rejoin. The session is over when its media connection
+      (ICE) or its signaling connection dies (`ConnectCreator` in
+      `transport/call/dion/connect.go`).
+    - Server side, `vk`: the session joins the call again when its signaling connection drops,
+      but it stops for good when the service answers a rejoin without a signaling address. The
+      log then shows "[vk-ws] no wt_endpoint in join response" (`Run` in
+      `transport/call/vk/creator.go`).
+    - Server side, `telemost` and `wbstream`: these join again until the inbound is closed.
+    - Client side, every platform: the client joins the call again by itself, but the outbound
+      keeps the tunnel of its first session. The tunnel of a later session is dropped, so the
+      outbound does not work again after the first reconnect (`ConnectJoiner` in each
+      platform's `connect.go`).
+    - Later fix: a session reports its end, and the inbound or the outbound connects again with
+      the waits of a failed connect (5 seconds, 10 seconds, 30 seconds, then every minute). A
+      client's later tunnel replaces its first one.
+2. **A client whose first join fails is not tried again.** The client joins the call in the
+   background, and only a success is reported. When the first join fails (the room does not
+   exist, the guest is refused, the call service cannot be reached), the error is logged once,
+   for example "dion-joiner: auth: …", and the connect goes on waiting until the outbound is
+   closed. The retries described under "Start-up" do not run for such a failure, and connections
+   to the outbound wait until they time out instead of failing with "call: not connected to the
+   call yet". On `vk`, the guest login comes before the join and is tried again; the join after
+   it is not (`ConnectJoiner` in each platform's `connect.go`). Later fix: the join reports its
+   end and its error to the connect.
+3. **The VK server side serves data-channel clients itself, past the router.** The `vk` inbound
+   also serves a client that sends on the call's "tunnel" data channel instead of video. For
+   such a client it opens the destinations itself, with the inbound's dial fields (directly,
+   when none is set). Route rules, DNS rules and other outbounds do not apply to that traffic.
+   Hiddify's VK client always uses video, so only another program that has the call link reaches
+   this path (`handleDCMessage` in `transport/call/vk/relay.go`). Later fix: hand these
+   connections to the inbound like the video ones, which needs a VK account to check, or remove
+   data-channel mode from the VK server side.
 
 ## Sources and credits
 

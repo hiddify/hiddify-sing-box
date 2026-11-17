@@ -95,6 +95,8 @@ func ConnectCreator(ctx context.Context, cookieStr, roomID, email, password stri
 		call.Close()
 		return nil, "", fmt.Errorf("dion: call start: %w", err)
 	}
+	// TODO(hiddify): nobody waits for call.Done(): when ICE or the signaling dies, the session is
+	// over and is not joined again. Return Done, so protocol/call connects again with its backoff.
 	return func() {
 		call.Close()
 		access.Lock()
@@ -118,6 +120,8 @@ func ConnectJoiner(ctx context.Context, roomID, displayName string, readBuf int,
 	}
 	joiner := NewDionJoiner(logger, dialer, dnsRouter)
 	tunCh := make(chan tunnel.DataTunnel, 1)
+	// TODO(hiddify): only the first tunnel is taken. The one the joiner makes when it joins again
+	// is dropped below and the bridge keeps the dead one: give it to the bridge (SwapTunnel).
 	joiner.OnConnected = func(tun tunnel.DataTunnel) {
 		select {
 		case tunCh <- tun:
@@ -125,6 +129,8 @@ func ConnectJoiner(ctx context.Context, roomID, displayName string, readBuf int,
 		}
 	}
 	params := fmt.Sprintf(`{"roomId":%q,"displayName":%q}`, roomID, displayName)
+	// TODO(hiddify): RunWithParams returns when its first join fails and tells nobody: the select
+	// below waits until ctx ends and the caller never retries. Have it report its end and error.
 	go joiner.RunWithParams(params)
 	select {
 	case tun := <-tunCh:

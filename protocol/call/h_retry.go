@@ -30,6 +30,8 @@ func connectWithRetry(ctx context.Context, logger logger.ContextLogger, connect 
 		if attempt == 0 && afterFirst != nil {
 			afterFirst()
 		}
+		// TODO(hiddify): a bridge whose session ends by itself is not connected again (call page,
+		// known limitation 1): have the bridge report its end (a Done channel) and go on here.
 		if err == nil || ctx.Err() != nil {
 			return
 		}

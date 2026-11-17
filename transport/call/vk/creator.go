@@ -303,6 +303,8 @@ func (b *Bridge) Run(callInfo *CallInfo, cookieStr string, cfg VKConfig) {
 	for b.ctx.Err() == nil {
 		b.initRelay()
 		if wtEndpoint == "" {
+			// TODO(hiddify): the session ends here and nobody is told, the inbound keeps a dead
+			// bridge. Report the end (a Done channel), so protocol/call connects again.
 			b.logger.Error("[vk-ws] no wt_endpoint in join response")
 			return
 		}

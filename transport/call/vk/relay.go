@@ -250,6 +250,9 @@ func (u *TunnelRelay) Close() {
 	u.sampleTrack = nil
 }
 
+// TODO(hiddify): data channel mode dials the destinations itself (connectTCP, handleUDP ->
+// u.dialer), past the router. Only a foreign client sends on this channel, Hiddify's joiner uses
+// video. Hand these frames to the accept handlers through a conn adaptor, or drop DC mode here.
 func (u *TunnelRelay) handleDCMessage(data []byte) {
 	if u.obf != nil {
 		pt, ok := u.obf.DecryptPayload(data)

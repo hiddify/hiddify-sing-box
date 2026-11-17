@@ -392,6 +392,12 @@ do about it. Items marked **Required** break or misbehave until they are handled
   that contain them with the same care as other credentials.
 - Only the server side (inbound) needs an account; the client joins as a guest. Bitrix24 has no
   server side in this build.
+- **Known limitations.** A call that ends by itself is not joined again, and a client whose first
+  join fails is not tried again. In both cases the tunnel stays down until the core restarts,
+  and the outbound does not say so: connections through it time out. If the app ships the call
+  tunnel, restarting the core (reconnect) is the way out for the user. The `vk` server side also
+  serves a client that uses the data channel past the router. See "Known limitations" in the
+  [call tunnel page](features/protocols/call.en.md).
 - Not tested end to end in Hiddify.
 
 ## Deferred, needs the app

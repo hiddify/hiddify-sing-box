@@ -121,12 +121,16 @@ func ConnectJoiner(ctx context.Context, joinLink, displayName string, readBuf in
 		dnsRouter,
 	)
 	tunCh := make(chan tunnel.DataTunnel, 1)
+	// TODO(hiddify): only the first tunnel is taken. The one the joiner makes when it joins again
+	// is dropped below and the bridge keeps the dead one: give it to the bridge (SwapTunnel).
 	joiner.OnConnected = func(tun tunnel.DataTunnel) {
 		select {
 		case tunCh <- tun:
 		default:
 		}
 	}
+	// TODO(hiddify): RunWithParams returns when its first join fails and tells nobody: the select
+	// below waits until ctx ends and the caller never retries. Have it report its end and error.
 	go joiner.RunWithParams(string(paramsJSON))
 	select {
 	case tun := <-tunCh:
