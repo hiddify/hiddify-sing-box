@@ -196,7 +196,9 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 	// code relies on this behavior. Subtract 1 so that together with
 	// uploadWriter wrapper, exact size limits can be enforced
 	// uploadPipeReader, uploadPipeWriter := pipe.New(pipe.WithSizeLimit(maxUploadSize - 1))
-	uploadPipeReader, uploadPipeWriter := pipe.New(pipe.WithSizeLimit(maxUploadSize - buf.Size))
+	// H: the pipe takes a write while it holds no more than its limit, and the writer puts in
+	// pieces of hUploadPiece at most: a post is never bigger than maxUploadSize
+	uploadPipeReader, uploadPipeWriter := pipe.New(pipe.WithSizeLimit(maxUploadSize - hUploadPiece(maxUploadSize))) //H
 	conn.writer = uploadWriter{
 		uploadPipeWriter,
 		maxUploadSize,
@@ -441,18 +443,25 @@ func autoMode(reality bool, splitDownload bool) string {
 	return "stream-one"
 }
 
-// hMinScMaxEachPostBytes raises an sc_max_each_post_bytes too small to hold one buffer, which
-// packet-up cannot split into posts. Xray panics on it at the first dial, and a subscription
-// carrying such a server ("4096-4096", "1536-6144") crashed the app as soon as it was tested.
-// The posts get a little bigger than the link asks for; a server takes up to 1 MB by default.
+// hMinScMaxEachPostBytes makes an sc_max_each_post_bytes usable: at least one byte. Xray panics
+// at the first dial on a value that is not bigger than one buffer (8192 bytes), and a
+// subscription carrying such a server ("4096-4096", "1536-6144") crashed the app as soon as it
+// was tested. The value is kept as it is: a server that sets it refuses bigger posts with 413,
+// so raising it, as this did at first, only moved the failure to the first full post.
 func hMinScMaxEachPostBytes(value Xbadoption.Range) Xbadoption.Range {
-	if value.From <= buf.Size {
-		value.From = buf.Size + 1
+	if value.From < 1 {
+		value.From = 1
 	}
 	if value.To < value.From {
 		value.To = value.From
 	}
 	return value
+}
+
+// hUploadPiece is the size of the pieces the upload writer puts into the pipe for posts of at
+// most maxUploadSize bytes: one buffer, or the post size when that is smaller.
+func hUploadPiece(maxUploadSize int32) int32 {
+	return min(maxUploadSize, buf.Size)
 }
 
 // hURLHost brackets a bare IPv6 address, which a URL host needs: "2001:db8::1" -> "[2001:db8::1]".

@@ -13,7 +13,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	common "github.com/sagernet/sing-box/common/xray"
 	"github.com/sagernet/sing-box/common/xray/signal/done"
 	"github.com/sagernet/sing-box/option"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -222,7 +221,9 @@ func (c *DefaultDialerClient) PostPacket(ctx context.Context, url string, sessio
 		// times, the body is already drained after the first
 		// request
 		requestBuff := new(bytes.Buffer)
-		common.Must(req.Write(requestBuff))
+		if err := req.Write(requestBuff); err != nil { //H: a header the config got wrong was a panic
+			return err //H
+		} //H
 		var uploadConn any
 		var h1UploadConn *H1Conn
 		for {

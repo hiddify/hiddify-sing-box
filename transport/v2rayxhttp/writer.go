@@ -27,7 +27,15 @@ func (w uploadWriter) Write(b []byte) (int, error) {
 	*/
 
 	buffer := buf.MultiBufferContainer{}
-	common.Must2(buffer.Write(b))
+	if piece := int(hUploadPiece(w.maxLen)); piece < buf.Size { //H: posts smaller than one buffer: pieces of the post size
+		for rest := b; len(rest) > 0; rest = rest[min(len(rest), piece):] { //H
+			one := buf.New()                                      //H
+			common.Must2(one.Write(rest[:min(len(rest), piece)])) //H
+			buffer.MultiBuffer = append(buffer.MultiBuffer, one)  //H
+		} //H
+	} else { //H
+		common.Must2(buffer.Write(b))
+	} //H
 
 	var writed int
 	for _, buff := range buffer.MultiBuffer {
