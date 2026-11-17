@@ -47,7 +47,7 @@ func TestH_WARPListenPacketWithDestination(t *testing.T) {
 	destination := M.ParseSocksaddr("example.com:443")
 
 	_, _, err := withDestination.ListenPacketWithDestination(context.Background(), destination)
-	require.ErrorContains(t, err, "endpoint not initialized")
+	require.EqualError(t, err, "WARP is not connected yet, connecting")
 
 	inner := &hInnerEndpoint{resolved: netip.MustParseAddr("203.0.113.9")}
 	ep.endpoint = inner

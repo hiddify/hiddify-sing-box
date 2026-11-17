@@ -214,9 +214,10 @@ func TestH_WARPStartFailureLeavesEndpointUninitialized(t *testing.T) {
 	require.False(t, adapter.IsReady(ep))
 	hRequireDisplay(t, "WARP · WG", adapter.DisplayType(ep))
 	_, err := ep.DialContext(context.Background(), N.NetworkTCP, M.ParseSocksaddr("1.1.1.1:80"))
-	require.ErrorContains(t, err, "endpoint not initialized")
+	require.ErrorContains(t, err, "WARP is not connected yet")
+	require.ErrorContains(t, err, "missing outbound manager", "a dial says why")
 	_, err = ep.ListenPacket(context.Background(), M.ParseSocksaddr("1.1.1.1:53"))
-	require.ErrorContains(t, err, "endpoint not initialized")
+	require.ErrorContains(t, err, "missing outbound manager")
 	require.NoError(t, ep.Close())
 }
 
@@ -269,7 +270,7 @@ func TestH_WARPMalformedCachedConfig(t *testing.T) {
 	require.Nil(t, ep.profiles.usable(kindWireGuard), "an unreadable device is not taken")
 	require.Equal(t, adapter.StatusConnecting, ep.Status(), "registering ended with the context, not failed")
 	_, err := ep.DialContext(context.Background(), N.NetworkTCP, M.ParseSocksaddr("1.1.1.1:80"))
-	require.ErrorContains(t, err, "endpoint not initialized")
+	require.ErrorContains(t, err, "register WARP wireguard device: outbound detour not found: missing")
 }
 
 // hWarnLogger records the warnings.

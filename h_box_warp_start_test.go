@@ -55,6 +55,6 @@ func TestH_WARPEndpointAsyncStart(t *testing.T) {
 			conn.Close()
 		}
 		// once published, the inner endpoint is used (and times out without a real peer)
-		return err == nil || !strings.Contains(err.Error(), "endpoint not initialized")
+		return err == nil || !strings.Contains(err.Error(), "WARP is not connected yet")
 	}, 5*time.Second, 100*time.Millisecond, "WARP endpoint was never started")
 }

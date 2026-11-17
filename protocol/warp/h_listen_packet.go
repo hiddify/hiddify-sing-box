@@ -6,7 +6,6 @@ import (
 	"net/netip"
 
 	"github.com/sagernet/sing-box/common/dialer"
-	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 )
 
@@ -19,7 +18,7 @@ var _ dialer.PacketDialerWithDestination = (*WARPEndpoint)(nil)
 func (w *WARPEndpoint) ListenPacketWithDestination(ctx context.Context, destination M.Socksaddr) (net.PacketConn, netip.Addr, error) {
 	inner := w.currentEndpoint()
 	if inner == nil {
-		return nil, netip.Addr{}, E.New("endpoint not initialized")
+		return nil, netip.Addr{}, w.notReady()
 	}
 	if withDestination, isWithDestination := inner.(dialer.PacketDialerWithDestination); isWithDestination {
 		return withDestination.ListenPacketWithDestination(ctx, destination)

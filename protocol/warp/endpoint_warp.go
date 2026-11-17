@@ -55,6 +55,7 @@ type WARPEndpoint struct {
 	scanStatusOf  func() *warpscan.Status
 	failed        atomic.Bool           // H: see Status
 	failError     adapter.LastError     // H: why it failed; see StatusError
+	attemptError  adapter.LastError     // H: why the last attempt of retry failed; see notReady
 	tracker       adapter.StatusTracker // H
 	registering   atomic.Bool           // H: a device is being registered
 	failedModes   sync.Map              // H: auto mode: the tunnels that did not connect
@@ -186,9 +187,12 @@ func (w *WARPEndpoint) retry(done <-chan struct{}, what string, attempt func() e
 	for {
 		err := attempt()
 		if err == nil {
+			w.attemptError.Set(nil)
 			return true
 		}
-		w.logger.ErrorContext(w.ctx, E.Cause(err, what))
+		err = E.Cause(err, what)
+		w.attemptError.Set(err) //H: dials say it while there is no tunnel
+		w.logger.ErrorContext(w.ctx, err)
 		select {
 		case <-w.ctx.Done():
 			return false
@@ -289,7 +293,7 @@ func (w *WARPEndpoint) Close() error {
 func (w *WARPEndpoint) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
 	inner := w.currentEndpoint() //H: the failover replaces it
 	if inner == nil {
-		return nil, E.New("endpoint not initialized")
+		return nil, w.notReady() //H: why there is no tunnel, not just that there is none
 	}
 	return inner.DialContext(ctx, network, destination)
 }
@@ -297,7 +301,7 @@ func (w *WARPEndpoint) DialContext(ctx context.Context, network string, destinat
 func (w *WARPEndpoint) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
 	inner := w.currentEndpoint() //H
 	if inner == nil {
-		return nil, E.New("endpoint not initialized")
+		return nil, w.notReady() //H: why there is no tunnel, not just that there is none
 	}
 	return inner.ListenPacket(ctx, destination)
 }
