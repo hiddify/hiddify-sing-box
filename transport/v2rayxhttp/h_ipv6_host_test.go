@@ -49,3 +49,22 @@ func TestH_OpenStreamBadURLIsAnError(t *testing.T) {
 		require.Error(t, err)
 	}
 }
+
+// The server takes the Host a client sends for an IPv6 host on the default port: the address
+// in brackets, without a port. It was split as host:port, never matched, and every request of
+// such a client was answered 404.
+func TestH_ServerHostMatchesBracketedIPv6(t *testing.T) {
+	for _, request := range []string{"[2001:db8::1]", "[2001:db8::1]:8443", "2001:db8::1", "[2001:DB8::1]"} {
+		require.True(t, isValidHTTPHost(request, "2001:db8::1"), request)
+		require.True(t, isValidHTTPHost(request, "[2001:db8::1]"), request)
+	}
+	require.False(t, isValidHTTPHost("[2001:db8::2]", "2001:db8::1"))
+	require.False(t, isValidHTTPHost("[2001:db8::2]:443", "2001:db8::1"))
+	require.True(t, isValidHTTPHost("example.com:8443", "example.com"))
+	require.False(t, isValidHTTPHost("evil.com", "example.com"))
+
+	// end to end: a client whose host is an IPv6 address, a server that checks it
+	options := hOptions(t, `{"mode":"packet-up","path":"/xh","host":"2001:db8::1"}`)
+	addr := hStartServer(t, options, nil)
+	hRoundTrip(t, options, nil, addr, hPayloads(t, 1000)...)
+}
