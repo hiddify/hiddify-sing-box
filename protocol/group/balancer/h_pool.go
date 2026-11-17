@@ -159,9 +159,9 @@ func (p *Pool) Select(metadata adapter.InboundContext, network string, touch boo
 		}
 	}
 	if len(working) == 0 {
-		// nothing tested yet, or nothing works: the first member, as the other strategies
+		// nothing tested yet, or nothing works: the first member not at rest, as the other strategies
 		if members := p.outbounds[network]; len(members) > 0 {
-			return members[0]
+			return members[fallbackIndex(members, 0, p.delays)]
 		}
 		return nil
 	}

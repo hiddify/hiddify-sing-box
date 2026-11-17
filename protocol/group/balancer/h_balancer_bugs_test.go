@@ -1,6 +1,7 @@
 package balancer
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -66,5 +67,31 @@ func TestH_BalancerHashingCachedDelayOverflow(t *testing.T) {
 	for _, tag := range []string{"a", "b"} {
 		require.True(t, consistent.Alive(newFake(tag), N.NetworkTCP), tag)
 		require.True(t, sticky.Alive(newFake(tag), N.NetworkTCP), tag)
+	}
+}
+
+// With keep top, a member at rest is left out of the group's history. A strategy that finds no
+// member alive (none tested yet, all failed) fell back on any member, the one at rest too: it
+// was created for the connection, untested, and closed under it when keep top put it away again.
+func TestH_BalancerFallbackSkipsMemberAtRest(t *testing.T) {
+	options := option.BalancerOutboundOptions{MaxRetry: 3, DelayAcceptableRatio: 2}
+	for name, history := range map[string]map[string]*adapter.URLTestHistory{
+		"untested": {"b": {}},
+		"failed":   {"b": timeout()},
+	} {
+		members := func() []adapter.Outbound { return outs(newFake("a"), newFake("b")) } // a rests
+		for strategyName, strategy := range map[string]Strategy{
+			StrategyRoundRobin:        NewRoundRobin(members(), options),
+			StrategyConsistentHashing: NewConsistentHashing(members(), options),
+			StrategyStickySessions:    common.Must1(NewStickySession(members(), options)),
+			StrategyLowestDelay:       NewLowestDelay(members(), options),
+			StrategyPool:              common.Must1(NewPool(members(), options)),
+		} {
+			strategy.UpdateOutboundsInfo(history)
+			for i := range 100 {
+				metadata := adapter.InboundContext{Domain: fmt.Sprint("d", i, ".example")}
+				require.Equal(t, "b", strategy.Select(metadata, N.NetworkTCP, true).Tag(), "%s, %s", name, strategyName)
+			}
+		}
 	}
 }

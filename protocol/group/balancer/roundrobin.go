@@ -49,7 +49,7 @@ func (s *RoundRobin) Now() string {
 }
 
 func (s *RoundRobin) UpdateOutboundsInfo(history map[string]*adapter.URLTestHistory) bool {
-	sortedOutbounds := sortOutboundsByDelay(s.outbounds, history)
+	sortedOutbounds := sortOutboundsByDelay(inUse(s.outbounds, history), history) // H: never a member at rest
 	acceptableIndex := getAcceptableIndex(sortedOutbounds, history, s.delayAcceptableRatio)
 
 	s.mu.Lock()

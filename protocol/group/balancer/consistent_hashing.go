@@ -75,7 +75,7 @@ func (g *ConsistentHashing) Select(metadata adapter.InboundContext, net string, 
 		}
 	}
 	idx := jumpHash(key, buckets)
-	return g.outbounds[net][idx]
+	return g.outbounds[net][fallbackIndex(g.outbounds[net], int(idx), g.delays)] //H: not a member at rest
 
 }
 

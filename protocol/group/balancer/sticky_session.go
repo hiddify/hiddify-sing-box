@@ -81,7 +81,7 @@ func (s *StickySession) Select(metadata adapter.InboundContext, net string, touc
 			}
 		}
 		if pick < 0 {
-			pick = idx
+			pick = fallbackIndex(outbounds, idx, s.delays) //H: not a member at rest
 		}
 	}
 	if !has || pick != idx {

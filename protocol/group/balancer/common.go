@@ -111,6 +111,41 @@ func filterOutbounds(outbounds []adapter.Outbound, network string) []adapter.Out
 	}
 	return res
 }
+
+// inUse is, per network, the members the history reports on. With keep top, a lazy member that
+// rests (monitoring's h_parked.go) is left out of the group's history: nothing tests it, and a
+// connection sent to it creates an outbound keep top has put away, and fails when keep top closes
+// it. A strategy that finds no member alive falls back on these, not on any member. When the
+// history names none of them (no monitoring, before the first results), every member.
+func inUse(outbounds map[string][]adapter.Outbound, history map[string]*adapter.URLTestHistory) map[string][]adapter.Outbound {
+	result := make(map[string][]adapter.Outbound, len(outbounds))
+	for network, members := range outbounds {
+		var reported []adapter.Outbound
+		for _, member := range members {
+			if _, loaded := history[member.Tag()]; loaded {
+				reported = append(reported, member)
+			}
+		}
+		if len(reported) == 0 {
+			reported = members
+		}
+		result[network] = reported
+	}
+	return result
+}
+
+// fallbackIndex is the member of members to fall back on when none is alive: the one at start,
+// or the next after it the history reports on (inUse).
+func fallbackIndex(members []adapter.Outbound, start int, reported map[string]uint16) int {
+	for i := range members {
+		index := (start + i) % len(members)
+		if _, loaded := reported[members[index].Tag()]; loaded {
+			return index
+		}
+	}
+	return start
+}
+
 func convertOutbounds(outbounds []adapter.Outbound) map[string][]adapter.Outbound {
 	return map[string][]adapter.Outbound{
 		N.NetworkTCP: filterOutbounds(outbounds, N.NetworkTCP),
