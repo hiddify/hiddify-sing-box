@@ -51,7 +51,9 @@ would push each other off Cloudflare. It takes, in order:
    for MASQUE, `masque.device`, a device enrolled elsewhere (a `masque://` link's). When
    Cloudflare refuses that device (its key was never enrolled, or the device was deleted), WARP
    remembers it in the cache file, goes on with 2 and 3, and does not try it again while the
-   config carries it.
+   config carries it. A WireGuard profile that is incomplete (no private key, no peer, no peer
+   public key, no tunnel address, or no peer address and port) is not used either: WARP logs a
+   warning that says what is missing, and goes on with 2 and 3.
 2. A device of the kind from the pool that is not retired nor leased by another endpoint: the one
    this endpoint (by `unique_identifier`, or the tag) used before, else any free one. Not with
    `profile.recreate` (then each start registers a new one). A closed endpoint gives its devices
@@ -251,7 +253,7 @@ keeps the current endpoint. The first handshake of each endpoint also counts as 
 | `listen_port` | number | random | Local UDP port. |
 | `udp_timeout` | duration | | UDP NAT timeout, as in the `wireguard` endpoint. |
 | `workers` | number | | WireGuard worker count, as in the `wireguard` endpoint. |
-| `private_key`, `interface`, `peers` | | | A complete WARP profile in Cloudflare's format. When given, no account is registered. |
+| `private_key`, `interface`, `peers` | | | A complete WARP profile in Cloudflare's format. When given, no account is registered. An incomplete one is not used: a warning says what is missing, and a saved device is taken or a new one is registered. |
 
 Dial fields (`detour`, `bind_interface` and the rest) apply to the tunnel, the scanner probes
 and the network name check.

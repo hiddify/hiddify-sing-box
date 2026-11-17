@@ -46,12 +46,16 @@ do about it. Items marked **Required** break or misbehave until they are handled
 - **Required — WARP by id and auth_token.** A `warp` profile given by `id` and `auth_token` now
   needs `private_key` (the device's own key); without it the endpoint fails at start. Before, it
   started without a key and never worked.
-- **Required — a complete WARP profile.** A `warp` endpoint with its own WireGuard profile (a
-  private key written in the config) now fails to load when the profile cannot run a tunnel: no
-  peer, no peer public key, no tunnel address, or no peer address and port (from the profile or
-  from `server` and `server_port`). The error says which. Before, the config loaded and that
-  endpoint retried its start for good. hiddify-core should drop or repair such a profile before
-  it builds the config, so that one broken WARP entry does not stop the whole config.
+- **An incomplete WARP profile is left out.** A `warp` endpoint whose own WireGuard profile
+  (`private_key`, `interface`, `peers`) cannot run a tunnel still loads. Such a profile has no
+  private key, no peer, no peer public key, no tunnel address, or no peer address and port (from
+  the profile or from `server` and `server_port`). The endpoint logs a warning that says what is
+  missing ("WARP: the profile in the config is incomplete and is not used (…)"), does not use
+  the profile, and goes on as a `warp` endpoint without one: it takes a saved device from the
+  pool, or registers a new one. The key written in such a profile is then not the one in use.
+  Nothing is required of hiddify-core. Where it can tell that a profile it builds is incomplete
+  (a WireGuard config to WARP without `address`), leaving the profile out gives the same result
+  without the warning.
 - **Required — AmneziaWG on a wireguard endpoint.** A `wireguard` endpoint with an `awg` block now
   fails to load ("use type awg"); before, the block was ignored and the connection was plain
   WireGuard. Generate `"type": "awg"` for AmneziaWG, or a `warp` endpoint with an `awg` block.
