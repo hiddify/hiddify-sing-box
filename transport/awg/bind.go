@@ -7,11 +7,10 @@ import (
 	"net/netip"
 	"sync"
 	"sync/atomic"
-	"syscall"
 
 	"github.com/amnezia-vpn/amneziawg-go/v3/conn"
 	E "github.com/sagernet/sing/common/exceptions"
-	M "github.com/sagernet/sing/common/metadata"
+	"github.com/sagernet/sing/common/logger"
 	N "github.com/sagernet/sing/common/network"
 )
 
@@ -28,11 +27,14 @@ type bind_adapter struct {
 	// refused the connections to 0.0.0.0, and the endpoint never started.
 	peer     netip.AddrPort
 	reserved *Reserved
-	opens    int           //H: see h_path.go
-	onReopen func()        //H
-	later    chan struct{} //H: see h_bind_later.go
-	pending  bool          //H: the only peer, given by a domain, is not resolved yet
-	failedTx atomic.Uint64 //H: bytes of the sends that failed, see h_path.go
+	opens    int                  //H: see h_path.go
+	onReopen func()               //H
+	open     *hBindOpen           //H: the current opening, see h_bind_later.go
+	aborted  bool                 //H: closed for good, see abort
+	held     [2][]hHeldPacket     //H: sent while a connection was being made, see h_bind_later.go
+	logger   logger.ContextLogger //H
+	pending  bool                 //H: the only peer, given by a domain, is not resolved yet
+	failedTx atomic.Uint64        //H: bytes of the sends that failed, see h_path.go
 }
 
 func newBind(ctx context.Context, dial N.Dialer, peer netip.AddrPort, reserved *Reserved) conn.Bind {
@@ -41,11 +43,8 @@ func newBind(ctx context.Context, dial N.Dialer, peer netip.AddrPort, reserved *
 		dialer:   dial,
 		peer:     peer,
 		reserved: reserved,
+		logger:   logger.NOP(), //H
 	}
-}
-
-func (b *bind_adapter) connect(addr netip.Addr, port uint16) (net.PacketConn, error) {
-	return b.dialer.ListenPacket(b.ctx, M.Socksaddr{Addr: addr, Port: port})
 }
 
 func (b *bind_adapter) receive(c net.PacketConn) conn.ReceiveFunc {
@@ -71,54 +70,26 @@ func (b *bind_adapter) Open(port uint16) (fns []conn.ReceiveFunc, actualPort uin
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 
-	if b.conn4 != nil || b.conn6 != nil {
+	if b.aborted { //H
+		return nil, 0, net.ErrClosed //H
+	} //H
+	if b.open != nil { //H
 		return nil, 0, conn.ErrBindAlreadyOpen
 	}
 	b.noteOpen() //H: a path change, after the first
 
-	if b.peer.IsValid() {
-		peerConn, err := b.connect(b.peer.Addr(), b.peer.Port())
-		if err != nil {
-			return b.openLater(port) //H: dial again once the detour is ready
-		}
-		if b.peer.Addr().Is4() || b.peer.Addr().Is4In6() {
-			b.conn4 = peerConn
-		} else {
-			b.conn6 = peerConn
-		}
-		return []conn.ReceiveFunc{b.receive(peerConn)}, port, nil
-	}
-
-	if b.pending { //H
-		return b.openPending(port) //H
-	} //H
-
-	conn4, err := b.connect(netip.IPv4Unspecified(), port)
-	if err != nil && !errors.Is(err, syscall.EAFNOSUPPORT) {
-		return nil, 0, E.Cause(err, "create ipv4 connection")
-	}
-	if conn4 != nil {
-		fns = append(fns, b.receive(conn4))
-	}
-
-	conn6, err := b.connect(netip.IPv6Unspecified(), port)
-	if err != nil && !errors.Is(err, syscall.EAFNOSUPPORT) {
-		return nil, 0, E.Cause(err, "create ipv6 connection")
-	}
-	if conn6 != nil {
-		fns = append(fns, b.receive(conn6))
-	}
-
-	b.conn4 = conn4
-	b.conn6 = conn6
-
-	return fns, port, nil
+	// H: the connections are dialed by the receive loops, see h_bind_later.go: the device calls
+	// Open under its locks, and a dial through a detour may take as long as the detour likes
+	return b.openLater(port) //H
 }
 
 func (b *bind_adapter) Close() error {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
+	return b.closeLocked() //H
+}
 
+func (b *bind_adapter) closeLocked() error { //H
 	var err4, err6 error
 	b.closeLater() //H
 
@@ -135,16 +106,16 @@ func (b *bind_adapter) Close() error {
 	return errors.Join(err4, err6)
 }
 
-// abort closes the connections without forgetting them, so a send stuck on a stalled detour
-// returns; Close, under the device's network lock, forgets them.
+// abort closes the bind for good: its connections and the dials on their way end, and it does
+// not open again. The device closes with it first, so that nothing of the device waits on the
+// detour while it closes, and a reconnect that was on its way (a fallback move, a network
+// change) cannot open the bind again behind the close. //H
 func (b *bind_adapter) abort() {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
-	for _, c := range []net.PacketConn{b.conn4, b.conn6} {
-		if c != nil {
-			c.Close()
-		}
-	}
+	b.aborted = true
+	b.closeLocked()
+	b.dropHeld()
 }
 
 func (b *bind_adapter) SetMark(mark uint32) error {
@@ -152,7 +123,7 @@ func (b *bind_adapter) SetMark(mark uint32) error {
 }
 
 func (b *bind_adapter) Send(bufs [][]byte, ep conn.Endpoint) error {
-	conn := b.sendConn(ep) //H: set late by openLater
+	conn := b.sendConn(bufs, ep) //H: set by the receive loop, once it has dialed
 
 	if conn == nil {
 		return errors.ErrUnsupported

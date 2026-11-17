@@ -76,7 +76,7 @@ func NewDevice(ctx context.Context, logger logger.ContextLogger, dial network.Di
 
 	return &Device{
 		tun:       tun,
-		bind:      newDeviceBind(ctx, dial, opts), //H: a server listens on its port
+		bind:      newDeviceBind(ctx, logger, dial, opts), //H: a server listens on its port
 		logger:    awgLogger,
 		ipcConfig: ipcConfig,
 		path:      newDevicePath(ctx, logger, tun, opts), //H
@@ -112,13 +112,13 @@ func (d *Device) IsUnderLoad() bool {
 }
 
 func (d *Device) Close() error {
+	// H: the bind first, and for good: nothing of the device waits on the detour while it
+	// closes, and no reconnect on its way opens the bind again //H
+	if bind, isBind := d.bind.(*bind_adapter); isBind { //H
+		bind.abort() //H
+	} //H
 	d.path.close() //H
 	if d.awgDevice != nil {
-		// H: close the detour's connections first: a send stuck on a stalled detour holds the
-		// device's network lock, which device.Close needs to close the bind //H
-		if bind, isBind := d.bind.(*bind_adapter); isBind { //H
-			bind.abort() //H
-		} //H
 		d.awgDevice.Close()
 	}
 	return nil

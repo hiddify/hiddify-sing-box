@@ -74,15 +74,26 @@ func TestH_BindOpenSendReceive(t *testing.T) {
 	fns, port, err := b.Open(0)
 	require.NoError(t, err)
 	require.Equal(t, uint16(0), port)
-	require.Len(t, fns, 1, "ipv6 EAFNOSUPPORT must be tolerated")
-	require.Len(t, dialer.listen, 2)
-	require.True(t, dialer.listen[0].Addr().Is4() && dialer.listen[0].Addr().IsUnspecified())
-	require.True(t, dialer.listen[1].Addr().Is6() && dialer.listen[1].Addr().IsUnspecified())
+	require.Len(t, fns, 2, "a receive loop for each address family")
 
 	_, _, err = b.Open(0)
 	require.ErrorIs(t, err, conn.ErrBindAlreadyOpen)
 	require.Equal(t, 1, b.BatchSize())
 	require.NoError(t, b.SetMark(1))
+
+	// the loops dial their connections: the IPv6 one ends, as this dialer has no IPv6
+	packets := [][]byte{make([]byte, 64)}
+	sizes := make([]int, 1)
+	eps := make([]conn.Endpoint, 1)
+	_, err = fns[1](make([][]byte, 1), make([]int, 1), make([]conn.Endpoint, 1))
+	require.ErrorIs(t, err, net.ErrClosed, "ipv6 EAFNOSUPPORT must be tolerated")
+	received := make(chan int, 1)
+	go func() {
+		count, receiveErr := fns[0](packets, sizes, eps)
+		if receiveErr == nil {
+			received <- count
+		}
+	}()
 
 	peer, err := net.ListenPacket("udp4", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -93,7 +104,8 @@ func TestH_BindOpenSendReceive(t *testing.T) {
 	require.Equal(t, "", ep.SrcToString())
 	require.False(t, ep.SrcIP().IsValid())
 
-	require.NoError(t, b.Send([][]byte{[]byte("hello"), []byte("world")}, ep))
+	// sent at once, or kept until the receive loop has dialed the connection: they arrive
+	_ = b.Send([][]byte{[]byte("hello"), []byte("world")}, ep)
 	buffer := make([]byte, 64)
 	require.NoError(t, peer.SetReadDeadline(time.Now().Add(3*time.Second)))
 	n, from, err := peer.ReadFrom(buffer)
@@ -103,15 +115,25 @@ func TestH_BindOpenSendReceive(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "world", string(buffer[:n]))
 	require.Equal(t, dialer.boundPort(t), uint16(from.(*net.UDPAddr).Port))
+	require.NoError(t, b.Send([][]byte{[]byte("again")}, ep), "connected by now")
+	n, _, err = peer.ReadFrom(buffer)
+	require.NoError(t, err)
+	require.Equal(t, "again", string(buffer[:n]))
+	dialer.access.Lock()
+	listen := append([]netip.AddrPort(nil), dialer.listen...)
+	dialer.access.Unlock()
+	require.Len(t, listen, 2)
+	require.True(t, listen[0].Addr().IsUnspecified() && listen[1].Addr().IsUnspecified())
+	require.NotEqual(t, listen[0].Addr().Is4(), listen[1].Addr().Is4(), "one of each family")
 
 	_, err = peer.WriteTo([]byte("reply"), from)
 	require.NoError(t, err)
-	packets := [][]byte{make([]byte, 64)}
-	sizes := make([]int, 1)
-	eps := make([]conn.Endpoint, 1)
-	count, err := fns[0](packets, sizes, eps)
-	require.NoError(t, err)
-	require.Equal(t, 1, count)
+	select {
+	case count := <-received:
+		require.Equal(t, 1, count)
+	case <-time.After(3 * time.Second):
+		t.Fatal("no packet received")
+	}
 	require.Equal(t, "reply", string(packets[0][:sizes[0]]))
 	require.Equal(t, peer.LocalAddr().String(), eps[0].DstToString())
 
@@ -125,7 +147,7 @@ func TestH_BindOpenSendReceive(t *testing.T) {
 	require.NoError(t, b.Close())
 	require.NoError(t, b.Close())
 	_, err = fns[0](packets, sizes, eps)
-	require.Error(t, err)
+	require.ErrorIs(t, err, net.ErrClosed)
 
 	_, _, err = b.Open(0)
 	require.NoError(t, err, "bind must be reopenable after close")
