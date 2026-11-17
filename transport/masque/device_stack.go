@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"sync"
 
 	"github.com/sagernet/gvisor/pkg/buffer"
 	"github.com/sagernet/gvisor/pkg/tcpip"
@@ -41,6 +42,7 @@ type stackDevice struct {
 	dispatcher     stack.NetworkDispatcher
 	inet4Address   netip.Addr
 	inet6Address   netip.Addr
+	closeOnce      sync.Once
 }
 
 func newStackDevice(options DeviceOptions) (*stackDevice, error) {
@@ -234,13 +236,15 @@ func (w *stackDevice) Events() <-chan wgTun.Event {
 }
 
 func (w *stackDevice) Close() error {
-	close(w.done)
-	close(w.events)
-	w.stack.Close()
-	for _, endpoint := range w.stack.CleanupEndpoints() {
-		endpoint.Abort()
-	}
-	w.stack.Wait()
+	w.closeOnce.Do(func() { // a second Close closed the channels twice, a panic
+		close(w.done)
+		close(w.events)
+		w.stack.Close()
+		for _, endpoint := range w.stack.CleanupEndpoints() {
+			endpoint.Abort()
+		}
+		w.stack.Wait()
+	})
 	return nil
 }
 
@@ -301,6 +305,7 @@ func (ep *wireEndpoint) WritePackets(list stack.PacketBufferList) (int, tcpip.Er
 		packetBuffer.IncRef()
 		select {
 		case <-ep.done:
+			packetBuffer.DecRef() // the reference taken for the queue it did not go into
 			return 0, &tcpip.ErrClosedForSend{}
 		case ep.outbound <- packetBuffer:
 		}
