@@ -208,6 +208,16 @@ func (s *warpProfiles) usable(kind string) *warpProfile {
 		if profile.Kind != kind || profile.Retired != "" {
 			continue
 		}
+		if kind != kindMASQUE {
+			if err := validateWARPDevice(profile.WireGuard); err != nil {
+				// saved before devices were checked: it would fail every start it is handed to
+				profile.Retired = "incomplete device: " + err.Error()
+				delete(pool.leases, profile)
+				pool.saveLocked()
+				s.logger.WarnContext(s.ctx, "WARP: saved device ", profile.ID, " is retired: ", err)
+				continue
+			}
+		}
 		holder, leased := pool.leases[profile]
 		switch {
 		case leased && holder == s.owner:

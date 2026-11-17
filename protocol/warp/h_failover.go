@@ -150,8 +150,9 @@ func (w *WARPEndpoint) newInner(config *C.WARPConfig, peerAddr string, peerPort 
 		inner adapter.Endpoint
 		err   error
 	)
-	options := w.innerOptions() // with the noise the scanner found
-	if w.activeMode() == modeAWG {
+	mode := w.activeMode()          // read once: auto mode may choose another tunnel meanwhile, and the options are the tunnel's
+	options := w.innerOptions(mode) // with the noise the scanner found
+	if mode == modeAWG {
 		inner, err = createWARPAwgEndpoint(w.ctx, w.router, w.logger, w.tag, options, config, peerAddr, peerPort, config.Peers[0].PublicKey)
 	} else {
 		inner, err = createWARPWireGuardEndpoint(w.ctx, w.router, w.logger, w.tag, options, config, peerAddr, peerPort, config.Peers[0].PublicKey)
@@ -220,9 +221,9 @@ const noiseSearchCount = 16
 
 // innerOptions are the endpoint's options with the noise in use: a preset the scanner found
 // replaces the noise (WireGuard) or the junk and special packets (AmneziaWG).
-func (w *WARPEndpoint) innerOptions() option.WARPEndpointOptions {
+func (w *WARPEndpoint) innerOptions(mode string) option.WARPEndpointOptions {
 	options := w.options
-	if w.activeMode() != modeAWG {
+	if mode != modeAWG {
 		options.AWG = nil // the WireGuard endpoint refuses an awg block; auto mode has one
 	}
 	failover := w.currentFailover()
@@ -230,7 +231,7 @@ func (w *WARPEndpoint) innerOptions() option.WARPEndpointOptions {
 		return options
 	}
 	if preset, found := warpscan.NoisePresetByName(failover.currentNoise()); found {
-		if w.activeMode() == modeAWG {
+		if mode == modeAWG {
 			options.AWG = preset.AWG(options.AWG)
 		} else {
 			options.Noise = preset.WireGuard()

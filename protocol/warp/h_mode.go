@@ -2,6 +2,7 @@ package warp
 
 import (
 	"context"
+	"errors"
 	"net/netip"
 	"strings"
 	"sync"
@@ -310,20 +311,42 @@ func (w *WARPEndpoint) obtainProfile(done <-chan struct{}, kind string) *warpPro
 			}
 		}
 	}
-	var profile *warpProfile
+	var (
+		profile *warpProfile
+		invalid error
+	)
 	w.registering.Store(true)
 	registered := w.retry(done, "register WARP "+kind+" device", func() error { // a cold detour fails the first attempts
 		var err error
-		profile, err = w.register(kind)
+		profile, err = w.registerDevice(kind)
+		if errors.As(err, new(invalidDeviceError)) {
+			invalid = err // the API answered, with a device that cannot work: trying again does not help
+			return nil
+		}
 		return err
 	})
 	w.registering.Store(false)
 	if !registered {
 		return nil
 	}
+	if invalid != nil {
+		w.fail(E.Cause(invalid, "register WARP "+kind+" device"))
+		return nil
+	}
 	w.recreated.Store(kind, struct{}{})
 	w.profiles.add(profile)
 	return profile
+}
+
+// hRegister registers a device of a kind.
+type hRegister func(kind string) (*warpProfile, error)
+
+// registerDevice is register, or what a test put in its place.
+func (w *WARPEndpoint) registerDevice(kind string) (*warpProfile, error) {
+	if w.registerWith != nil {
+		return w.registerWith(kind)
+	}
+	return w.register(kind)
 }
 
 // register registers a device of kind. The device of profile.id and profile.auth_token is only
@@ -349,6 +372,9 @@ func (w *WARPEndpoint) register(kind string) (*warpProfile, error) {
 		token = profileOptions.AuthToken
 	}
 	config := device.Config
+	if err = validateWARPConfig(&config, w.options.ServerOptions); err != nil { // before it is saved
+		return nil, err
+	}
 	return &warpProfile{Kind: kind, ID: device.ID, Token: token, WireGuard: &config, Created: time.Now()}, nil
 }
 
