@@ -68,8 +68,9 @@ func NewClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr, opt
 		return xmuxClient.XmuxConn.(DialerClient), xmuxClient
 	}
 	baseRequestURL2 := baseRequestURL
-	getHTTPClient2 := getHTTPClient
-	xmuxManagers := []*XmuxManager{xmuxManager} //H
+	// H: nil without a download block, where DialContext picks once
+	var getHTTPClient2 func() (DialerClient, *XmuxClient) //H
+	xmuxManagers := []*XmuxManager{xmuxManager}           //H
 	if options.Download != nil {
 		options2 := options.Download
 		dialer2 := dialer
@@ -127,14 +128,14 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 	}
 	requestURL := c.baseRequestURL
 	requestURL2 := c.baseRequestURL2
+	// H: a pick counts its client as running (GetXmuxClient). Without a download block the
+	// download uses the same client, as in Xray: a second pick from the same manager retired the
+	// first when its reuses ran out, and closed it before it was used.
 	httpClient, xmuxClient := c.getHTTPClient()
-	httpClient2, xmuxClient2 := c.getHTTPClient2()
-	if xmuxClient != nil {
-		xmuxClient.AddRunning()
-	}
-	if xmuxClient2 != nil && xmuxClient2 != xmuxClient {
-		xmuxClient2.AddRunning()
-	}
+	httpClient2, xmuxClient2 := httpClient, xmuxClient //H
+	if c.getHTTPClient2 != nil {                       //H
+		httpClient2, xmuxClient2 = c.getHTTPClient2() //H
+	} //H
 	var closed atomic.Int32
 	reader, writer := io.Pipe()
 	conn := splitConn{
@@ -241,9 +242,9 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 			if dynamicXmuxClient != nil && (dynamicXmuxClient.LeftRequests.Add(-1) <= 0 ||
 				(dynamicXmuxClient.UnreusableAt != time.Time{} && lastWrite.After(dynamicXmuxClient.UnreusableAt))) {
 				previous := dynamicXmuxClient //H
+				// H: running until the uploads end or move on
 				dynamicHTTPClient, dynamicXmuxClient = c.getHTTPClient()
-				dynamicXmuxClient.AddRunning() //H: in use until the uploads end or move on
-				if previous != xmuxClient {    //H
+				if previous != xmuxClient { //H
 					previous.DoneRunning() //H
 				} //H
 			}

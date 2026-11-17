@@ -18,8 +18,12 @@ import (
 // first upload's connection ahead.
 type hClientState struct {
 	connAccess sync.Mutex
-	conns      map[*hConn]struct{}   // the TCP connections it dialled and has not closed
-	warm       atomic.Pointer[hWarm] // an upload connection being dialled ahead
+	// hClosed is set by Close. It is not closed, which the stream goroutines also set when a
+	// request fails, to mean only that the client is not to be used again: on a client several
+	// connections share, a failed request then closed every connection dialled after it.
+	hClosed atomic.Bool
+	conns   map[*hConn]struct{}   // the TCP connections it dialled and has not closed
+	warm    atomic.Pointer[hWarm] // an upload connection being dialled ahead
 }
 
 // hConn is a connection a client dialled; the client forgets it when it is closed.
@@ -46,7 +50,7 @@ func (c *hConn) Upstream() any {
 func (c *DefaultDialerClient) hTrack(conn net.Conn) net.Conn {
 	tracked := &hConn{Conn: conn, owner: c}
 	c.connAccess.Lock()
-	if c.closed.Load() {
+	if c.hClosed.Load() {
 		c.connAccess.Unlock()
 		conn.Close()
 		return tracked
@@ -65,7 +69,7 @@ func (c *DefaultDialerClient) hTrack(conn net.Conn) net.Conn {
 // sends a keep-alive every ten seconds, for up to fifty.
 func (c *DefaultDialerClient) Close() error {
 	c.connAccess.Lock()
-	c.closed.Store(true)
+	c.hClosed.Store(true)
 	conns := c.conns
 	c.conns = nil
 	c.connAccess.Unlock()

@@ -261,9 +261,7 @@ func TestH_XmuxIdleClientsAreClosed(t *testing.T) {
 	// three proxied connections at once: three connections to the server
 	var clients []*XmuxClient
 	for range 3 {
-		client := manager.GetXmuxClient(ctx)
-		client.AddRunning()
-		clients = append(clients, client)
+		clients = append(clients, manager.GetXmuxClient(ctx)) // running once picked
 	}
 	require.NotSame(t, clients[0], clients[1])
 	require.NotSame(t, clients[1], clients[2])
@@ -279,7 +277,6 @@ func TestH_XmuxIdleClientsAreClosed(t *testing.T) {
 
 	// a new proxied connection uses the one that was kept
 	require.Same(t, clients[1], manager.GetXmuxClient(ctx))
-	clients[1].AddRunning()
 	time.Sleep(150 * time.Millisecond)
 	require.False(t, closed(clients[1]), "taken again, it is in use")
 	clients[1].DoneRunning()

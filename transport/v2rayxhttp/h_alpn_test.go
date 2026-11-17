@@ -50,7 +50,10 @@ func hNewClientHTTPVersion(t *testing.T, content string, tlsConfig tls.Config) (
 	require.NoError(t, err)
 	client := transport.(*Client)
 	upload, _ := client.getHTTPClient()
-	download, _ := client.getHTTPClient2()
+	download := upload // without a download block the download uses the upload's client
+	if client.getHTTPClient2 != nil {
+		download, _ = client.getHTTPClient2()
+	}
 	return upload.(*DefaultDialerClient).httpVersion, download.(*DefaultDialerClient).httpVersion
 }
 

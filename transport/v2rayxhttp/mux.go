@@ -89,11 +89,14 @@ func (m *XmuxManager) newXmuxClient() *XmuxClient {
 	return xmuxClient
 }
 
+// GetXmuxClient picks a client and counts it as running: the caller calls DoneRunning. //H
+// Counted under the lock: counted after it, the next pick could find the client used up (its
+// c_max_reuse_times) with nothing running on it, and close it before its caller used it.
 func (m *XmuxManager) GetXmuxClient(ctx context.Context) *XmuxClient {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	xmuxClient := m.getXmuxClient()
-	xmuxClient.idleSince.Store(0) //H: handed out, so not idle: hTrim leaves it alone
+	xmuxClient.AddRunning() //H: also not idle any more: hTrim leaves it alone
 	return xmuxClient
 }
 

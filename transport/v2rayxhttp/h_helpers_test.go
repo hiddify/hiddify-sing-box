@@ -352,16 +352,15 @@ func TestH_XmuxManagerReuse(t *testing.T) {
 		created++
 		return &hXmuxConn{}
 	})
+	// a pick counts the client as running
 	first := manager.GetXmuxClient(context.Background())
-	first.OpenUsage.Add(1)
 	require.Same(t, first, manager.GetXmuxClient(context.Background()))
-	first.OpenUsage.Add(1)
 	second := manager.GetXmuxClient(context.Background())
 	require.NotSame(t, first, second)
 	require.Equal(t, 2, created)
 
 	first.XmuxConn.(*hXmuxConn).closed = true
-	second.OpenUsage.Add(2)
+	second.OpenUsage.Add(1)
 	third := manager.GetXmuxClient(context.Background())
 	require.NotSame(t, first, third)
 	require.NotSame(t, second, third)
