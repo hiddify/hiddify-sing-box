@@ -490,12 +490,14 @@ func (w *WARPEndpoint) check(session *warpSession, networkChanged bool) {
 		}
 	}
 	w.logger.WarnContext(w.ctx, "WARP: endpoint ", failover.current, " does not answer, looking for another")
-	failover.book.Failure(network, failover.current, time.Now())
 	results, err := w.scanWith(session.ctx, failover, []netip.AddrPort{failover.current})
 	if err != nil {
+		// no endpoint answers: the network is down, not the endpoint in use
 		w.logger.WarnContext(w.ctx, err, ", keeping ", failover.current)
 		return
 	}
+	failover.book.Failure(network, failover.current, time.Now()) // another answers: this one is the problem
+	w.saveScores(failover)
 	best := results[0].AddrPort
 	replaced, err := w.replaceInner(session.done, failover.config, best.Addr().String(), best.Port())
 	if err != nil {

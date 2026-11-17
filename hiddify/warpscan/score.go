@@ -7,31 +7,34 @@ import (
 	"slices"
 	"sync"
 	"time"
+
+	"github.com/sagernet/sing-box/hiddify/rating"
 )
 
-// Scores rank endpoints per network: an endpoint that works on one network (a home Wi-Fi) may be
-// blocked on another (a mobile carrier), so each network keeps its own record of every endpoint
-// tried on it.
+// Scores (see rating) rank endpoints per network: an endpoint that works on one network (a home
+// Wi-Fi) may be blocked on another (a mobile carrier), so each network keeps its own record of
+// every endpoint tried on it.
 const (
-	MaxScore = 10
-	MinScore = -10
+	MaxScore = rating.Max
+	MinScore = rating.Min
 	// RecentScoreFloor is the lowest score of an endpoint that succeeded within RecentWindow.
-	RecentScoreFloor = -5
-	RecentWindow     = 7 * 24 * time.Hour
+	RecentScoreFloor rating.Score = -5
+	RecentWindow                  = 7 * 24 * time.Hour
 	// FailurePeriod is the shortest time between two penalties of one endpoint, so a burst of
 	// failures (one outage) costs a single point.
 	FailurePeriod = time.Hour
 	// records kept per network, and networks forgotten after
-	maxRecordsPerNetwork = 64
+	maxRecordsPerNetwork = 128
 	networkLifetime      = 90 * 24 * time.Hour
 )
 
+// EndpointPolicy tempers the failures of endpoints.
+var EndpointPolicy = rating.Policy{FailureGap: FailurePeriod, RecentWindow: RecentWindow, RecentFloor: RecentScoreFloor}
+
 // Record is what is known about one endpoint on one network.
 type Record struct {
-	Score       int           `json:"score"`
-	RTT         time.Duration `json:"rtt,omitempty"`
-	LastSuccess time.Time     `json:"last_success,omitzero"`
-	LastPenalty time.Time     `json:"last_penalty,omitzero"`
+	rating.Record
+	RTT time.Duration `json:"rtt,omitempty"`
 }
 
 // Book holds the records of every network. It is safe for concurrent use.
@@ -54,8 +57,11 @@ func NewBook() *Book {
 func (b *Book) network(name string, now time.Time) *network {
 	n := b.networks[name]
 	if n == nil {
-		n = &network{Records: make(map[netip.AddrPort]*Record)}
+		n = &network{}
 		b.networks[name] = n
+	}
+	if n.Records == nil {
+		n.Records = make(map[netip.AddrPort]*Record)
 	}
 	n.LastSeen = now
 	return n
@@ -88,40 +94,32 @@ func (b *Book) Success(networkName string, addrPort netip.AddrPort, rtt time.Dur
 		record = &Record{}
 		records[addrPort] = record
 	}
-	if record.Score < 0 {
-		record.Score = 1
-	} else {
-		record.Score = min(record.Score+1, MaxScore)
-	}
+	record.Success(now)
 	if rtt > 0 {
 		record.RTT = rtt
 	}
-	record.LastSuccess = now
 }
 
-// Failure records that addrPort did not answer on network: -1, at most once per FailurePeriod,
-// never below RecentScoreFloor when it succeeded within RecentWindow.
+// Failure records that addrPort did not answer on network (see EndpointPolicy): -1, at most once
+// per FailurePeriod, never below RecentScoreFloor when it succeeded within RecentWindow. Only an
+// endpoint that answered there before is marked down: the ranges hold millions of address and
+// port pairs, so a random one that failed is all but never drawn again, and its record would
+// only push the endpoints that work out of the book.
 func (b *Book) Failure(networkName string, addrPort netip.AddrPort, now time.Time) {
 	b.access.Lock()
 	defer b.access.Unlock()
-	records := b.network(networkName, now).Records
-	record := records[addrPort]
-	if record == nil {
-		record = &Record{}
-		records[addrPort] = record
-	}
-	if !record.LastPenalty.IsZero() && now.Sub(record.LastPenalty) < FailurePeriod {
+	n := b.networks[networkName]
+	if n == nil {
 		return
 	}
-	record.LastPenalty = now
-	record.Score = max(record.Score-1, MinScore)
-	if !record.LastSuccess.IsZero() && now.Sub(record.LastSuccess) <= RecentWindow {
-		record.Score = max(record.Score, RecentScoreFloor)
+	if record := n.Records[addrPort]; record != nil && !record.LastSuccess.IsZero() {
+		n.LastSeen = now
+		record.Failure(now, EndpointPolicy)
 	}
 }
 
 // Score returns the score of addrPort on network, and whether it is known there.
-func (b *Book) Score(networkName string, addrPort netip.AddrPort) (int, bool) {
+func (b *Book) Score(networkName string, addrPort netip.AddrPort) (rating.Score, bool) {
 	b.access.Lock()
 	defer b.access.Unlock()
 	if n := b.networks[networkName]; n != nil {
@@ -221,8 +219,17 @@ func (b *Book) UnmarshalJSON(content []byte) error {
 		return err
 	}
 	for name, n := range networks {
-		if n == nil || n.Records == nil {
+		if n == nil {
 			delete(networks, name)
+			continue
+		}
+		if n.Records == nil {
+			n.Records = make(map[netip.AddrPort]*Record)
+		}
+		for addrPort, record := range n.Records {
+			if record == nil || record.LastSuccess.IsZero() {
+				delete(n.Records, addrPort) // a failure of an endpoint that never answered, saved before
+			}
 		}
 	}
 	b.access.Lock()

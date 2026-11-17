@@ -7,8 +7,8 @@ package warpscan
 import (
 	"cmp"
 	"context"
-	"errors"
 	"crypto/rand"
+	"errors"
 	"math/big"
 	"net/netip"
 	"slices"
@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/sagernet/sing-box/hiddify/rating"
 	"github.com/sagernet/sing-box/option"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
@@ -31,14 +32,14 @@ const (
 	enoughResults = 4
 	// stableScore ends a scan as soon as an endpoint with that score answers: it has a
 	// record of working on this network, so exploring further only delays connecting.
-	stableScore = 3
+	stableScore rating.Score = 3
 )
 
 // Result is an endpoint that answered, with its handshake time and its score afterwards.
 type Result struct {
 	AddrPort netip.AddrPort `json:"address"`
 	RTT      time.Duration  `json:"rtt"`
-	Score    int            `json:"score"`
+	Score    rating.Score   `json:"score"`
 }
 
 // Probe runs one handshake with addrPort and returns the time it took.
@@ -66,8 +67,11 @@ type Request struct {
 }
 
 // Scan probes the known endpoints of the network best first, then the good ones of other
-// networks, then random ones, and records every answer and failure in the book. It returns the
-// endpoints that answered within max_rtt, highest score first, then fastest.
+// networks, then random ones, and records every answer in the book. The failures are recorded
+// only when some endpoint answered: when none does, the network, or the noise the probe sends,
+// is the likely cause, and a scan with a noise that does not get through must not mark the
+// endpoints down. It returns the endpoints that answered within max_rtt, highest score first,
+// then fastest.
 func Scan(ctx context.Context, logger logger.ContextLogger, request Request) ([]Result, error) {
 	options := request.Options
 	if options == nil {
@@ -118,7 +122,8 @@ func Scan(ctx context.Context, logger logger.ContextLogger, request Request) ([]
 	var (
 		access      sync.Mutex
 		results     []Result
-		unreachable [2]bool // the network cannot reach IPv4, IPv6
+		failed      []netip.AddrPort // recorded when some endpoint answered
+		unreachable [2]bool          // the network cannot reach IPv4, IPv6
 		wait        sync.WaitGroup
 	)
 	family := func(addrPort netip.AddrPort) int {
@@ -148,17 +153,19 @@ func Scan(ctx context.Context, logger logger.ContextLogger, request Request) ([]
 						// cut off by the end of the scan, not a failure of the endpoint
 						continue
 					}
+					access.Lock()
 					if familyUnreachable(err) {
-						access.Lock()
 						unreachable[family(addrPort)] = true
-						access.Unlock()
 					}
-					book.Failure(request.Network, addrPort, now)
+					failed = append(failed, addrPort)
+					access.Unlock()
 					logger.TraceContext(ctx, "WARP scanner: ", addrPort, ": ", err)
 					continue
 				}
 				if rtt > maxRTT {
-					book.Failure(request.Network, addrPort, now)
+					access.Lock()
+					failed = append(failed, addrPort)
+					access.Unlock()
 					logger.DebugContext(ctx, "WARP scanner: ", addrPort, " answered in ", rtt, ", too slow")
 					continue
 				}
@@ -184,6 +191,12 @@ feed:
 	}
 	close(queue)
 	wait.Wait()
+	if len(results) > 0 {
+		now := time.Now()
+		for _, addrPort := range failed {
+			book.Failure(request.Network, addrPort, now)
+		}
+	}
 	if len(results) == 0 {
 		if err := ctx.Err(); err != nil {
 			return nil, err

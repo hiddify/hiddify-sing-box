@@ -140,16 +140,18 @@ func (s *masqueScanner) OnConnected(endpoint net.Addr, http2 bool, elapsed time.
 	}
 }
 
-// NextEndpoint counts the failure of endpoint and looks for another one.
+// NextEndpoint looks for another endpoint than failed, and counts the failure once another one
+// answers: when none does, the network is down, not the endpoint.
 func (s *masqueScanner) NextEndpoint(failed net.Addr, http2 bool) net.Addr {
 	addrPort, ok := addrPortOf(failed)
-	if ok {
-		s.book.Failure(s.currentNetwork().Name+versionSuffix(http2), addrPort, time.Now())
-	}
 	next, err := s.Scan(http2, []netip.AddrPort{addrPort})
 	if err != nil {
 		s.logger.WarnContext(s.ctx, err, ", keeping ", failed)
 		return nil
+	}
+	if ok {
+		s.book.Failure(s.currentNetwork().Name+versionSuffix(http2), addrPort, time.Now())
+		s.save()
 	}
 	return next
 }

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sagernet/sing-box/hiddify/rating"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing/common/json/badoption"
@@ -52,7 +53,7 @@ func TestH_BookScores(t *testing.T) {
 	require.Equal(t, MinScore, score)
 	book.Success("home", hA, time.Millisecond, later.Add(30*time.Hour))
 	score, _ = book.Score("home", hA)
-	require.Equal(t, 1, score)
+	require.Equal(t, rating.Score(1), score)
 
 	// scores are per network
 	_, known := book.Score("mobile", hA)
@@ -67,9 +68,14 @@ func TestH_BookCandidates(t *testing.T) {
 	book.Success("home", hB, 10*time.Millisecond, now)
 	book.Success("mobile", hC, 10*time.Millisecond, now)
 	dead := netip.MustParseAddrPort("10.0.0.9:2408")
+	book.Success("home", dead, 10*time.Millisecond, now.Add(-RecentWindow-time.Hour)) // worked long ago
 	for hour := range 20 {
 		book.Failure("home", dead, now.Add(time.Duration(hour)*time.Hour))
 	}
+	never := netip.MustParseAddrPort("10.0.0.8:2408")
+	book.Failure("home", never, now)
+	_, known := book.Score("home", never)
+	require.False(t, known, "an endpoint that never answered is not recorded")
 	preferred, last := book.Candidates("home")
 	require.Equal(t, []netip.AddrPort{hB, hA, hC}, preferred, "own endpoints by score, then other networks' good ones")
 	require.Equal(t, []netip.AddrPort{dead}, last)
@@ -84,18 +90,18 @@ func TestH_BookJSON(t *testing.T) {
 	require.NoError(t, loaded.UnmarshalJSON(content))
 	score, known := loaded.Score("home", hA)
 	require.True(t, known)
-	require.Equal(t, 1, score)
+	require.Equal(t, rating.Score(1), score)
 	require.Error(t, NewBook().UnmarshalJSON([]byte(`["10.0.0.1:2408"]`)), "the old list format is not a book")
 }
 
 func hRequest(book *Book, probe Probe) Request {
 	return Request{
-		Options:  &option.WARPScannerOptions{Concurrency: 1, Count: 10, CIDRs: badoption.Listable[netip.Prefix]{netip.MustParsePrefix("192.0.2.0/24"), netip.MustParsePrefix("2001:db8:1::/64")}, Ports: badoption.Listable[uint16]{1}},
-		IPv4:     true,
-		IPv6:     true,
-		Book:     book,
-		Network:  "home",
-		Probe:    probe,
+		Options: &option.WARPScannerOptions{Concurrency: 1, Count: 10, CIDRs: badoption.Listable[netip.Prefix]{netip.MustParsePrefix("192.0.2.0/24"), netip.MustParsePrefix("2001:db8:1::/64")}, Ports: badoption.Listable[uint16]{1}},
+		IPv4:    true,
+		IPv6:    true,
+		Book:    book,
+		Network: "home",
+		Probe:   probe,
 	}
 }
 
@@ -124,12 +130,56 @@ func TestH_ScanUsesScores(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []netip.AddrPort{hA, hB}, order[:2])
 	require.Equal(t, hA, results[0].AddrPort, "the proven endpoint wins over a faster new one")
-	require.Equal(t, 2, results[0].Score)
+	require.Equal(t, rating.Score(2), results[0].Score)
 	require.Equal(t, hB, results[1].AddrPort)
-	require.Equal(t, 1, results[1].Score)
-	score, known := book.Score("home", order[2])
+	require.Equal(t, rating.Score(1), results[1].Score)
+	_, known := book.Score("home", order[2])
+	require.False(t, known, "a random endpoint that failed is not recorded: it is all but never drawn again")
+}
+
+// An endpoint that worked before loses a point when it fails while another answers.
+func TestH_ScanMarksDownKnownEndpoint(t *testing.T) {
+	book := NewBook()
+	now := time.Now()
+	book.Success("home", hA, time.Millisecond, now.Add(-2*time.Hour))
+	book.Success("home", hB, time.Millisecond, now.Add(-2*time.Hour))
+	probe := func(ctx context.Context, addrPort netip.AddrPort) (time.Duration, error) {
+		if addrPort == hB {
+			return time.Millisecond, nil
+		}
+		return 0, errors.New("no answer")
+	}
+	_, err := Scan(context.Background(), log.NewNOPFactory().Logger(), hRequest(book, probe))
+	require.NoError(t, err)
+	score, _ := book.Score("home", hA)
+	require.Equal(t, rating.Score(0), score)
+}
+
+// A book saved with failures of endpoints that never answered drops them.
+func TestH_BookDropsNeverAnswered(t *testing.T) {
+	book := NewBook()
+	require.NoError(t, book.UnmarshalJSON([]byte(`{"home":{"last_seen":"2026-01-01T00:00:00Z","records":{"10.0.0.1:2408":{"score":-1,"last_penalty":"2026-01-01T00:00:00Z"},"10.0.0.2:2408":{"score":2,"last_success":"2026-01-01T00:00:00Z"}}}}`)))
+	_, known := book.Score("home", hA)
+	require.False(t, known)
+	score, known := book.Score("home", hB)
 	require.True(t, known)
-	require.Equal(t, -1, score, "a random endpoint that failed is recorded")
+	require.Equal(t, rating.Score(2), score)
+}
+
+// When no endpoint answers, no endpoint loses a point: the network, or the noise, failed.
+func TestH_ScanWithoutAnswerKeepsScores(t *testing.T) {
+	book := NewBook()
+	book.Success("home", hA, time.Millisecond, time.Now())
+	probe := func(ctx context.Context, addrPort netip.AddrPort) (time.Duration, error) {
+		return 0, errors.New("no answer")
+	}
+	_, err := Scan(context.Background(), log.NewNOPFactory().Logger(), hRequest(book, probe))
+	require.Error(t, err)
+	score, _ := book.Score("home", hA)
+	require.Equal(t, rating.Score(1), score)
+	preferred, last := book.Candidates("home")
+	require.Equal(t, []netip.AddrPort{hA}, preferred, "the random endpoints tried are not recorded either")
+	require.Empty(t, last)
 }
 
 // Excluded endpoints are not probed, and only the families the network has are drawn.
