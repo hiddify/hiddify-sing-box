@@ -96,12 +96,35 @@ func (m *OutboundMonitoring) registryGroup(registry, previous *monitoringRegistr
 		grp.observer = old.observer
 		grp.notifyCh = old.notifyCh
 		grp.bestDelay = old.bestDelay
+	} else if early, ok := m.earlyObservers[tag]; ok {
+		grp.observer = early // those who subscribed before the group was registered are its subscribers
+		grp.notifyCh = make(chan struct{}, 1)
+		delete(m.earlyObservers, tag)
 	} else {
 		grp.observer = NewBroadcaster[GroupEvent](m.ctx)
 		grp.notifyCh = make(chan struct{}, 1)
 	}
 	registry.groups[tag] = grp
 	return grp
+}
+
+// earlyObserver is the observer of a group the monitoring does not know yet; reloadAccess is held.
+//
+// A group added by a hot reload under a new tag starts, with its worker, when it is created, and
+// the monitoring is reloaded after every outbound of the new config exists. The worker's
+// subscription found no such group and failed, so the worker ended: a balancer added that way
+// never followed a URL test and stayed on the member it had started on. The subscription is now
+// kept under the group's tag, and the registry takes it over when it registers the group.
+func (m *OutboundMonitoring) earlyObserver(tag string) *Broadcaster[GroupEvent] {
+	if early, ok := m.earlyObservers[tag]; ok {
+		return early
+	}
+	if m.earlyObservers == nil {
+		m.earlyObservers = make(map[string]*Broadcaster[GroupEvent])
+	}
+	early := NewBroadcaster[GroupEvent](m.ctx)
+	m.earlyObservers[tag] = early
+	return early
 }
 
 // Reload re-reads the outbounds and endpoints after they were replaced at runtime (hot reload).

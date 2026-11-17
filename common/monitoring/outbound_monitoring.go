@@ -107,6 +107,9 @@ type OutboundMonitoring struct {
 	// H: outbounds and groups, replaced as a whole when outbounds are hot reloaded
 	registry     atomic.Pointer[monitoringRegistry]
 	reloadAccess sync.Mutex
+	// earlyObservers are the observers of groups subscribed to before they were registered, by
+	// tag; guarded by reloadAccess. See h_registry.go. //H
+	earlyObservers map[string]*Broadcaster[GroupEvent] //H
 
 	cacheDirty atomic.Bool
 
@@ -365,7 +368,9 @@ func (m *OutboundMonitoring) Start(stage adapter.StartStage, scope *adapter.Scop
 	switch stage {
 	case adapter.StartStateInitialize:
 		m.cache = service.FromContext[adapter.CacheFile](m.ctx)
+		m.reloadAccess.Lock() //H: the early observers
 		registry, err := m.buildRegistry(newMonitoringRegistry())
+		m.reloadAccess.Unlock() //H
 		if err != nil {
 			return err
 		}
@@ -549,19 +554,26 @@ func (m *OutboundMonitoring) InvalidateTest(outboundTag string) error {
 }
 
 func (m *OutboundMonitoring) SubscribeGroup(groupTag string) (observer <-chan GroupEvent, err error) {
-
+	m.reloadAccess.Lock()         //H: with Reload, which registers a group and takes its early observer
+	defer m.reloadAccess.Unlock() //H
 	if g, ok := m.reg().groups[groupTag]; ok {
 		// Buffer a few events so a selection flush is not dropped while the subscriber
 		// is coalescing the previous URL-test update.
 		return g.observer.Subscribe(8), nil
 	}
-	return nil, E.New("group not found ", groupTag)
+	return m.earlyObserver(groupTag).Subscribe(8), nil //H: not registered yet, see h_registry.go
 }
 func (m *OutboundMonitoring) UnsubscribeGroup(groupTag string, observer <-chan GroupEvent) (err error) {
+	m.reloadAccess.Lock()         //H
+	defer m.reloadAccess.Unlock() //H
 	if g, ok := m.reg().groups[groupTag]; ok {
 		g.observer.Unsubscribe(observer)
 		return nil
 	}
+	if early, ok := m.earlyObservers[groupTag]; ok { //H
+		early.Unsubscribe(observer) //H
+		return nil                  //H
+	} //H
 	return E.New("group not found ", groupTag)
 }
 

@@ -101,3 +101,41 @@ func TestH_TouchRestartRefreshesActivity(t *testing.T) {
 	require.True(t, m.workersRunning.Load())
 	require.True(t, m.lastActive.Load().After(stale))
 }
+
+// A group subscribes when it starts. One that a hot reload adds under a new tag starts before
+// the monitoring is reloaded and knows it: the subscription failed, the group's worker ended, and
+// a balancer added that way never followed a URL test. The subscription waits for the group.
+func TestH_SubscribeBeforeTheGroupIsRegistered(t *testing.T) {
+	a := &fakeOutbound{tag: "a"}
+	m := newTestMonitor(t, nil, option.MonitoringOptions{}, a)
+	require.NoError(t, htest.Start(m, adapter.StartStateInitialize))
+
+	observer, err := m.SubscribeGroup("added") // what the new group's worker does at its start
+	require.NoError(t, err)
+	second, err := m.SubscribeGroup("added")
+	require.NoError(t, err)
+
+	manager := m.outboundManager.(*fakeOutboundManager)
+	manager.list = append(manager.list, &fakeGroup{fakeOutbound: fakeOutbound{tag: "added"}, all: []string{"a"}})
+	require.NoError(t, m.Reload()) // the hot reload reloads the monitoring once the outbounds exist
+	group := m.reg().groups["added"]
+	require.NotNil(t, group)
+	require.Empty(t, m.earlyObservers, "the registry took the subscription over")
+
+	group.observer.Publish(GroupEvent{})
+	for _, subscriber := range []<-chan GroupEvent{observer, second} {
+		select {
+		case <-subscriber:
+		case <-time.After(time.Second):
+			t.Fatal("the group's events do not reach who subscribed before it was registered")
+		}
+	}
+	require.NoError(t, m.UnsubscribeGroup("added", observer))
+
+	// a subscription given up before the group ever came
+	early, err := m.SubscribeGroup("never")
+	require.NoError(t, err)
+	require.NoError(t, m.UnsubscribeGroup("never", early))
+	_, open := <-early
+	require.False(t, open)
+}

@@ -231,9 +231,10 @@ func TestH_MonitoringGroupsAndHistory(t *testing.T) {
 	require.ElementsMatch(t, []string{"", "auto"}, m.reg().outbounds["a"].groupTags)
 	require.Equal(t, []string{"c"}, m.reg().outbounds["a"].dependenciesInverse)
 
-	_, err := m.SubscribeGroup("missing")
-	require.Error(t, err)
-	require.Error(t, m.UnsubscribeGroup("missing", nil))
+	early, err := m.SubscribeGroup("missing") // waits for the group, see TestH_SubscribeBeforeTheGroupIsRegistered
+	require.NoError(t, err)
+	require.NoError(t, m.UnsubscribeGroup("missing", early))
+	require.Error(t, m.UnsubscribeGroup("unknown", nil))
 	require.Error(t, m.InvalidateTest("missing"))
 	require.Error(t, m.SignalChange("missing"))
 	require.Empty(t, m.OutboundsHistory("missing"))
