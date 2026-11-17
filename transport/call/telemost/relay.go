@@ -1,6 +1,7 @@
 package telemost
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 
@@ -47,7 +48,13 @@ type SFURelay struct {
 
 	readBufSize int
 	tunFired    bool
+	// closed: a closed relay answers its calls with errRelayClosed. Its peer connections are
+	// gone (nil), and the signalling of the Telemost session, which goes on after a failure or a
+	// rejoin, called into them and crashed the process.
+	closed bool
 }
+
+var errRelayClosed = errors.New("relay closed")
 
 type sharingDCSink struct {
 	dc         *webrtc.DataChannel
@@ -90,6 +97,11 @@ func (s *sharingDCSink) sendFrame(frame []byte) error {
 }
 
 func (r *SFURelay) AddSharingDataChannel() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.closed {
+		return errRelayClosed
+	}
 	if r.pubPC == nil {
 		return fmt.Errorf("pub PC nil")
 	}
@@ -127,6 +139,11 @@ func (r *SFURelay) AddSharingDataChannel() error {
 }
 
 func (r *SFURelay) RemoveSharingDataChannel() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.closed {
+		return
+	}
 	if r.mt != nil {
 		r.mt.RemoveLastSubTunnel()
 	}
@@ -163,15 +180,19 @@ func (r *SFURelay) Init(iceServers []webrtc.ICEServer) error {
 	pubPC.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
 		r.logger.Debug(fmt.Sprintf("[pub] connection state: %s", state.String()))
 		if state == webrtc.PeerConnectionStateConnected {
-			if r.tun == nil {
+			r.mu.Lock()
+			closed := r.closed
+			if !closed && r.tun == nil {
 				r.logger.Debug("[relay] starting VP8 publish tunnel on pub PC connected")
 				r.tun = rtc.NewVP8DataTunnel(r.sampleTrack, r.obf, r.logger)
 				r.tun.Start(0, 0)
 				r.tunFired = false
 				r.mt = rtc.NewMultiTrackTunnel([]*rtc.VP8DataTunnel{r.tun})
-				r.mt.SetOnData(func(payload []byte) { r.activate(r.mt, payload) })
+				mt := r.mt
+				mt.SetOnData(func(payload []byte) { r.activate(mt, payload) })
 			}
-			if r.OnPubReady != nil {
+			r.mu.Unlock()
+			if !closed && r.OnPubReady != nil {
 				r.OnPubReady()
 			}
 		}
@@ -247,6 +268,11 @@ func (r *SFURelay) resetForNewPeer() {
 }
 
 func (r *SFURelay) CreatePubOffer() (webrtc.SessionDescription, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.closed {
+		return webrtc.SessionDescription{}, errRelayClosed
+	}
 	offer, err := r.pubPC.CreateOffer(nil)
 	if err != nil {
 		return offer, err
@@ -261,6 +287,9 @@ func (r *SFURelay) CreatePubOffer() (webrtc.SessionDescription, error) {
 func (r *SFURelay) SetPubAnswer(sdp string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.closed {
+		return errRelayClosed
+	}
 	err := r.pubPC.SetRemoteDescription(webrtc.SessionDescription{
 		Type: webrtc.SDPTypeAnswer, SDP: sdp,
 	})
@@ -278,6 +307,9 @@ func (r *SFURelay) SetPubAnswer(sdp string) error {
 func (r *SFURelay) SetSubOffer(sdp string) (webrtc.SessionDescription, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.closed {
+		return webrtc.SessionDescription{}, errRelayClosed
+	}
 	err := r.subPC.SetRemoteDescription(webrtc.SessionDescription{
 		Type: webrtc.SDPTypeOffer, SDP: sdp,
 	})
@@ -300,6 +332,9 @@ func (r *SFURelay) SetSubOffer(sdp string) (webrtc.SessionDescription, error) {
 func (r *SFURelay) AddPubICECandidate(cand webrtc.ICECandidateInit) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.closed {
+		return
+	}
 	if !r.pubRemoteSet {
 		r.pubPending = append(r.pubPending, cand)
 		return
@@ -310,6 +345,9 @@ func (r *SFURelay) AddPubICECandidate(cand webrtc.ICECandidateInit) {
 func (r *SFURelay) AddSubICECandidate(cand webrtc.ICECandidateInit) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.closed {
+		return
+	}
 	if !r.subRemoteSet {
 		r.subPending = append(r.subPending, cand)
 		return
@@ -318,6 +356,11 @@ func (r *SFURelay) AddSubICECandidate(cand webrtc.ICECandidateInit) {
 }
 
 func (r *SFURelay) CreatePubRenegotiate() (webrtc.SessionDescription, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.closed {
+		return webrtc.SessionDescription{}, errRelayClosed
+	}
 	offer, err := r.pubPC.CreateOffer(&webrtc.OfferOptions{ICERestart: false})
 	if err != nil {
 		return offer, err
@@ -327,26 +370,42 @@ func (r *SFURelay) CreatePubRenegotiate() (webrtc.SessionDescription, error) {
 		return offer, err
 	}
 	offer.SDP = MungeSDPAddVideoContent(offer.SDP)
-	r.mu.Lock()
 	r.pubRemoteSet = false
 	r.pubPending = nil
-	r.mu.Unlock()
 	return offer, nil
 }
 
+// Close stops the relay; it can be called more than once. The peer connections are closed
+// outside the lock: their callbacks take it.
 func (r *SFURelay) Close() {
-	if r.tun != nil {
-		r.tun.Stop()
-		r.tun = nil
+	r.mu.Lock()
+	if r.closed {
+		r.mu.Unlock()
+		return
 	}
-	if r.pubPC != nil {
-		r.pubPC.Close()
-		r.pubPC = nil
+	r.closed = true
+	tun, pubPC, subPC := r.tun, r.pubPC, r.subPC
+	r.tun, r.pubPC, r.subPC = nil, nil, nil
+	r.mu.Unlock()
+	if tun != nil {
+		tun.Stop()
 	}
-	if r.subPC != nil {
-		r.subPC.Close()
-		r.subPC = nil
+	if pubPC != nil {
+		pubPC.Close()
 	}
+	if subPC != nil {
+		subPC.Close()
+	}
+}
+
+// publisherTrackDescription is the publisher's track description message, nil once closed.
+func (r *SFURelay) publisherTrackDescription(audio, video string) any {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.closed {
+		return nil
+	}
+	return UpdatePublisherTrackDescriptionMessage(r.pubPC, audio, video)
 }
 
 func (r *SFURelay) readTrack(track *webrtc.TrackRemote) {

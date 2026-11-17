@@ -29,7 +29,10 @@ func ConnectCreator(ctx context.Context, cookieStr, joinLink string, readBuf int
 	if readBuf <= 0 {
 		readBuf = 32768
 	}
+	bridgeCtx, cancel := context.WithCancel(context.Background()) // the session outlives the dial
 	bridge := &Bridge{
+		ctx:       bridgeCtx,
+		cancel:    cancel,
 		connInfo:  connInfo,
 		config:    cfg,
 		cookieStr: cookieStr,
@@ -42,11 +45,15 @@ func ConnectCreator(ctx context.Context, cookieStr, joinLink string, readBuf int
 	go bridge.Run()
 	deadline := time.Now().Add(60 * time.Second)
 	for bridge.getActiveBridge() == nil {
+		// a connect that gives up ends the session it started: left running, it kept the call
+		// and joined it again for the rest of the process
 		if time.Now().After(deadline) {
+			bridge.Close()
 			return nil, "", fmt.Errorf("telemost: creator tunnel timed out")
 		}
 		select {
 		case <-ctx.Done():
+			bridge.Close()
 			return nil, "", ctx.Err()
 		case <-time.After(200 * time.Millisecond):
 		}

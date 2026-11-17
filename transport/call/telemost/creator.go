@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/sagernet/sing-box/transport/call/common"
@@ -42,9 +43,13 @@ type ConnInfo struct {
 }
 
 type Bridge struct {
-	mu           sync.Mutex
-	ws           *websocket.Conn
-	relay        *SFURelay
+	mu sync.Mutex
+	ws *websocket.Conn
+	// relay is the WebRTC relay of the current websocket session: made at its serverHello,
+	// closed when the session ends; nil before, and when it could not be made
+	relay        atomic.Pointer[SFURelay]
+	ctx          context.Context // the bridge runs until it is cancelled (Close)
+	cancel       context.CancelFunc
 	connInfo     *ConnInfo
 	config       TMConfig
 	cookieStr    string
@@ -213,8 +218,22 @@ func (b *Bridge) sendHello() {
 	b.logger.Debug("[tm-ws] -> hello")
 }
 
+// session is the relay of the current session, or an error when there is none: the server sent
+// signalling for the relay before its serverHello, or the relay could not be made.
+func (b *Bridge) session() (*SFURelay, error) {
+	if relay := b.relay.Load(); relay != nil {
+		return relay, nil
+	}
+	return nil, errRelayClosed
+}
+
 func (b *Bridge) sendPubOffer() {
-	offer, err := b.relay.CreatePubOffer()
+	relay, err := b.session()
+	if err != nil {
+		b.logger.Warn(fmt.Sprintf("[tm-ws] pub offer failed: %v", err))
+		return
+	}
+	offer, err := relay.CreatePubOffer()
 	if err != nil {
 		b.logger.Warn(fmt.Sprintf("[tm-ws] pub offer failed: %v", err))
 		return
@@ -249,13 +268,18 @@ func (b *Bridge) enableScreenshare() {
 	}
 	b.shareEnabled = true
 	b.logger.Debug("[ss] enabling screenshare: describe DISPLAY_VIDEO -> updateMe -> offer")
-	if err := b.relay.AddSharingDataChannel(); err != nil {
+	relay, err := b.session()
+	if err != nil {
+		b.logger.Warn(fmt.Sprintf("[ss] enable: %v", err))
+		return
+	}
+	if err := relay.AddSharingDataChannel(); err != nil {
 		b.logger.Warn(fmt.Sprintf("[ss] AddSharingDataChannel: %v", err))
 		return
 	}
 	b.wsSend(UpdatePublisherSharingTrackMessage("Screen"))
 	b.wsSend(UpdateMeMessage(b.selfName, true, true))
-	offer, err := b.relay.CreatePubRenegotiate()
+	offer, err := relay.CreatePubRenegotiate()
 	if err != nil {
 		b.logger.Warn(fmt.Sprintf("[ss] enable renegotiate failed: %v", err))
 		return
@@ -272,8 +296,13 @@ func (b *Bridge) disableScreenshare() {
 	b.shareEnabled = false
 	b.logger.Debug("[ss] disabling screenshare (peer requested trackCount<2)")
 	b.wsSend(UpdateMeMessage(b.selfName, true, false))
-	b.relay.RemoveSharingDataChannel()
-	offer, err := b.relay.CreatePubRenegotiate()
+	relay, err := b.session()
+	if err != nil {
+		b.logger.Warn(fmt.Sprintf("[ss] disable: %v", err))
+		return
+	}
+	relay.RemoveSharingDataChannel()
+	offer, err := relay.CreatePubRenegotiate()
 	if err != nil {
 		b.logger.Warn(fmt.Sprintf("[ss] disable renegotiate failed: %v", err))
 		return
@@ -308,7 +337,11 @@ func (b *Bridge) sendInitBundle() {
 	b.initBundleSent = true
 	b.logger.Debug("[tm-ws] -> sdkCodecsInfo + updatePublisherTrackDescription")
 	b.wsSend(SdkCodecsInfoMessage())
-	b.wsSend(UpdatePublisherTrackDescriptionMessage(b.relay.pubPC, "Microphone", "MacBook Pro Camera (0000:0001)"))
+	if relay, err := b.session(); err == nil {
+		if description := relay.publisherTrackDescription("Microphone", "MacBook Pro Camera (0000:0001)"); description != nil {
+			b.wsSend(description)
+		}
+	}
 	b.sendStartupSlotsRamp()
 }
 
@@ -334,14 +367,22 @@ func (b *Bridge) handleMessage(raw []byte) {
 		b.ack(uid)
 		b.logger.Debug("[tm-ws] -> setSlotsOffset")
 		b.wsSend(SetSlotsOffsetMessage(0))
-		b.initRelay()
+		if err := b.initRelay(); err != nil {
+			// the session cannot carry the tunnel: it ends, and Run joins again
+			b.logger.Error(fmt.Sprintf("[relay] %v; joining again", err))
+			b.closeWebSocket()
+		}
 		return
 	}
 	if pa, ok := msg["publisherSdpAnswer"]; ok {
 		paMap, _ := pa.(map[string]any)
 		sdp, _ := paMap["sdp"].(string)
 		b.logger.Debug(fmt.Sprintf("[tm-ws] <- publisherSdpAnswer %d bytes", len(sdp)))
-		if err := b.relay.SetPubAnswer(sdp); err != nil {
+		relay, err := b.session()
+		if err == nil {
+			err = relay.SetPubAnswer(sdp)
+		}
+		if err != nil {
 			b.logger.Warn(fmt.Sprintf("[tm-ws]    error: %v", err))
 			return
 		}
@@ -355,7 +396,12 @@ func (b *Bridge) handleMessage(raw []byte) {
 		b.subSeq = int(pcSeq)
 		b.logger.Debug(fmt.Sprintf("[tm-ws] <- subscriberSdpOffer pcSeq=%d", b.subSeq))
 		b.ack(uid)
-		answer, err := b.relay.SetSubOffer(sdp)
+		relay, err := b.session()
+		if err != nil {
+			b.logger.Warn(fmt.Sprintf("[tm-ws]    error: %v", err))
+			return
+		}
+		answer, err := relay.SetSubOffer(sdp)
 		if err != nil {
 			b.logger.Warn(fmt.Sprintf("[tm-ws]    error: %v", err))
 			return
@@ -376,10 +422,12 @@ func (b *Bridge) handleMessage(raw []byte) {
 		sdpIdx, _ := icMap["sdpMlineIndex"].(float64)
 		idx := uint16(sdpIdx)
 		cand := webrtc.ICECandidateInit{Candidate: candidate, SDPMid: &sdpMid, SDPMLineIndex: &idx}
-		if target == "PUBLISHER" {
-			b.relay.AddPubICECandidate(cand)
+		if relay, err := b.session(); err != nil {
+			b.logger.Warn(fmt.Sprintf("[tm-ws] ICE candidate: %v", err))
+		} else if target == "PUBLISHER" {
+			relay.AddPubICECandidate(cand)
 		} else {
-			b.relay.AddSubICECandidate(cand)
+			relay.AddSubICECandidate(cand)
 		}
 		b.ack(uid)
 		return
@@ -718,9 +766,12 @@ func (b *Bridge) pollAndAdmit() {
 		nil, b.cookieStr, b.config)
 }
 
-func (b *Bridge) initRelay() {
-	if b.relay != nil {
-		b.relay.Close()
+// initRelay makes the relay of a new session. On failure there is none, and the session cannot
+// carry the tunnel: before, the failure was only logged and the next signalling message called
+// into the missing (or the previous, closed) relay and crashed the process.
+func (b *Bridge) initRelay() error {
+	if previous := b.relay.Swap(nil); previous != nil {
+		previous.Close()
 	}
 	b.pubSeq = 1
 	b.subSeq = 0
@@ -729,8 +780,7 @@ func (b *Bridge) initRelay() {
 	relay.readBufSize = b.readBuf
 	obf, err := tunnel.NewTunnelObfuscator(tunnel.DeriveSecretFromJoinLink(b.connInfo.ConferenceURI))
 	if err != nil {
-		b.logger.Error(fmt.Sprintf("[relay] obfuscator init failed: %v", err)) // Fatal would exit the whole process
-		return
+		return fmt.Errorf("obfuscator init failed: %w", err)
 	}
 	relay.SetObfuscator(obf)
 	b.logger.Debug(fmt.Sprintf("[relay] obfuscator localEpoch=0x%08x", obf.LocalEpoch()))
@@ -775,10 +825,36 @@ func (b *Bridge) initRelay() {
 		b.sendICE(cand, "SUBSCRIBER", b.subSeq)
 	}
 	if err := relay.Init(b.connInfo.ICEServers); err != nil {
-		b.logger.Error(fmt.Sprintf("[relay] init failed: %v", err)) // Fatal would exit the whole process
-		return
+		relay.Close() // what Init made before it failed
+		return fmt.Errorf("init failed: %w", err)
 	}
-	b.relay = relay
+	b.relay.Store(relay)
+	return nil
+}
+
+// closeWebSocket ends the current session: Run reads the close and joins again.
+func (b *Bridge) closeWebSocket() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.ws != nil {
+		b.ws.Close()
+	}
+}
+
+// Close ends the bridge: the call session, its relay and the joining loop.
+func (b *Bridge) Close() {
+	b.cancel()
+	b.closeWebSocket()
+}
+
+// sleep waits d, or until the bridge is closed; false when it is.
+func (b *Bridge) sleep(d time.Duration) bool {
+	select {
+	case <-b.ctx.Done():
+		return false
+	case <-time.After(d):
+		return true
+	}
 }
 
 func (b *Bridge) Run() {
@@ -789,15 +865,25 @@ func (b *Bridge) Run() {
 			return b.dialer.DialContext(ctx, network, M.ParseSocksaddr(addr))
 		},
 	})
-	for {
+	defer func() {
+		if relay := b.relay.Swap(nil); relay != nil {
+			relay.Close()
+		}
+	}()
+	for b.ctx.Err() == nil {
 		b.logger.Debug("[tm-ws] Connecting...")
-		ws, _, err := wsDialer.Dial(b.connInfo.MediaServerURL, wsHeader)
+		ws, _, err := wsDialer.DialContext(b.ctx, b.connInfo.MediaServerURL, wsHeader)
 		if err != nil {
 			b.logger.Warn(fmt.Sprintf("[tm-ws] Connect failed: %s, retrying in 5s...", common.MaskError(err)))
-			time.Sleep(5 * time.Second)
+			b.sleep(5 * time.Second)
 			continue
 		}
 		b.mu.Lock()
+		if b.ctx.Err() != nil { // closed while it connected
+			b.mu.Unlock()
+			ws.Close()
+			return
+		}
 		b.ws = ws
 		b.mu.Unlock()
 		b.logger.Debug("[tm-ws] Connected")
@@ -865,12 +951,18 @@ func (b *Bridge) Run() {
 		b.mu.Lock()
 		b.ws = nil
 		b.mu.Unlock()
+		// the relay was this session's: the next one makes its own at its serverHello
+		if relay := b.relay.Swap(nil); relay != nil {
+			relay.Close()
+		}
 		b.logger.Debug("[tm-ws] Rejoining in 3s...")
-		time.Sleep(3 * time.Second)
+		if !b.sleep(3 * time.Second) {
+			return
+		}
 		newConn, err := getConnection(b.dialer, b.cookieStr, url.QueryEscape(b.connInfo.ConferenceURI), b.config)
 		if err != nil {
 			b.logger.Warn(fmt.Sprintf("[rejoin] Failed: %v, retrying in 5s...", err))
-			time.Sleep(5 * time.Second)
+			b.sleep(5 * time.Second)
 			continue
 		}
 		if oldPid := b.connInfo.PeerID; oldPid != "" && oldPid != newConn.PeerID {
