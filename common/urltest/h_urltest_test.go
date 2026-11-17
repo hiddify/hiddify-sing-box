@@ -2,6 +2,7 @@ package urltest
 
 import (
 	"context"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -39,7 +40,7 @@ func countingServer(t *testing.T) (*httptest.Server, *atomic.Int32) {
 	var hits atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hits.Add(1)
-		require.Equal(t, http.MethodHead, r.Method)
+		require.Equal(t, http.MethodGet, r.Method)
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	t.Cleanup(server.Close)
@@ -70,6 +71,67 @@ func TestH_URLTestLoopback(t *testing.T) {
 	_, err = URLTest(ContextWithIsUnifiedDelay(ctx), "http://probe.example/generate_204", dialer)
 	require.NoError(t, err)
 	require.Equal(t, int32(3), hits.Load(), "unified delay performs a second request on the warmed connection")
+}
+
+func TestH_URLTestAcceptsHTTP200AndReusesUnifiedConnection(t *testing.T) {
+	var hits atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodGet, r.Method)
+		hits.Add(1)
+		_, err := io.WriteString(w, "connected")
+		require.NoError(t, err)
+	}))
+	t.Cleanup(server.Close)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	delay, err := URLTest(ContextWithIsUnifiedDelay(ctx), "http://probe.example/success", &loopbackDialer{addr: server.Listener.Addr().String()})
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, delay, uint16(1))
+	require.Equal(t, int32(2), hits.Load(), "Unified Delay must reuse the connection after draining the warm-up GET")
+}
+
+func TestH_URLTestRejectsUnsuccessfulHTTPStatus(t *testing.T) {
+	statuses := []struct {
+		name   string
+		status int
+	}{
+		{name: "redirect", status: http.StatusFound},
+		{name: "forbidden", status: http.StatusForbidden},
+		{name: "not found", status: http.StatusNotFound},
+		{name: "server error", status: http.StatusInternalServerError},
+	}
+	for _, tc := range statuses {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				require.Equal(t, http.MethodGet, r.Method)
+				w.WriteHeader(tc.status)
+			}))
+			t.Cleanup(server.Close)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			_, err := URLTest(ctx, "http://probe.example/probe", &loopbackDialer{addr: server.Listener.Addr().String()})
+			require.Error(t, err, "HTTP status %d must not mark a proxy as reachable", tc.status)
+		})
+	}
+}
+
+func TestH_URLTestRejectsUnsuccessfulUnifiedDelayResponse(t *testing.T) {
+	var hits atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if hits.Add(1) == 1 {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	t.Cleanup(server.Close)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err := URLTest(ContextWithIsUnifiedDelay(ctx), "http://probe.example/probe", &loopbackDialer{addr: server.Listener.Addr().String()})
+	require.Error(t, err, "the measured second request must also reject HTTP errors")
 }
 
 func TestH_URLTestCanceledAfterDialReportsError(t *testing.T) {

@@ -405,6 +405,16 @@ do about it. Items marked **Required** break or misbehave until they are handled
   [call tunnel page](features/protocols/call.en.md).
 - Not tested end to end in Hiddify.
 
+## Real Delay in hiddify-app
+
+- **HTTP response validation.** The app's Real Delay indicator and proxy list consume the URL-test
+  delay from the existing Core API; no Flutter UI or gRPC change is needed. URL tests now use HTTP
+  GET and count only HTTP 200 or 204 as reachable. Error pages (403, 404, 5xx) and redirects no
+  longer produce a valid-looking delay. This is specifically for the app's Real Delay result and
+  applies consistently to manual proxy tests, monitoring and group selection. Unified Delay also
+  validates its measured second request; its warm-up GET body is drained first so the same
+  HTTP/1 connection can be reused.
+
 ## Deferred, needs the app
 
 - **Android auto-redirect rework** (from reF1nd 74f12fb8) is not ported: it changes the gomobile

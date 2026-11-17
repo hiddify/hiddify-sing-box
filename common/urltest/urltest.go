@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"io" //H: drain the warm-up GET body before Unified Delay reuses the connection
 	"net"
 	"net/http"
 	"net/url"
@@ -162,7 +163,7 @@ func urlTest(ctx context.Context, link string, detour N.Dialer) (t uint16, err e
 	if N.NeedHandshakeForWrite(instance) {
 		start = time.Now()
 	}
-	req, err := http.NewRequest(http.MethodHead, link, nil)
+	req, err := http.NewRequest(http.MethodGet, link, nil) //H: measure an application-layer HTTP request for Real Delay
 	if err != nil {
 		return
 	}
@@ -196,9 +197,22 @@ func urlTest(ctx context.Context, link string, detour N.Dialer) (t uint16, err e
 	if err != nil {
 		return
 	}
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent { //H
+		resp.Body.Close() //H
+		return 0, fmt.Errorf("urltest: unexpected HTTP status %d", resp.StatusCode) //H
+	} //H
+	if IsUnifiedDelayFromContext(ctx) { //H: drain the first GET so HTTP/1 can reuse this connection
+		if _, err = io.Copy(io.Discard, resp.Body); err != nil { //H
+			resp.Body.Close() //H
+			return 0, fmt.Errorf("urltest: read warm-up response: %w", err) //H
+		} //H
+	} //H
 	resp.Body.Close()
 
 	t = uint16(time.Since(start) / time.Millisecond)
+	if t == 0 { //H: zero means pending/failed to the app; preserve a successful sub-ms probe
+		t = 1 //H
+	}
 
 	if IsUnifiedDelayFromContext(ctx) {
 		select {
@@ -207,12 +221,19 @@ func urlTest(ctx context.Context, link string, detour N.Dialer) (t uint16, err e
 		default:
 		}
 		second := time.Now()
-		resp, err = client.Do(req.WithContext(ctx)) //H: a cancel did not stop the second request
+		resp, err = client.Do(req.WithContext(ctx)) //H: the reported Unified Delay request is also validated
 		if err != nil {
 			return
 		}
+		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent { //H
+			resp.Body.Close() //H
+			return 0, fmt.Errorf("urltest: unexpected HTTP status %d", resp.StatusCode) //H
+		} //H
 		resp.Body.Close()
-		t = uint16(time.Since(second) / time.Millisecond) //to avid timeout in the second call
+		t = uint16(time.Since(second) / time.Millisecond)
+		if t == 0 { //H
+			t = 1 //H
+		}
 	}
 	return
 }
