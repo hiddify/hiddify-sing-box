@@ -80,8 +80,9 @@ func (b *bind_adapter) openLater(port uint16) ([]conn.ReceiveFunc, uint16, error
 // connection, then reads from it.
 func (b *bind_adapter) receiveLater(open *hBindOpen, address netip.Addr, port uint16, anyAddress bool) conn.ReceiveFunc {
 	var (
-		receive conn.ReceiveFunc // of the connection, once dialed; only the receive loop uses these
-		failed  bool
+		current net.PacketConn   // the connection, once dialed; only the receive loop uses these
+		receive conn.ReceiveFunc // its receive function
+		failed  bool             // the last dial, or the last connection: the next dial waits
 	)
 	return func(packets [][]byte, sizes []int, eps []conn.Endpoint) (int, error) {
 		if receive == nil {
@@ -110,13 +111,44 @@ func (b *bind_adapter) receiveLater(open *hBindOpen, address netip.Addr, port ui
 				dialed.Close()
 				return 0, net.ErrClosed
 			}
-			receive, failed = b.receive(dialed), false
+			current, receive, failed = dialed, b.receive(dialed), false
 		}
 		n, err := receive(packets, sizes, eps)
-		if err != nil && open.ctx.Err() != nil {
+		if err == nil {
+			return n, nil
+		}
+		if open.ctx.Err() != nil {
 			return 0, net.ErrClosed // whatever a closed connection of the detour answers
 		}
-		return n, err
+		// The connection ended and the bind did not close it: the network manager closes every
+		// connection when the network changes, a detour's stream ends, a proxy restarts. The
+		// device stopped receiving for good and went on sending into the dead connection until
+		// someone called BindUpdate, which only an interface change did. The bind makes its
+		// connection again, as the WireGuard client bind does.
+		b.logger.Debug("connection to ", netip.AddrPortFrom(address, port), " ended: ", err, "; connecting again")
+		b.forget(open, address, current)
+		current, receive, failed = nil, nil, true
+		return 0, nil
+	}
+}
+
+// forget drops ended, a connection of open that ended by itself, and reports a path change.
+func (b *bind_adapter) forget(open *hBindOpen, address netip.Addr, ended net.PacketConn) {
+	ended.Close()
+	b.mutex.Lock()
+	if b.open != open {
+		b.mutex.Unlock()
+		return
+	}
+	if (address.Is4() || address.Is4In6()) && b.conn4 == ended {
+		b.conn4 = nil
+	} else if b.conn6 == ended {
+		b.conn6 = nil
+	}
+	onReopen := b.onReopen
+	b.mutex.Unlock()
+	if onReopen != nil {
+		go onReopen() // the new connection may take another path
 	}
 }
 

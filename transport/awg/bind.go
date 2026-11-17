@@ -90,20 +90,21 @@ func (b *bind_adapter) Close() error {
 }
 
 func (b *bind_adapter) closeLocked() error { //H
-	var err4, err6 error
 	b.closeLater() //H
 
+	// H: whatever closing a connection answers, the bind is closed: the device stops at an
+	// error of Close before it opens the bind again (BindUpdate), and the tunnel stayed down
 	if b.conn4 != nil {
-		err4 = closeConn(b.conn4) //H: closed already by a network change
+		b.closeConn(b.conn4) //H
 		b.conn4 = nil
 	}
 
 	if b.conn6 != nil {
-		err6 = closeConn(b.conn6) //H
+		b.closeConn(b.conn6) //H
 		b.conn6 = nil
 	}
 
-	return errors.Join(err4, err6)
+	return nil //H
 }
 
 // abort closes the bind for good: its connections and the dials on their way end, and it does

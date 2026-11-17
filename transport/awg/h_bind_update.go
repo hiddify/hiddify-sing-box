@@ -52,11 +52,11 @@ func (d *Device) SetPeerEndpoint(publicKey string, addresses []netip.AddrPort, o
 	return nil
 }
 
-// closeConn closes c; one the network manager closed already is not an error, or BindUpdate
-// would stop there and never open the bind again.
-func closeConn(c net.PacketConn) error {
+// closeConn closes c. Its error is only logged: a connection the network manager closed already
+// answers net.ErrClosed, a detour's whatever it likes, and neither is a reason for the bind to
+// stay closed.
+func (b *bind_adapter) closeConn(c net.PacketConn) {
 	if err := c.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
-		return err
+		b.logger.Debug("close the connection to the peer: ", err)
 	}
-	return nil
 }
