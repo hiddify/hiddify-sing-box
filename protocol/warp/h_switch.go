@@ -56,7 +56,7 @@ func (w *WARPEndpoint) followDetourMoves(done <-chan struct{}) {
 			return
 		}
 		w.logger.InfoContext(w.ctx, "WARP: ", moved, ", reconnecting")
-		if err := w.replaceInner(done, profile.WireGuard, peerAddr, peerPort); err != nil {
+		if _, err := w.replaceInner(done, profile.WireGuard, peerAddr, peerPort); err != nil {
 			w.logger.ErrorContext(w.ctx, err)
 		}
 	})
@@ -148,21 +148,23 @@ func (w *WARPEndpoint) adopt(candidate *WARPEndpoint) error {
 	if inner == nil {
 		return E.New("WARP: the new tunnel closed")
 	}
-	done := w.beginSession()
-	select {
-	case <-done: // closed meanwhile
+	session, _ := w.beginSession()
+	close(session.finished) // no start runs in it: the tunnel is the candidate's
+	done := session.done
+	w.replaceAccess.Lock()
+	var old adapter.Endpoint
+	adopted := w.publish(done, func() {
+		old = w.endpoint
+		w.endpoint = inner
+		w.peerAddr, w.peerPort = peerAddr, peerPort
+		w.failover, w.profile, w.scanStatusOf = failover, profile, scanStatusOf
+		session.failover = failover
+	})
+	w.replaceAccess.Unlock()
+	if !adopted { // closed meanwhile
 		adapter.CloseLate(w.scope, inner)
 		return nil
-	default:
 	}
-	w.replaceAccess.Lock()
-	w.mtx.Lock()
-	old := w.endpoint
-	w.endpoint = inner
-	w.peerAddr, w.peerPort = peerAddr, peerPort
-	w.failover, w.profile, w.scanStatusOf = failover, profile, scanStatusOf
-	w.mtx.Unlock()
-	w.replaceAccess.Unlock()
 	if mode := candidate.activeMode(); w.mode == modeAuto {
 		w.active.Store(mode)
 	}
@@ -174,20 +176,21 @@ func (w *WARPEndpoint) adopt(candidate *WARPEndpoint) error {
 	}
 	w.logger.InfoContext(w.ctx, "WARP: moved to the new tunnel (", w.activeMode(), ")")
 	w.followDetourMoves(done)
-	w.runChecks(done)
+	w.runChecks(session)
 	return nil
 }
 
 // runChecks starts the checks of the tunnel in use: the scanner's failover or the port rotation
 // (WireGuard and AmneziaWG), and the health of the device.
-func (w *WARPEndpoint) runChecks(done <-chan struct{}) {
+func (w *WARPEndpoint) runChecks(session *warpSession) {
+	done := session.done
 	w.mtx.Lock()
-	failover, profile, peerAddr, peerPort := w.failover, w.profile, w.peerAddr, w.peerPort
+	failover, profile, peerAddr, peerPort := session.failover, w.profile, w.peerAddr, w.peerPort
 	w.mtx.Unlock()
 	switch {
 	case w.activeMode() == modeMASQUE: // the MASQUE tunnel checks itself
 	case failover != nil:
-		go w.watch(done)
+		go w.watch(session)
 	case (w.options.RotatePorts == nil || *w.options.RotatePorts) && profile != nil && profile.WireGuard != nil && w.options.ServerPort == 0 && len(profile.WireGuard.Peers) > 0 && len(profile.WireGuard.Peers[0].Endpoint.Ports) > 1:
 		config := profile.WireGuard
 		ports := make([]uint16, 0, len(config.Peers[0].Endpoint.Ports))

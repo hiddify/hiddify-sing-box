@@ -22,7 +22,8 @@ const masqueIncluded = true
 
 // connectMASQUE runs a MASQUE tunnel to WARP with the device of profile as the inner endpoint.
 // The tunnel looks up endpoints with the scanner and reconnects by itself.
-func (w *WARPEndpoint) connectMASQUE(done <-chan struct{}, profile *warpProfile) {
+func (w *WARPEndpoint) connectMASQUE(session *warpSession, profile *warpProfile) {
+	done := session.done
 	key := w.uniqueID + legacyMASQUESuffix // the scanner scores, apart from the WireGuard ones
 	var config *masque.Config
 	if err := json.Unmarshal(profile.MASQUE, &config); err != nil || config == nil {
@@ -46,16 +47,12 @@ func (w *WARPEndpoint) connectMASQUE(done <-chan struct{}, profile *warpProfile)
 		w.fail(E.Cause(err, "start WARP MASQUE tunnel"))
 		return
 	}
-	select {
-	case <-done:
-		adapter.CloseLate(w.scope, inner)
-		return
-	default:
+	if !w.publish(done, func() {
+		w.endpoint = inner
+		w.scanStatusOf = func() *warpscan.Status { return inner.ScanStatus() }
+	}) {
+		adapter.CloseLate(w.scope, inner) // the start ended meanwhile
 	}
-	w.mtx.Lock()
-	w.endpoint = inner
-	w.scanStatusOf = func() *warpscan.Status { return inner.ScanStatus() }
-	w.mtx.Unlock()
 }
 
 // registerMASQUEProfile registers a WARP device with a MASQUE key.

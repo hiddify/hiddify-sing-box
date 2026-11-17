@@ -89,33 +89,57 @@ func (w *WARPEndpoint) activeMode() string {
 
 // warpSession is one start of the endpoint: it ends when the endpoint starts again (another
 // device or tunnel) or closes, and its background work stops with it.
+//
+// What a start makes belongs to its session: the scans and probes run on its context, and the
+// inner endpoint, the failover and the device are published only while it is the current one
+// (publish). A session ends with w.mtx held, so "is it over" and "publish" cannot interleave: a
+// start that was replaced while it scanned or connected published its inner endpoint next to the
+// new start's, a second device with the same key that nothing closed, or its failover over the
+// new one's.
 type warpSession struct {
-	done chan struct{}
-	once sync.Once
+	done     chan struct{}
+	once     sync.Once
+	ctx      context.Context // ends with the session
+	cancel   context.CancelFunc
+	finished chan struct{} // closed when the start that runs in the session has returned
+	failover *warpFailover // the scanner's, of this start; guarded by w.mtx
 }
 
+// end ends the session; w.mtx is held.
 func (s *warpSession) end() {
-	s.once.Do(func() { close(s.done) })
+	s.once.Do(func() {
+		close(s.done)
+		s.cancel()
+	})
 }
 
-// session returns the channel that closes when the current start ends.
-func (w *WARPEndpoint) session() <-chan struct{} {
+func (w *WARPEndpoint) newSession() *warpSession {
+	ctx, cancel := context.WithCancel(w.ctx)
+	return &warpSession{done: make(chan struct{}), ctx: ctx, cancel: cancel, finished: make(chan struct{})}
+}
+
+// session returns the current start.
+func (w *WARPEndpoint) session() *warpSession {
 	w.sessionAccess.Lock()
 	defer w.sessionAccess.Unlock()
 	if w.current == nil {
-		w.current = &warpSession{done: make(chan struct{})}
+		w.current = w.newSession()
+		close(w.current.finished) // no start runs in it
 	}
-	return w.current.done
+	return w.current
 }
 
-// beginSession ends the current start and begins a new one.
-func (w *WARPEndpoint) beginSession() <-chan struct{} {
+// beginSession ends the current start and begins a new one; previous is the one it ended.
+func (w *WARPEndpoint) beginSession() (session *warpSession, previous *warpSession) {
 	w.sessionAccess.Lock()
 	defer w.sessionAccess.Unlock()
-	if w.current != nil {
-		w.current.end()
+	w.mtx.Lock()
+	defer w.mtx.Unlock()
+	previous = w.current
+	if previous != nil {
+		previous.end()
 	}
-	w.current = &warpSession{done: make(chan struct{})}
+	w.current = w.newSession()
 	select {
 	case <-w.done:
 		w.current.end()
@@ -124,39 +148,58 @@ func (w *WARPEndpoint) beginSession() <-chan struct{} {
 			w.current.end()
 		}
 	}
-	return w.current.done
+	return w.current, previous
 }
 
 func (w *WARPEndpoint) endSession() {
 	w.sessionAccess.Lock()
 	defer w.sessionAccess.Unlock()
+	w.mtx.Lock()
+	defer w.mtx.Unlock()
 	if w.current != nil {
 		w.current.end()
 	}
+}
+
+// publish runs set with w.mtx held, and reports false without running it when the start that
+// done belongs to is over.
+func (w *WARPEndpoint) publish(done <-chan struct{}, set func()) bool {
+	w.mtx.Lock()
+	defer w.mtx.Unlock()
+	select {
+	case <-done:
+		return false
+	default:
+	}
+	set()
+	return true
 }
 
 // start registers or loads a device and runs the tunnel of the mode, choosing it in auto mode.
 func (w *WARPEndpoint) start() {
 	w.starting.Store(true)        //H: see Status
 	defer w.starting.Store(false) //H: also when it ends before connecting
-	done := w.beginSession()
+	session, previous := w.beginSession()
+	defer close(session.finished)
+	done := session.done
+	if previous != nil {
+		// one start at a time: the one this replaces has been told to end, and has left before
+		// this one registers, scans or connects. Side by side they dialed with one key.
+		<-previous.finished
+	}
 	mode := w.mode
 	if mode == modeAuto {
 		w.selecting.Store(true)
 		mode = w.chooseMode(done)
 		w.selecting.Store(false)
-		if mode == "" {
+		if mode == "" || !w.publish(done, func() { w.active.Store(mode) }) {
 			return
 		}
-		w.active.Store(mode)
 	}
 	profile := w.obtainProfile(done, modeKind(mode))
-	if profile == nil {
+	if profile == nil || !w.publish(done, func() { w.profile = profile }) {
 		return
 	}
-	w.mtx.Lock()
-	w.profile = profile
-	w.mtx.Unlock()
 	if !w.candidate {
 		// before connecting: a start that keeps failing (the tunnel cannot open through the
 		// detour) blocks in connect, and must be left as well
@@ -166,9 +209,9 @@ func (w *WARPEndpoint) start() {
 		go w.confirmAuto(done, mode)
 	}
 	if mode == modeMASQUE {
-		w.connectMASQUE(done, profile)
+		w.connectMASQUE(session, profile)
 	} else {
-		w.connect(done, profile.WireGuard)
+		w.connect(session, profile.WireGuard)
 	}
 	w.starting.Store(false) //H: connected; the checks run from here on
 	select {
@@ -177,7 +220,7 @@ func (w *WARPEndpoint) start() {
 	default:
 	}
 	if !w.candidate {
-		w.runChecks(done)
+		w.runChecks(session)
 	}
 }
 
@@ -224,17 +267,23 @@ func modeKind(mode string) string {
 // restart ends the current start, with its inner endpoint, and starts again.
 func (w *WARPEndpoint) restart(reason string) {
 	w.logger.InfoContext(w.ctx, "WARP: ", reason, ", starting again")
-	w.endSession()
+	// the session ends and what it published is taken back in one step: the start that ends
+	// cannot publish in between
+	w.sessionAccess.Lock()
 	w.mtx.Lock()
+	if w.current != nil {
+		w.current.end()
+	}
 	old := w.endpoint
 	w.endpoint = nil
 	w.scanStatusOf = nil
 	w.failover = nil // WireGuard's, of the start that ends
 	w.mtx.Unlock()
+	w.sessionAccess.Unlock()
 	if old != nil {
 		adapter.CloseLate(w.scope, old)
 	}
-	go w.start()
+	go w.start() // which waits for the start that ends
 }
 
 // obtainProfile returns the device of kind: the profile in the config, a saved one that can be

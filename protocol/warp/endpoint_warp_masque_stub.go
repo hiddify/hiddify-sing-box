@@ -14,7 +14,7 @@ const masqueIncluded = false
 
 var errMASQUENotIncluded = E.New(`WARP over MASQUE is not included in this build, rebuild with -tags with_masque`)
 
-func (w *WARPEndpoint) connectMASQUE(done <-chan struct{}, profile *warpProfile) {
+func (w *WARPEndpoint) connectMASQUE(session *warpSession, profile *warpProfile) {
 	w.fail(errMASQUENotIncluded)
 }
 

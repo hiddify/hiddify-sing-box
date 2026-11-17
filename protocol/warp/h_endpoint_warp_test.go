@@ -541,13 +541,13 @@ func TestH_WARPDevicePerTunnel(t *testing.T) {
 		return hNewWARP(t, ctx, option.WARPEndpointOptions{Mode: mode, Profile: option.WARPProfile{Detour: "missing"}})
 	}
 	awg := newEndpoint("awg")
-	profile := awg.obtainProfile(awg.session(), kindAWG)
+	profile := awg.obtainProfile(awg.session().done, kindAWG)
 	require.NotNil(t, profile, "awg mode takes the saved WireGuard device")
 	require.Equal(t, kindWireGuard, profile.Kind)
 
 	auto := newEndpoint("auto")
-	require.Nil(t, auto.obtainProfile(auto.session(), kindAWG), "auto mode registers an AmneziaWG device of its own")
-	require.NotNil(t, auto.obtainProfile(auto.session(), kindWireGuard))
+	require.Nil(t, auto.obtainProfile(auto.session().done, kindAWG), "auto mode registers an AmneziaWG device of its own")
+	require.NotNil(t, auto.obtainProfile(auto.session().done, kindWireGuard))
 }
 
 // Endpoints share one pool of devices but never one device: each takes the one it used before,

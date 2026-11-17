@@ -62,22 +62,27 @@ func (w *WARPEndpoint) scannerEnabled() bool {
 
 // connect starts the first inner endpoint. Network work runs without w.mtx, which is taken
 // only to publish the inner endpoint: a dial during the start must not wait for a scan.
-func (w *WARPEndpoint) connect(done <-chan struct{}, config *C.WARPConfig) {
+func (w *WARPEndpoint) connect(session *warpSession, config *C.WARPConfig) {
+	done := session.done
 	peerAddr, peerPort, err := warpPeerEndpoint(config, w.options.ServerOptions) //H: a config without peers or ports crashed the process
 	if err != nil {
 		w.fail(err)
 		return
 	}
-	var current netip.AddrPort
+	var (
+		current  netip.AddrPort
+		failover *warpFailover
+	)
 	if w.scannerEnabled() {
-		failover, err := w.newFailover(config)
+		failover, err = w.newFailover(session.ctx, config)
 		if err != nil {
+			failover = nil
 			w.logger.WarnContext(w.ctx, "WARP scanner: ", err)
 		} else {
-			w.mtx.Lock()
-			w.failover = failover
-			w.mtx.Unlock()
-			results, err := w.scanWith(failover, nil)
+			if !w.publish(done, func() { w.failover, session.failover = failover, failover }) {
+				return
+			}
+			results, err := w.scanWith(session.ctx, failover, nil)
 			if err != nil {
 				w.logger.WarnContext(w.ctx, err, ", using the profile's endpoint")
 			} else {
@@ -94,54 +99,49 @@ func (w *WARPEndpoint) connect(done <-chan struct{}, config *C.WARPConfig) {
 	}) {
 		return
 	}
-	select {
-	case <-done: // the start ended meanwhile
-		adapter.CloseLate(w.scope, inner)
-		return
-	default:
-	}
-	w.mtx.Lock()
-	w.endpoint = inner
-	w.peerAddr, w.peerPort = peerAddr, peerPort
-	if w.failover != nil {
-		if !current.IsValid() {
-			if address, err := netip.ParseAddr(peerAddr); err == nil {
-				current = netip.AddrPortFrom(address, peerPort)
+	if !w.publish(done, func() {
+		w.endpoint = inner
+		w.peerAddr, w.peerPort = peerAddr, peerPort
+		if failover != nil {
+			if !current.IsValid() {
+				if address, err := netip.ParseAddr(peerAddr); err == nil {
+					current = netip.AddrPortFrom(address, peerPort)
+				}
 			}
+			failover.current = current
+			failover.connectedAt = time.Now()
 		}
-		w.failover.current = current
-		w.failover.connectedAt = time.Now()
+	}) {
+		adapter.CloseLate(w.scope, inner) // the start ended meanwhile
 	}
-	w.mtx.Unlock()
 }
 
 // replaceInner starts a new inner endpoint for the peer and closes the old one once it is in
-// place, so dials keep working during the switch.
-func (w *WARPEndpoint) replaceInner(done <-chan struct{}, config *C.WARPConfig, peerAddr string, peerPort uint16) error {
+// place, so dials keep working during the switch. It reports whether the endpoint was replaced:
+// it is not, and that is no error, when the start that done belongs to ended meanwhile.
+func (w *WARPEndpoint) replaceInner(done <-chan struct{}, config *C.WARPConfig, peerAddr string, peerPort uint16) (bool, error) {
 	w.replaceAccess.Lock()
 	defer w.replaceAccess.Unlock()
 	replacement, err := w.newInner(config, peerAddr, peerPort)
 	if err != nil {
 		select {
 		case <-done:
-			return nil // closed meanwhile: nothing to replace
+			return false, nil // closed meanwhile: nothing to replace
 		default:
 		}
-		return E.Cause(err, "WARP: replace endpoint")
+		return false, E.Cause(err, "WARP: replace endpoint")
 	}
-	select {
-	case <-done:
+	var old adapter.Endpoint
+	if !w.publish(done, func() {
+		old = w.endpoint
+		w.endpoint = replacement
+		w.peerAddr, w.peerPort = peerAddr, peerPort
+	}) {
 		adapter.CloseLate(w.scope, replacement)
-		return nil
-	default:
+		return false, nil
 	}
-	w.mtx.Lock()
-	old := w.endpoint
-	w.endpoint = replacement
-	w.peerAddr, w.peerPort = peerAddr, peerPort
-	w.mtx.Unlock()
 	adapter.CloseLate(w.scope, old)
-	return nil
+	return true, nil
 }
 
 // newInner creates and starts a WireGuard or AmneziaWG endpoint for the given peer.
@@ -167,7 +167,7 @@ func (w *WARPEndpoint) newInner(config *C.WARPConfig, peerAddr string, peerPort 
 	return inner, nil
 }
 
-func (w *WARPEndpoint) newFailover(config *C.WARPConfig) (*warpFailover, error) {
+func (w *WARPEndpoint) newFailover(ctx context.Context, config *C.WARPConfig) (*warpFailover, error) {
 	probeDialer, err := dialer.NewWithOptions(dialer.Options{
 		Context:          w.ctx,
 		Options:          w.options.DialerOptions,
@@ -196,7 +196,7 @@ func (w *WARPEndpoint) newFailover(config *C.WARPConfig) (*warpFailover, error) 
 		logger:      w.logger,
 		probes:      make(map[string]warpscan.Probe),
 	}
-	failover.detectNetwork(w.ctx)
+	failover.detectNetwork(ctx)
 	return failover, nil
 }
 
@@ -308,15 +308,16 @@ func (w *WARPEndpoint) scan(exclude []netip.AddrPort) ([]warpscan.Result, error)
 	if failover == nil {
 		return nil, errNoFailover
 	}
-	return w.scanWith(failover, exclude)
+	return w.scanWith(w.ctx, failover, exclude)
 }
 
 // scanWith looks for endpoints on the current network, without exclude, and saves the scores.
 // With search_noise, when none answers with the noise in use, it tries the others
 // (noiseCandidates) and keeps the first that gets an answer; the next inner endpoint uses it.
 // It works on failover to the end: a restart clears the endpoint's while a scan of the start that
-// ends still runs.
-func (w *WARPEndpoint) scanWith(failover *warpFailover, exclude []netip.AddrPort) ([]warpscan.Result, error) {
+// ends still runs. ctx is the session's: the scan of a start that ended stops, where it went on
+// for as long as its probes took.
+func (w *WARPEndpoint) scanWith(ctx context.Context, failover *warpFailover, exclude []netip.AddrPort) ([]warpscan.Result, error) {
 	defaults := warpscan.Defaults{CIDRs: warpscan.WireGuardCIDRs, Ports: warpscan.WireGuardPorts}
 	if ports := failover.config.Peers[0].Endpoint.Ports; len(ports) > 0 {
 		defaults.Ports = make([]uint16, 0, len(ports))
@@ -337,7 +338,7 @@ func (w *WARPEndpoint) scanWith(failover *warpFailover, exclude []netip.AddrPort
 		if i > 0 && (options.Count == 0 || options.Count > noiseSearchCount) {
 			options.Count = noiseSearchCount
 		}
-		results, err := warpscan.Scan(w.ctx, w.logger, warpscan.Request{
+		results, err := warpscan.Scan(ctx, w.logger, warpscan.Request{
 			Options:  &options,
 			Defaults: defaults,
 			IPv4:     network.IPv4,
@@ -349,7 +350,7 @@ func (w *WARPEndpoint) scanWith(failover *warpFailover, exclude []netip.AddrPort
 		})
 		if err != nil {
 			lastErr = err
-			if w.ctx.Err() != nil {
+			if ctx.Err() != nil {
 				break
 			}
 			continue
@@ -399,43 +400,48 @@ func (w *WARPEndpoint) InterfaceUpdated(ctx context.Context) {
 	if listener, isListener := inner.(adapter.InterfaceUpdateListener); isListener {
 		listener.InterfaceUpdated(ctx)
 	}
-	failover := w.currentFailover()
+	session := w.session()
+	w.mtx.Lock()
+	failover := session.failover
+	w.mtx.Unlock()
 	if failover == nil {
 		return
 	}
-	done := w.session()
 	go func() {
 		select {
 		case <-time.After(networkSettle):
-		case <-done:
+		case <-session.done:
 			return
 		}
-		failover.detectNetwork(w.ctx)
-		w.check(done, true)
+		failover.detectNetwork(session.ctx)
+		w.check(session, true)
 	}()
 }
 
-func (w *WARPEndpoint) watch(done <-chan struct{}) {
+func (w *WARPEndpoint) watch(session *warpSession) {
 	ticker := time.NewTicker(failoverInterval)
 	defer ticker.Stop()
 	for {
 		select {
-		case <-done:
+		case <-session.done:
 			return
 		case <-w.ctx.Done():
 			return
 		case <-ticker.C:
-			w.check(done, false)
+			w.check(session, false)
 		}
 	}
 }
 
 // check counts the first handshake of the endpoint in use as a success, and replaces the
 // endpoint when it no longer answers: always checked after a network change, otherwise only
-// when traffic goes out without a recent handshake.
-func (w *WARPEndpoint) check(done <-chan struct{}, networkChanged bool) {
-	failover := w.currentFailover()
-	if failover == nil { // the start ended, and the next has none yet
+// when traffic goes out without a recent handshake. It works for session, with its failover:
+// the endpoint's may be another start's by now.
+func (w *WARPEndpoint) check(session *warpSession, networkChanged bool) {
+	w.mtx.Lock()
+	failover := session.failover
+	w.mtx.Unlock()
+	if failover == nil { // a start without the scanner
 		return
 	}
 	if !failover.access.TryLock() {
@@ -445,9 +451,10 @@ func (w *WARPEndpoint) check(done <-chan struct{}, networkChanged bool) {
 	if pauseManager := service.FromContext[pause.Manager](w.ctx); pauseManager != nil && (pauseManager.IsDevicePaused() || pauseManager.IsNetworkPaused()) {
 		return
 	}
-	w.mtx.Lock()
-	inner := w.endpoint
-	w.mtx.Unlock()
+	var inner adapter.Endpoint
+	if !w.publish(session.done, func() { inner = w.endpoint }) { // the start ended: the endpoint is not its
+		return
+	}
 	if inner == nil || !failover.current.IsValid() {
 		return
 	}
@@ -469,7 +476,7 @@ func (w *WARPEndpoint) check(done <-chan struct{}, networkChanged bool) {
 		return
 	}
 	for range probeAttempts {
-		ctx, cancel := context.WithTimeout(w.ctx, 3*time.Second)
+		ctx, cancel := context.WithTimeout(session.ctx, 3*time.Second)
 		rtt, err := probe(ctx, failover.current)
 		cancel()
 		if err == nil {
@@ -477,20 +484,24 @@ func (w *WARPEndpoint) check(done <-chan struct{}, networkChanged bool) {
 			w.saveScores(failover)
 			return
 		}
-		if w.ctx.Err() != nil {
+		if session.ctx.Err() != nil {
 			return
 		}
 	}
 	w.logger.WarnContext(w.ctx, "WARP: endpoint ", failover.current, " does not answer, looking for another")
 	failover.book.Failure(network, failover.current, time.Now())
-	results, err := w.scanWith(failover, []netip.AddrPort{failover.current})
+	results, err := w.scanWith(session.ctx, failover, []netip.AddrPort{failover.current})
 	if err != nil {
 		w.logger.WarnContext(w.ctx, err, ", keeping ", failover.current)
 		return
 	}
 	best := results[0].AddrPort
-	if err = w.replaceInner(done, failover.config, best.Addr().String(), best.Port()); err != nil {
+	replaced, err := w.replaceInner(session.done, failover.config, best.Addr().String(), best.Port())
+	if err != nil {
 		w.logger.ErrorContext(w.ctx, err)
+		return
+	}
+	if !replaced { // the start ended while it scanned: the endpoint in use is the next start's
 		return
 	}
 	failover.current = best

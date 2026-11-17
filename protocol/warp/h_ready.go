@@ -49,8 +49,12 @@ func (w *WARPEndpoint) rotatePorts(done <-chan struct{}, config *C.WARPConfig, a
 			continue
 		}
 		current = (current + 1) % len(ports)
-		if err := w.replaceInner(done, config, address, ports[current]); err != nil {
+		replaced, err := w.replaceInner(done, config, address, ports[current])
+		if err != nil {
 			w.logger.ErrorContext(w.ctx, err)
+			return
+		}
+		if !replaced { // the start ended
 			return
 		}
 		w.logger.InfoContext(w.ctx, "WARP: no handshake, trying port ", ports[current])
