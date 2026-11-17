@@ -57,12 +57,15 @@ Limits:
   - Video: data is encrypted with XChaCha20-Poly1305 and sent as frames of a VP8 video track,
     and on some services also a screen-share track.
   - Data channel: data is sent over the call's WebRTC data channel.
-- **Start-up.** Both sides connect when sing-box starts. A try gives up after 60 seconds. When a
-  try fails, the side logs the error and tries again after 5 seconds, then 10 seconds, then 30
-  seconds, then every minute until sing-box stops. Connections to the outbound wait for its
-  first try. While it is not connected, they fail with "call: not connected to the call yet".
-- **Reconnects.** When the call reconnects, connections that arrive through it still go to the
-  router, so route rules keep working.
+- **Start-up.** Both sides connect when sing-box starts. The server side is connected as soon as
+  it has joined the call: it stays in that one call and waits for the client, however long that
+  takes. When a try fails (the login, or creating or joining the call), the side logs the error
+  and tries again after 5 seconds, then 10 seconds, then 30 seconds, then every minute until
+  sing-box stops. Connections to the outbound wait for its first try. While it is not connected,
+  they fail with "call: not connected to the call yet".
+- **Reconnects.** When the call reconnects, or the client joins late, connections that arrive
+  through it go to the router, so route rules keep working.
+- **Shutdown.** When the inbound or the outbound is closed, it leaves the call.
 
 ## Configuration
 
