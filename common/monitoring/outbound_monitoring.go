@@ -77,6 +77,7 @@ type OutboundMonitoring struct {
 	pause            pause.Manager
 	pauseCallback    *list.Element[pause.Callback]
 	started          bool
+	closed           bool // H: set by Close; with started, guarded by access: Touch starts nothing after it
 	urls             []string
 	ipInfoURL        string
 	ipv6Access       sync.Mutex                // H: guards ipv6
@@ -384,7 +385,9 @@ func (m *OutboundMonitoring) Start(stage adapter.StartStage, scope *adapter.Scop
 			go m.groupNotifierLoop(grp)
 		}
 
-		m.started = true
+		m.access.Lock()     //H
+		m.started = true    //H: read by Touch and NetworkChanged under access
+		m.access.Unlock()   //H
 		m.keepTopEvaluate() // H: the selectors have their selection now
 		m.testSelections()  // H: the selected proxies first, before the cycle Touch starts
 		m.Touch()
@@ -564,6 +567,11 @@ func (m *OutboundMonitoring) UnsubscribeGroup(groupTag string, observer <-chan G
 
 func (m *OutboundMonitoring) Close() error {
 	m.closerOnce.Do(func() {
+		// H: a Touch after this (a URL test group dials on every connection) restarted the
+		// workers: a scheduler outside the WaitGroup Wait below, Add racing the Wait
+		m.access.Lock()   //H
+		m.closed = true   //H
+		m.access.Unlock() //H
 		m.stopTimerWorkers()
 		m.access.Lock()
 		if m.networkRetest != nil {
@@ -998,11 +1006,11 @@ func (m *OutboundMonitoring) collectCycleTargets() []string {
 }
 
 func (m *OutboundMonitoring) Touch() {
-	if !m.started {
-		return
-	}
 	m.access.Lock()
 	defer m.access.Unlock()
+	if !m.started || m.closed { //H
+		return
+	}
 	if m.mainTicker != nil {
 		m.lastActive.Store(time.Now())
 		return
