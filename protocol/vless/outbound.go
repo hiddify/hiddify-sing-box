@@ -114,6 +114,10 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 		logger.Debug("encryption initialized: keys=", len(encryptionConfig.keys), " xorMode=", encryptionConfig.xorMode, " seconds=", encryptionConfig.seconds, " padding=", encryptionConfig.padding)
 	}
 
+	if outbound.vision && outbound.tlsConfig == nil && outbound.encryption == nil { //H
+		// H: every dial made a connection to the server and then failed on this, leaving it open
+		return nil, E.New("flow ", options.Flow, " needs TLS, REALITY or VLESS encryption") //H
+	} //H
 	muxOpts := common.PtrValueOrDefault(options.Multiplex)
 	if muxOpts.Enabled {
 		options.Flow = ""
@@ -211,11 +215,20 @@ func (h *Outbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 
 type vlessDialer Outbound
 
-func (h *vlessDialer) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
+func (h *vlessDialer) DialContext(ctx context.Context, network string, destination M.Socksaddr) (_ net.Conn, err error) { //H: named, for the close below
 	ctx, metadata := adapter.ExtendContext(ctx)
 	metadata.Outbound = h.Tag()
 	metadata.Destination = destination
 	var conn net.Conn
+	// H: whatever fails once the connection to the server is made closes it. Each failure had to
+	// close it itself and several did not (a Vision error, a domain destination with packetaddr,
+	// an unknown network, a failed early dial): the connection stayed open, and the router,
+	// which tracks a dialer's connections, kept it for good.
+	defer func() { //H
+		if err != nil && conn != nil { //H
+			conn.Close() //H
+		} //H
+	}() //H
 	var baseConn net.Conn
 	var hookOnce sync.Once
 	if h.vision {
@@ -228,7 +241,6 @@ func (h *vlessDialer) DialContext(ctx context.Context, network string, destinati
 			})
 		})
 	}
-	var err error
 	if h.transport != nil {
 		conn, err = h.transport.DialContext(ctx)
 		if err == nil && h.vision {
@@ -262,7 +274,6 @@ func (h *vlessDialer) DialContext(ctx context.Context, network string, destinati
 		var encryptedConn net.Conn                                        //H
 		encryptedConn, err = encryptionHandshake(ctx, h.encryption, conn) //H
 		if err != nil {
-			conn.Close() //H
 			return nil, E.Cause(err, "encryption handshake")
 		}
 		conn = encryptedConn //H
@@ -331,13 +342,17 @@ func (h *vlessDialer) DialContext(ctx context.Context, network string, destinati
 	}
 }
 
-func (h *vlessDialer) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
+func (h *vlessDialer) ListenPacket(ctx context.Context, destination M.Socksaddr) (_ net.PacketConn, err error) { //H: named, for the close below
 	h.logger.InfoContext(ctx, "outbound packet connection to ", destination)
 	ctx, metadata := adapter.ExtendContext(ctx)
 	metadata.Outbound = h.Tag()
 	metadata.Destination = destination
 	var conn net.Conn
-	var err error
+	defer func() { //H: as in DialContext: a failure closes the connection to the server
+		if err != nil && conn != nil { //H
+			conn.Close() //H
+		} //H
+	}() //H
 	if h.transport != nil {
 		conn, err = h.transport.DialContext(ctx)
 	} else {
@@ -351,7 +366,6 @@ func (h *vlessDialer) ListenPacket(ctx context.Context, destination M.Socksaddr)
 		}
 	}
 	if err != nil {
-		common.Close(conn)
 		return nil, err
 	}
 	// Apply encryption if configured
@@ -360,7 +374,6 @@ func (h *vlessDialer) ListenPacket(ctx context.Context, destination M.Socksaddr)
 		var encryptedConn net.Conn                                        //H
 		encryptedConn, err = encryptionHandshake(ctx, h.encryption, conn) //H
 		if err != nil {
-			conn.Close() //H
 			return nil, E.Cause(err, "encryption handshake")
 		}
 		conn = encryptedConn //H
