@@ -13,7 +13,8 @@ import (
 
 // Scores (see rating) rank endpoints per network: an endpoint that works on one network (a home
 // Wi-Fi) may be blocked on another (a mobile carrier), so each network keeps its own record of
-// every endpoint tried on it.
+// every endpoint tried on it. Each network also rates the methods tried on it, such as the noises
+// and the tunnels (see Book.OrderMethods).
 const (
 	MaxScore = rating.Max
 	MinScore = rating.Min
@@ -28,7 +29,7 @@ const (
 	networkLifetime      = 90 * 24 * time.Hour
 )
 
-// EndpointPolicy tempers the failures of endpoints.
+// EndpointPolicy tempers the failures of endpoints and methods alike.
 var EndpointPolicy = rating.Policy{FailureGap: FailurePeriod, RecentWindow: RecentWindow, RecentFloor: RecentScoreFloor}
 
 // Record is what is known about one endpoint on one network.
@@ -46,8 +47,17 @@ type Book struct {
 type network struct {
 	LastSeen time.Time                  `json:"last_seen"`
 	Records  map[netip.AddrPort]*Record `json:"records"`
-	// Noise is the noise preset that got through on this network, empty for the configured noise.
-	Noise string `json:"noise,omitempty"`
+	// Methods rates the ways of getting through tried on this network, by a key the caller
+	// names (NoiseMethod).
+	Methods map[string]*rating.Record `json:"methods,omitempty"`
+	// LegacyNoise is the noise preset that got through, as saved before methods were rated; it
+	// is read once into Methods.
+	LegacyNoise string `json:"noise,omitempty"`
+}
+
+// NoiseMethod is the method key of a noise preset, "" for the configured noise.
+func NoiseMethod(preset string) string {
+	return "noise/" + preset
 }
 
 func NewBook() *Book {
@@ -63,25 +73,75 @@ func (b *Book) network(name string, now time.Time) *network {
 	if n.Records == nil {
 		n.Records = make(map[netip.AddrPort]*Record)
 	}
+	if n.Methods == nil {
+		n.Methods = make(map[string]*rating.Record)
+	}
 	n.LastSeen = now
 	return n
 }
 
-// Noise returns the noise preset that got through on network, empty for the configured noise.
-func (b *Book) Noise(networkName string) string {
+// MethodScore returns the score of method on network, and whether it was rated there.
+func (b *Book) MethodScore(networkName string, method string) (rating.Score, bool) {
 	b.access.Lock()
 	defer b.access.Unlock()
 	if n := b.networks[networkName]; n != nil {
-		return n.Noise
+		if record := n.Methods[method]; record != nil {
+			return record.Score, true
+		}
 	}
-	return ""
+	return 0, false
 }
 
-// SetNoise records the noise preset that got through on network, empty for the configured noise.
-func (b *Book) SetNoise(networkName string, noise string) {
+// OrderMethods returns methods in a weighted random order by their score on network (see
+// rating.Order); a method not rated there counts as prior gives it (nil for 0).
+func (b *Book) OrderMethods(networkName string, methods []string, prior func(method string) rating.Score) []string {
 	b.access.Lock()
 	defer b.access.Unlock()
-	b.network(networkName, time.Now()).Noise = noise
+	var records map[string]*rating.Record
+	if n := b.networks[networkName]; n != nil {
+		records = n.Methods
+	}
+	return rating.Order(methods, func(method string) rating.Score {
+		if record := records[method]; record != nil {
+			return record.Score
+		}
+		if prior != nil {
+			return prior(method)
+		}
+		return 0
+	})
+}
+
+// SettleMethods scores one attempt over several methods on network: winner got through, the
+// methods in failed did not before it. Without a winner nothing is recorded (see
+// rating.Table.Settle).
+func (b *Book) SettleMethods(networkName string, winner string, failed []string, now time.Time) {
+	b.access.Lock()
+	defer b.access.Unlock()
+	methods := b.network(networkName, now).Methods
+	method(methods, winner).Success(now)
+	for _, key := range failed {
+		if key != winner {
+			method(methods, key).Failure(now, EndpointPolicy)
+		}
+	}
+}
+
+// MethodFailure records that method did not get through on network although it looked like it
+// would (a tunnel that answered a handshake but did not connect).
+func (b *Book) MethodFailure(networkName string, key string, now time.Time) {
+	b.access.Lock()
+	defer b.access.Unlock()
+	method(b.network(networkName, now).Methods, key).Failure(now, EndpointPolicy)
+}
+
+func method(methods map[string]*rating.Record, key string) *rating.Record {
+	record := methods[key]
+	if record == nil {
+		record = &rating.Record{}
+		methods[key] = record
+	}
+	return record
 }
 
 // Success records that addrPort answered on network: +1, or 1 when it was negative.
@@ -206,6 +266,9 @@ func (b *Book) prune(now time.Time) {
 	}
 }
 
+// legacyNoiseScore is the score of the noise saved before methods were rated.
+const legacyNoiseScore rating.Score = 3
+
 func (b *Book) MarshalJSON() ([]byte, error) {
 	b.access.Lock()
 	defer b.access.Unlock()
@@ -230,6 +293,17 @@ func (b *Book) UnmarshalJSON(content []byte) error {
 			if record == nil || record.LastSuccess.IsZero() {
 				delete(n.Records, addrPort) // a failure of an endpoint that never answered, saved before
 			}
+		}
+		if n.Methods == nil {
+			n.Methods = make(map[string]*rating.Record)
+		}
+		if n.LegacyNoise != "" {
+			// the noise that got through, before methods were rated: as a few successes
+			key := NoiseMethod(n.LegacyNoise)
+			if n.Methods[key] == nil {
+				n.Methods[key] = &rating.Record{Score: legacyNoiseScore, LastSuccess: n.LastSeen}
+			}
+			n.LegacyNoise = ""
 		}
 	}
 	b.access.Lock()

@@ -24,9 +24,10 @@ type WARPScannerOptions struct {
 	// Concurrency is the number of probes run at once; 8 when zero.
 	Concurrency int `json:"concurrency,omitempty"`
 	// SearchNoise also looks for noise that gets through (WireGuard and AmneziaWG): when no
-	// endpoint answers with the configured noise, the scan is tried again with each of
-	// NoisePresets, and the one that works is kept for the network.
+	// endpoint answers with the noise drawn first, the scan is tried again with the others, and
+	// the one that works gains a point on the network (see warpscan.Book.OrderMethods).
 	SearchNoise bool `json:"search_noise,omitempty"`
-	// NoisePresets are the presets tried, in order; all of warpscan.NoisePresets when empty.
+	// NoisePresets are the presets tried, in a weighted random order by their rating on the
+	// network; all of warpscan.NoisePresets when empty.
 	NoisePresets badoption.Listable[string] `json:"noise_presets,omitempty"`
 }

@@ -104,6 +104,9 @@ type warpSession struct {
 	cancel   context.CancelFunc
 	finished chan struct{} // closed when the start that runs in the session has returned
 	failover *warpFailover // the scanner's, of this start; guarded by w.mtx
+	// network is the network auto mode named for its tunnel ratings, which the scanner of the
+	// start takes over; guarded by w.mtx
+	network *warpscan.NetworkInfo
 }
 
 // end ends the session; w.mtx is held.
@@ -191,7 +194,7 @@ func (w *WARPEndpoint) start() {
 	mode := w.mode
 	if mode == modeAuto {
 		w.selecting.Store(true)
-		mode = w.chooseMode(done)
+		mode = w.chooseMode(session)
 		w.selecting.Store(false)
 		if mode == "" || !w.publish(done, func() { w.active.Store(mode) }) {
 			return
@@ -226,7 +229,8 @@ func (w *WARPEndpoint) start() {
 }
 
 // confirmAuto leaves the tunnel auto mode chose when it does not connect within
-// autoConfirmWait: the race runs again without it.
+// autoConfirmWait: the race runs again without it. Either way the tunnel is rated (see
+// h_tunnel_rating.go).
 func (w *WARPEndpoint) confirmAuto(done <-chan struct{}, mode string) {
 	select {
 	case <-done:
@@ -234,7 +238,11 @@ func (w *WARPEndpoint) confirmAuto(done <-chan struct{}, mode string) {
 	case <-time.After(autoConfirmWait):
 	}
 	if adapter.IsReady(w) {
+		w.tunnelConnected(mode)
 		return
+	}
+	if !w.paused() { // a paused device connects nothing: no tunnel is to blame
+		w.tunnelsFailed(mode)
 	}
 	w.failedModes.Store(mode, struct{}{})
 	w.restart("auto mode: " + mode + " did not connect")
@@ -421,7 +429,7 @@ func (w *WARPEndpoint) watchHealth(done <-chan struct{}) {
 			}
 		}
 		if w.mode == modeAuto {
-			if best := w.raceModes(done); best != "" && best != w.activeMode() {
+			if best := w.pickTunnel(w.raceModes(done)); best != "" && best != w.activeMode() {
 				w.restart("auto mode: " + best + " gets through")
 				return
 			}
@@ -429,10 +437,13 @@ func (w *WARPEndpoint) watchHealth(done <-chan struct{}) {
 	}
 }
 
-// chooseMode gets the devices auto mode needs and races the tunnels; WireGuard when none
-// answers, so the scanner and the port rotation can still look for a way. Empty when the start
-// ends first.
-func (w *WARPEndpoint) chooseMode(done <-chan struct{}) string {
+// chooseMode gets the devices auto mode needs, races the tunnels, and draws one of those that
+// answered by their rating on the network (pickTunnel). When none answers, it draws one of those
+// that did not fail to connect yet, so the scanner and the port rotation can still look for a
+// way. Empty when the start ends first. The network is named meanwhile, for the ratings.
+func (w *WARPEndpoint) chooseMode(session *warpSession) string {
+	done := session.done
+	detected := w.detectNetwork(session.ctx)
 	for _, kind := range []string{kindWireGuard, kindAWG} {
 		if w.obtainProfile(done, kind) == nil {
 			return ""
@@ -443,7 +454,16 @@ func (w *WARPEndpoint) chooseMode(done <-chan struct{}) string {
 			return ""
 		}
 	}
-	if best := w.raceModes(done); best != "" {
+	race := w.raceModes(done)
+	select {
+	case network, ok := <-detected:
+		if ok && !w.publish(done, func() { session.network = &network }) {
+			return ""
+		}
+	case <-done:
+		return ""
+	}
+	if best := w.pickTunnel(race); best != "" {
 		return best
 	}
 	select {
@@ -451,20 +471,56 @@ func (w *WARPEndpoint) chooseMode(done <-chan struct{}) string {
 		return ""
 	default:
 	}
-	for _, mode := range []string{modeWireGuard, modeAWG, modeMASQUE} {
-		if !w.modeFailed(mode) && (mode != modeMASQUE || masqueIncluded) {
-			w.logger.WarnContext(w.ctx, "WARP auto mode: no tunnel answered, using ", mode)
-			return mode
+	modes := []string{modeWireGuard, modeAWG}
+	if masqueIncluded {
+		modes = append(modes, modeMASQUE)
+	}
+	var left []string
+	for _, mode := range modes {
+		if !w.modeFailed(mode) {
+			left = append(left, mode)
 		}
 	}
+	if len(left) > 0 {
+		mode := w.orderTunnels(left)[0]
+		w.logger.WarnContext(w.ctx, "WARP auto mode: no tunnel answered, using ", mode, " (score ", w.tunnelScore(mode), ")")
+		return mode
+	}
 	w.clearFailedModes() // each was tried: start over
-	w.logger.WarnContext(w.ctx, "WARP auto mode: no tunnel connected, starting over with WireGuard")
-	return modeWireGuard
+	mode := w.orderTunnels(modes)[0]
+	w.logger.WarnContext(w.ctx, "WARP auto mode: no tunnel connected, starting over with ", mode)
+	return mode
 }
 
-// raceModes makes a handshake with each tunnel at once and returns the fastest that answered,
-// or empty.
-func (w *WARPEndpoint) raceModes(done <-chan struct{}) string {
+// tunnelRace is the outcome of raceModes: the handshake time of each tunnel that answered, and
+// the tunnels that did not.
+type tunnelRace struct {
+	answered map[string]time.Duration
+	silent   []string
+}
+
+// pickTunnel draws one of the tunnels that answered race by their rating on the network (see
+// h_tunnel_rating.go), and counts the silent ones as failed when another answered; empty when
+// none answered.
+func (w *WARPEndpoint) pickTunnel(race tunnelRace) string {
+	if len(race.answered) == 0 {
+		return ""
+	}
+	w.tunnelsFailed(race.silent...)
+	answered := make([]string, 0, len(race.answered))
+	for _, mode := range []string{modeWireGuard, modeAWG, modeMASQUE} {
+		if _, ok := race.answered[mode]; ok {
+			answered = append(answered, mode)
+		}
+	}
+	best := w.orderTunnels(answered)[0]
+	w.logger.InfoContext(w.ctx, "WARP auto mode: using ", best, " (", race.answered[best], ", score ", w.tunnelScore(best), "; answered: ", strings.Join(answered, ", "), ")")
+	return best
+}
+
+// raceModes makes a handshake with each tunnel at once. A start that ends meanwhile gets no
+// answers and no silent tunnels.
+func (w *WARPEndpoint) raceModes(done <-chan struct{}) tunnelRace {
 	ctx, cancel := context.WithTimeout(w.ctx, raceTimeout)
 	defer cancel()
 	go func() {
@@ -478,7 +534,7 @@ func (w *WARPEndpoint) raceModes(done <-chan struct{}) string {
 	probeDialer, err := dialer.NewWithOptions(dialer.Options{Context: w.ctx, Options: w.options.DialerOptions, ResolverOnDetour: true})
 	if err != nil {
 		w.logger.ErrorContext(w.ctx, err)
-		return ""
+		return tunnelRace{}
 	}
 	for mode, noise := range map[string]hiddify.NoiseOptions{
 		modeWireGuard: w.options.Noise,
@@ -538,15 +594,19 @@ func (w *WARPEndpoint) raceModes(done <-chan struct{}) string {
 			answers <- answer{mode: mode, rtt: -1}
 		}()
 	}
-	var best answer
+	race := tunnelRace{answered: make(map[string]time.Duration)}
 	for range probes {
 		got := <-answers
-		if got.rtt >= 0 && (best.mode == "" || got.rtt < best.rtt) {
-			best = got
+		if got.rtt >= 0 {
+			race.answered[got.mode] = got.rtt
+		} else {
+			race.silent = append(race.silent, got.mode)
 		}
 	}
-	if best.mode != "" {
-		w.logger.InfoContext(w.ctx, "WARP auto mode: using ", best.mode, " (", best.rtt, ")")
+	select {
+	case <-done:
+		return tunnelRace{}
+	default:
 	}
-	return best.mode
+	return race
 }

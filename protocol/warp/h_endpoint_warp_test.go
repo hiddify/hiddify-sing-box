@@ -14,6 +14,7 @@ import (
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/endpoint"
 	C "github.com/sagernet/sing-box/constant"
+	"github.com/sagernet/sing-box/hiddify/rating"
 	"github.com/sagernet/sing-box/hiddify/warpscan"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
@@ -543,13 +544,83 @@ func TestH_WARPSearchNoise(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, results)
 	require.Equal(t, "dns-google", ep.failover.currentNoise())
-	require.Equal(t, "dns-google", ep.failover.book.Noise("wifi/IR"), "remembered for the network")
+	score, _ := ep.failover.book.MethodScore("wifi/IR", warpscan.NoiseMethod("dns-google"))
+	require.Equal(t, rating.Score(1), score, "rated for the network")
+	for _, preset := range append([]string{""}, presetNames()...) {
+		if preset != "dns-google" {
+			score, _ := ep.failover.book.MethodScore("wifi/IR", warpscan.NoiseMethod(preset))
+			require.LessOrEqual(t, score, rating.Score(0), "a noise tried before it loses a point: %q", preset)
+		}
+	}
 	dns, _ := warpscan.NoisePresetByName("dns-google")
 	require.Equal(t, dns.WireGuard(), ep.innerOptions(ep.activeMode()).Noise, "the next inner endpoint sends it")
-	require.Equal(t, []string{"dns-google", "", "xray-random"}, ep.noiseCandidates(ep.failover, "wifi/IR")[:3], "tried first next time")
+
+	// the noise that gets through comes first most of the time, the others now and then
+	for range 5 {
+		_, err = ep.scan(nil)
+		require.NoError(t, err)
+	}
+	first := map[string]int{}
+	for range 1000 {
+		first[ep.noiseCandidates(ep.failover, "wifi/IR")[0]]++
+	}
+	for noise, count := range first {
+		if noise != "dns-google" {
+			require.Greater(t, first["dns-google"], count*2, noise)
+		}
+	}
+	require.Less(t, first["dns-google"], 1000, "the others are still tried")
+
+	// no noise gets through: none is marked down, the network is to blame
+	before, _ := ep.failover.book.MethodScore("wifi/IR", warpscan.NoiseMethod("dns-google"))
+	ep.failover.probes["dns-google"] = blocked
+	_, err = ep.scan(nil)
+	require.Error(t, err)
+	after, _ := ep.failover.book.MethodScore("wifi/IR", warpscan.NoiseMethod("dns-google"))
+	require.Equal(t, before, after)
 
 	ep.options.Scanner.SearchNoise = false
 	require.Equal(t, []string{""}, ep.noiseCandidates(ep.failover, "wifi/IR"), "only the configured noise without search_noise")
+}
+
+func presetNames() []string {
+	var names []string
+	for _, preset := range warpscan.NoisePresets {
+		names = append(names, preset.Name)
+	}
+	return names
+}
+
+// Auto mode draws the tunnel among those that answered by its rating on the network; a tunnel
+// that stays silent while another answers, or that does not connect, loses a point.
+func TestH_WARPAutoTunnelRating(t *testing.T) {
+	cache := &hFakeCacheFile{store: map[string]*adapter.SavedBinary{}}
+	ep := hNewWARP(t, service.ContextWith[adapter.CacheFile](hTestContext(t), cache), option.WARPEndpointOptions{Mode: modeAuto})
+	race := tunnelRace{answered: map[string]time.Duration{modeWireGuard: time.Millisecond, modeAWG: time.Millisecond}, silent: []string{modeMASQUE}}
+
+	ep.ratedNetwork.Store(nil)
+	require.NotEmpty(t, ep.pickTunnel(race))
+	require.Empty(t, cache.saves, "nothing is rated before the network is named")
+
+	ep.ratedNetwork.Store(&warpscan.NetworkInfo{Name: "lte/IR"})
+	for range 8 {
+		ep.tunnelConnected(modeAWG)
+	}
+	ep.tunnelsFailed(modeWireGuard)
+	picked := map[string]int{}
+	for range 500 {
+		picked[ep.pickTunnel(race)]++
+	}
+	require.Zero(t, picked[modeMASQUE], "only a tunnel that answered")
+	require.Greater(t, picked[modeAWG], 400, "the tunnel that connects here, most of the time")
+	require.Positive(t, picked[modeWireGuard], "the other one now and then")
+	require.Less(t, ep.tunnelScore(modeMASQUE), rating.Score(0), "silent while another answered")
+	require.Equal(t, rating.Score(8), ep.tunnelScore(modeAWG))
+
+	ep.ratedNetwork.Store(&warpscan.NetworkInfo{Name: "wifi/DE"})
+	require.Equal(t, rating.Score(0), ep.tunnelScore(modeAWG), "per network")
+	require.Empty(t, ep.pickTunnel(tunnelRace{silent: []string{modeAWG}}))
+	require.Equal(t, rating.Score(0), ep.tunnelScore(modeAWG), "no tunnel answered: none is marked down")
 }
 
 func TestH_WARPNoisePresetOption(t *testing.T) {

@@ -12,6 +12,7 @@ import (
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/dialer"
 	C "github.com/sagernet/sing-box/constant"
+	"github.com/sagernet/sing-box/hiddify/rating"
 	"github.com/sagernet/sing-box/hiddify/warpscan"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
@@ -74,7 +75,10 @@ func (w *WARPEndpoint) connect(session *warpSession, config *C.WARPConfig) {
 		failover *warpFailover
 	)
 	if w.scannerEnabled() {
-		failover, err = w.newFailover(session.ctx, config)
+		w.mtx.Lock()
+		network := session.network // named by auto mode
+		w.mtx.Unlock()
+		failover, err = w.newFailover(session.ctx, config, network)
 		if err != nil {
 			failover = nil
 			w.logger.WarnContext(w.ctx, "WARP scanner: ", err)
@@ -168,7 +172,9 @@ func (w *WARPEndpoint) newInner(config *C.WARPConfig, peerAddr string, peerPort 
 	return inner, nil
 }
 
-func (w *WARPEndpoint) newFailover(ctx context.Context, config *C.WARPConfig) (*warpFailover, error) {
+// newFailover sets up the scanner of a start; network is the network auto mode named for it, nil
+// to name it here.
+func (w *WARPEndpoint) newFailover(ctx context.Context, config *C.WARPConfig, network *warpscan.NetworkInfo) (*warpFailover, error) {
 	probeDialer, err := dialer.NewWithOptions(dialer.Options{
 		Context:          w.ctx,
 		Options:          w.options.DialerOptions,
@@ -197,7 +203,13 @@ func (w *WARPEndpoint) newFailover(ctx context.Context, config *C.WARPConfig) (*
 		logger:      w.logger,
 		probes:      make(map[string]warpscan.Probe),
 	}
-	failover.detectNetwork(ctx)
+	if network != nil {
+		failover.network = *network
+	} else {
+		failover.detectNetwork(ctx)
+		detected := failover.currentNetwork()
+		w.ratedNetwork.Store(&detected)
+	}
 	return failover, nil
 }
 
@@ -277,30 +289,71 @@ func (f *warpFailover) currentNoise() string {
 	return f.noise
 }
 
-// noiseCandidates are the noises a scan tries on network, in order: with search_noise, the one
-// that got through there before; the configured one; then the presets.
+// configuredNoisePrior is the score the configured noise counts as on a network where it was
+// never tried: the user chose it, so it comes first more often than an untried preset.
+const configuredNoisePrior rating.Score = 2
+
+// noiseCandidates are the noises a scan tries on network (the configured one, then the presets of
+// noise_presets), in a weighted random order by their score there (see warpscan.Book.OrderMethods):
+// the noise that gets through most is tried first most of the time, and the others now and then,
+// so a noise that stopped working is replaced, and one that works again is found. Without
+// search_noise, the configured noise alone.
 func (w *WARPEndpoint) noiseCandidates(failover *warpFailover, networkName string) []string {
 	scanner := w.options.Scanner
 	if scanner == nil || !scanner.SearchNoise {
 		return []string{""}
 	}
-	candidates := []string{failover.book.Noise(networkName), ""}
 	presets := []string(scanner.NoisePresets)
 	if len(presets) == 0 {
 		for _, preset := range warpscan.NoisePresets {
 			presets = append(presets, preset.Name)
 		}
 	}
-	candidates = append(candidates, presets...)
-	seen := make(map[string]bool)
-	unique := candidates[:0]
-	for _, candidate := range candidates {
-		if !seen[candidate] {
-			seen[candidate] = true
-			unique = append(unique, candidate)
+	byMethod := map[string]string{warpscan.NoiseMethod(""): ""}
+	methods := []string{warpscan.NoiseMethod("")}
+	for _, preset := range presets {
+		method := warpscan.NoiseMethod(preset)
+		if _, seen := byMethod[method]; !seen {
+			byMethod[method] = preset
+			methods = append(methods, method)
 		}
 	}
-	return unique
+	ordered := failover.book.OrderMethods(networkName, methods, func(method string) rating.Score {
+		if method == warpscan.NoiseMethod("") {
+			return configuredNoisePrior
+		}
+		return 0
+	})
+	candidates := make([]string, len(ordered))
+	for i, method := range ordered {
+		candidates[i] = byMethod[method]
+	}
+	return candidates
+}
+
+// noiseCount is the most endpoints a scan with the i-th noise of candidates probes: the full count
+// for the first when it got through on the network before, or when none did yet (the first scan
+// there); noiseSearchCount for the others, as the endpoints known to answer come first.
+func noiseCount(book *warpscan.Book, networkName string, candidates []string, i int, count int) int {
+	if count > 0 && count <= noiseSearchCount {
+		return count
+	}
+	if i == 0 {
+		if score, _ := book.MethodScore(networkName, warpscan.NoiseMethod(candidates[0])); score > 0 {
+			return count
+		}
+		known := false
+		for _, candidate := range candidates {
+			if score, _ := book.MethodScore(networkName, warpscan.NoiseMethod(candidate)); score > 0 {
+				known = true
+				break
+			}
+		}
+		if !known {
+			return count
+		}
+	}
+	return noiseSearchCount
 }
 
 // scan looks for endpoints on the current network, without exclude, with the failover in use.
@@ -313,8 +366,9 @@ func (w *WARPEndpoint) scan(exclude []netip.AddrPort) ([]warpscan.Result, error)
 }
 
 // scanWith looks for endpoints on the current network, without exclude, and saves the scores.
-// With search_noise, when none answers with the noise in use, it tries the others
-// (noiseCandidates) and keeps the first that gets an answer; the next inner endpoint uses it.
+// With search_noise, it tries the noises in the order of noiseCandidates and keeps the first that
+// gets an answer; the next inner endpoint uses it. That noise gains a point on the network, and
+// the ones tried before it lose one; when no noise gets through, none is marked down.
 // It works on failover to the end: a restart clears the endpoint's while a scan of the start that
 // ends still runs. ctx is the session's: the scan of a start that ended stops, where it went on
 // for as long as its probes took.
@@ -328,16 +382,20 @@ func (w *WARPEndpoint) scanWith(ctx context.Context, failover *warpFailover, exc
 	}
 	network := failover.currentNetwork()
 	w.scanStatus.Begin()
-	var lastErr error
-	for i, noise := range w.noiseCandidates(failover, network.Name) {
+	var (
+		lastErr error
+		failed  []string // the noises no endpoint answered
+	)
+	candidates := w.noiseCandidates(failover, network.Name)
+	for i, noise := range candidates {
 		probe, err := w.probe(failover, noise)
 		if err != nil {
 			lastErr = err
 			continue
 		}
 		options := *w.options.Scanner
-		if i > 0 && (options.Count == 0 || options.Count > noiseSearchCount) {
-			options.Count = noiseSearchCount
+		if len(candidates) > 1 {
+			options.Count = noiseCount(failover.book, network.Name, candidates, i, options.Count)
 		}
 		results, err := warpscan.Scan(ctx, w.logger, warpscan.Request{
 			Options:  &options,
@@ -354,17 +412,19 @@ func (w *WARPEndpoint) scanWith(ctx context.Context, failover *warpFailover, exc
 			if ctx.Err() != nil {
 				break
 			}
+			failed = append(failed, warpscan.NoiseMethod(noise))
 			continue
+		}
+		if len(candidates) > 1 {
+			failover.book.SettleMethods(network.Name, warpscan.NoiseMethod(noise), failed, time.Now())
 		}
 		failover.noiseAccess.Lock()
 		changed := failover.noise != noise
 		failover.noise = noise
 		failover.noiseAccess.Unlock()
-		if changed || failover.book.Noise(network.Name) != noise {
-			failover.book.SetNoise(network.Name, noise)
-			if noise != "" {
-				w.logger.InfoContext(w.ctx, "WARP scanner: noise ", noise, " gets through")
-			}
+		if changed {
+			score, _ := failover.book.MethodScore(network.Name, warpscan.NoiseMethod(noise))
+			w.logger.InfoContext(w.ctx, "WARP scanner: noise ", noiseName(noise), " gets through (score ", score, ")")
 		}
 		w.saveScores(failover)
 		w.scanStatus.Found(results[0].AddrPort)
@@ -373,6 +433,14 @@ func (w *WARPEndpoint) scanWith(ctx context.Context, failover *warpFailover, exc
 	w.saveScores(failover)
 	w.scanStatus.NotFound()
 	return nil, lastErr
+}
+
+// noiseName names a noise of noiseCandidates for the log.
+func noiseName(noise string) string {
+	if noise == "" {
+		return "configured"
+	}
+	return noise
 }
 
 // currentFailover is the scanner's failover of the start in use, or nil: a restart clears it, so
@@ -394,7 +462,8 @@ func (w *WARPEndpoint) saveScores(failover *warpFailover) {
 // InterfaceUpdated passes the network change to the inner endpoint (which rebinds its socket)
 // and checks the endpoint in use on the new network.
 func (w *WARPEndpoint) InterfaceUpdated(ctx context.Context) {
-	w.clearFailedModes() //H: auto mode: on a new network every tunnel may connect again
+	w.clearFailedModes()      //H: auto mode: on a new network every tunnel may connect again
+	w.ratedNetwork.Store(nil) // the tunnel ratings wait for the new network's name
 	w.mtx.Lock()
 	inner := w.endpoint
 	w.mtx.Unlock()
@@ -415,6 +484,8 @@ func (w *WARPEndpoint) InterfaceUpdated(ctx context.Context) {
 			return
 		}
 		failover.detectNetwork(session.ctx)
+		detected := failover.currentNetwork()
+		w.ratedNetwork.Store(&detected)
 		w.check(session, true)
 	}()
 }

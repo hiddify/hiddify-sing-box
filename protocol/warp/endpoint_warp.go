@@ -60,6 +60,8 @@ type WARPEndpoint struct {
 	registering   atomic.Bool           // H: a device is being registered
 	failedModes   sync.Map              // H: auto mode: the tunnels that did not connect
 
+	ratedNetwork atomic.Pointer[warpscan.NetworkInfo] // H: the network the tunnels are rated on, see h_tunnel_rating.go
+
 	mode          string        // H: the tunnel, see h_mode.go
 	active        atomic.Value  // H: in auto mode, the tunnel chosen
 	selecting     atomic.Bool   // H: auto mode races the tunnels

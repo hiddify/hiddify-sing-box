@@ -1,7 +1,8 @@
 // Package warpscan finds a Cloudflare WARP endpoint that answers. Each endpoint has a score per
 // network (see Book); the best known endpoints are tried first, then random addresses in the
 // configured ranges. Each is probed with the handshake of the protocol in use (WireGuard or
-// MASQUE), through the client's own dialer.
+// MASQUE), through the client's own dialer. The book also rates the methods tried on each
+// network (noises, tunnels), which are drawn in a weighted random order.
 package warpscan
 
 import (
