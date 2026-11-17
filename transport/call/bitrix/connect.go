@@ -5,14 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/sagernet/sing-box/transport/call/common"
 	"github.com/sagernet/sing-box/transport/call/tunnel"
-	"github.com/sagernet/sing-box/transport/call/tunnel/rtc"
 	"github.com/sagernet/sing/common/logger"
 	N "github.com/sagernet/sing/common/network"
 )
 
-func ConnectJoiner(ctx context.Context, joinLink, displayName, mode string, readBuf int, dialer N.Dialer, logger logger.ContextLogger) (*tunnel.RelayBridge, error) {
+// ConnectJoiner joins the call and returns the bridge to dial through, and the function that
+// leaves the call.
+func ConnectJoiner(ctx context.Context, joinLink, displayName, mode string, readBuf int, dialer N.Dialer, logger logger.ContextLogger) (*tunnel.RelayBridge, func(), error) {
 	if displayName == "" {
 		displayName = "Joiner"
 	}
@@ -33,7 +33,7 @@ func ConnectJoiner(ctx context.Context, joinLink, displayName, mode string, read
 	}
 	paramsJSON, err := json.Marshal(params)
 	if err != nil {
-		return nil, fmt.Errorf("bitrix: encode params: %w", err)
+		return nil, nil, fmt.Errorf("bitrix: encode params: %w", err)
 	}
 	joiner := NewBitrixJoiner(logger, nil, dialer)
 	tunCh := make(chan tunnel.DataTunnel, 1)
@@ -46,20 +46,12 @@ func ConnectJoiner(ctx context.Context, joinLink, displayName, mode string, read
 	go joiner.RunWithParams(string(paramsJSON))
 	select {
 	case tun := <-tunCh:
-		rb := tunnel.NewRelayBridge(tun, "joiner", bridgeReadBufFor(tun, readBuf), dialer, logger)
+		rb := tunnel.NewJoinerBridge(tun, logger)
 		rb.SetOnConfigAck(joiner.MarkConfigAcked)
 		rb.MarkReady()
-		return rb, nil
+		return rb, joiner.Close, nil
 	case <-ctx.Done():
 		joiner.Close()
-		return nil, ctx.Err()
+		return nil, nil, ctx.Err()
 	}
-}
-
-func bridgeReadBufFor(tun tunnel.DataTunnel, readBuf int) int {
-	switch tun.(type) {
-	case *rtc.DCTunnel, *rtc.MultiTrackKCPTunnel:
-		return readBuf
-	}
-	return common.VP8BufSize
 }

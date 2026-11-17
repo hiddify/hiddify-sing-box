@@ -3,7 +3,6 @@ package telemost
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/transport/call/common"
@@ -12,7 +11,13 @@ import (
 	N "github.com/sagernet/sing/common/network"
 )
 
-func ConnectCreator(ctx context.Context, cookieStr, joinLink string, readBuf int, dialer N.Dialer, logger logger.ContextLogger) (*tunnel.RelayBridge, string, error) {
+// ConnectCreator joins the conference (or makes one) and returns once the session runs: the
+// function that ends it, and the link the other side joins with. Connections of the peers that
+// join, now or after a reconnect, go to accept.
+//
+// Hiddify: it waited 60 s for a first peer and failed without one, and the inbound tried again:
+// a server nobody had joined yet made a new conference every two minutes.
+func ConnectCreator(ctx context.Context, cookieStr, joinLink string, readBuf int, dialer N.Dialer, accept tunnel.AcceptHandlers, logger logger.ContextLogger) (func(), string, error) {
 	cfg, err := FetchConfig(dialer, logger)
 	if err != nil {
 		return nil, "", err
@@ -40,28 +45,16 @@ func ConnectCreator(ctx context.Context, cookieStr, joinLink string, readBuf int
 		seenPids:  make(map[string]bool),
 		readBuf:   readBuf,
 		dialer:    dialer,
+		accept:    accept,
 		logger:    logger,
 	}
 	go bridge.Run()
-	deadline := time.Now().Add(60 * time.Second)
-	for bridge.getActiveBridge() == nil {
-		// a connect that gives up ends the session it started: left running, it kept the call
-		// and joined it again for the rest of the process
-		if time.Now().After(deadline) {
-			bridge.Close()
-			return nil, "", fmt.Errorf("telemost: creator tunnel timed out")
-		}
-		select {
-		case <-ctx.Done():
-			bridge.Close()
-			return nil, "", ctx.Err()
-		case <-time.After(200 * time.Millisecond):
-		}
-	}
-	return bridge.getActiveBridge(), connInfo.ConferenceURI, nil
+	return bridge.Close, connInfo.ConferenceURI, nil
 }
 
-func ConnectJoiner(ctx context.Context, joinLink, displayName string, readBuf int, dialer N.Dialer, dnsRouter adapter.DNSRouter, logger logger.ContextLogger) (*tunnel.RelayBridge, error) {
+// ConnectJoiner joins the conference and returns the bridge to dial through, and the function
+// that leaves the conference.
+func ConnectJoiner(ctx context.Context, joinLink, displayName string, readBuf int, dialer N.Dialer, dnsRouter adapter.DNSRouter, logger logger.ContextLogger) (*tunnel.RelayBridge, func(), error) {
 	if displayName == "" {
 		displayName = "Joiner"
 	}
@@ -87,13 +80,13 @@ func ConnectJoiner(ctx context.Context, joinLink, displayName string, readBuf in
 	go joiner.RunWithParams(params)
 	select {
 	case tun := <-tunCh:
-		rb := tunnel.NewRelayBridge(tun, "joiner", readBuf, dialer, logger)
+		rb := tunnel.NewJoinerBridge(tun, logger)
 		rb.SetOnConfigAck(joiner.MarkConfigAcked)
 		rb.MarkReady()
-		return rb, nil
+		return rb, joiner.Close, nil
 	case <-ctx.Done():
 		joiner.Close()
-		return nil, ctx.Err()
+		return nil, nil, ctx.Err()
 	}
 }
 

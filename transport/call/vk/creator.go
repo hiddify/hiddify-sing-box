@@ -40,6 +40,38 @@ type Bridge struct {
 	activeBridge *tunnel.RelayBridge
 	readBuf      int
 	logger       logger.ContextLogger
+
+	// Hiddify: the bridge runs until it is closed. It had no end: a connect that gave up left it
+	// holding the call and joining it again for the rest of the process.
+	ctx    context.Context
+	cancel context.CancelFunc
+	accept tunnel.AcceptHandlers // where every bridge of this session hands its connections
+}
+
+// Close ends the bridge: the call session, its relay, the joining loop and the connections that
+// came through it.
+func (b *Bridge) Close() {
+	b.cancel()
+	b.mu.Lock()
+	sfu := b.sfu
+	active := b.activeBridge
+	b.mu.Unlock()
+	if sfu != nil {
+		sfu.Close()
+	}
+	if active != nil {
+		active.Close()
+	}
+}
+
+// sleep waits d, or until the bridge is closed; false when it is.
+func (b *Bridge) sleep(d time.Duration) bool {
+	select {
+	case <-b.ctx.Done():
+		return false
+	case <-time.After(d):
+		return true
+	}
 }
 
 func (b *Bridge) setScreenSharing(enabled bool) {
@@ -181,11 +213,16 @@ func (b *Bridge) connectVKWs(wtURL string) error {
 	if err != nil {
 		return fmt.Errorf("resolve %s: %w", host, err)
 	}
-	sfu, err := wtsignal.Dial(wtURL, host, resolvedIP, vkOrigin)
+	sfu, err := wtsignal.Dial(b.ctx, wtURL, host, resolvedIP, vkOrigin)
 	if err != nil {
 		return err
 	}
 	b.mu.Lock()
+	if b.ctx.Err() != nil { // closed while it connected
+		b.mu.Unlock()
+		sfu.Close()
+		return b.ctx.Err()
+	}
 	b.sfu = sfu
 	b.vkSeq = 0
 	b.mu.Unlock()
@@ -200,7 +237,7 @@ func (b *Bridge) resolveHost(host string) (string, error) {
 	if b.dnsRouter == nil || !hasRD {
 		return "", fmt.Errorf("no DNS router available to resolve %s", host)
 	}
-	addrs, err := b.dnsRouter.Lookup(context.Background(), host, rd.QueryOptions())
+	addrs, err := b.dnsRouter.Lookup(b.ctx, host, rd.QueryOptions())
 	if err != nil {
 		return "", err
 	}
@@ -258,7 +295,12 @@ func (b *Bridge) Run(callInfo *CallInfo, cookieStr string, cfg VKConfig) {
 			"&version=" + cfg.ProtocolVersion +
 			"&device=browser&capabilities=" + capabilities + "&clientType=VK&tgt=join&compression=deflate-raw"
 	}
-	for {
+	defer func() { // Hiddify: the relay ends with the bridge
+		if b.relay != nil {
+			b.relay.Close()
+		}
+	}()
+	for b.ctx.Err() == nil {
 		b.initRelay()
 		if wtEndpoint == "" {
 			b.logger.Error("[vk-ws] no wt_endpoint in join response")
@@ -266,8 +308,11 @@ func (b *Bridge) Run(callInfo *CallInfo, cookieStr string, cfg VKConfig) {
 		}
 		b.logger.Debug("[vk-ws] Connecting...")
 		if err := b.connectVKWs(makeWtURL(wtEndpoint)); err != nil {
+			if b.ctx.Err() != nil {
+				return
+			}
 			b.logger.Warn(fmt.Sprintf("[vk-ws] Connect failed: %s, retrying in 5s...", common.MaskError(err)))
-			time.Sleep(5 * time.Second)
+			b.sleep(5 * time.Second)
 			continue
 		}
 		b.logger.Debug("[vk-ws] Connected")
@@ -281,11 +326,13 @@ func (b *Bridge) Run(callInfo *CallInfo, cookieStr string, cfg VKConfig) {
 		b.sfu = nil
 		b.mu.Unlock()
 		b.logger.Debug("[vk-ws] Rejoining in 3s...")
-		time.Sleep(3 * time.Second)
+		if !b.sleep(3 * time.Second) {
+			return
+		}
 		joinResp, rerr := authAndJoin(b.dialer, cookieStr, callInfo.OKJoinLink, cfg)
 		if rerr != nil {
 			b.logger.Warn(fmt.Sprintf("[rejoin] Failed: %v, retrying in 5s...", rerr))
-			time.Sleep(5 * time.Second)
+			b.sleep(5 * time.Second)
 			continue
 		}
 		wtEndpoint = joinResp.WtEndpoint

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/transport/call/common"
@@ -14,7 +13,15 @@ import (
 	N "github.com/sagernet/sing/common/network"
 )
 
-func ConnectCreator(ctx context.Context, cookieStr, joinLink string, readBuf int, dialer N.Dialer, dnsRouter adapter.DNSRouter, logger logger.ContextLogger) (*tunnel.RelayBridge, string, error) {
+// ConnectCreator joins the call (or makes one) and returns once the session runs: the function
+// that ends it, and the link the other side joins with. Connections of the peers that join, now
+// or after a reconnect, go to accept.
+//
+// Hiddify: it waited 60 s for a first peer, failed without one and left the session running,
+// and the inbound tried again: a server nobody had joined yet started one more call session
+// every two minutes, none of which could be stopped, and a peer that joined one of them later
+// was served by a bridge without the inbound's handlers.
+func ConnectCreator(ctx context.Context, cookieStr, joinLink string, readBuf int, dialer N.Dialer, dnsRouter adapter.DNSRouter, accept tunnel.AcceptHandlers, logger logger.ContextLogger) (func(), string, error) {
 	cfg, err := FetchConfig(logger)
 	if err != nil {
 		return nil, "", err
@@ -35,59 +42,57 @@ func ConnectCreator(ctx context.Context, cookieStr, joinLink string, readBuf int
 	if err != nil {
 		return nil, "", fmt.Errorf("vk: obfuscator init: %w", err)
 	}
+	bridge := newBridge(dialer, dnsRouter, readBuf, obf, accept, logger)
+	go bridge.Run(callInfo, cookieStr, cfg)
+	return bridge.Close, callInfo.JoinLink, nil
+}
+
+// newBridge is a creator's bridge, not yet running.
+func newBridge(dialer N.Dialer, dnsRouter adapter.DNSRouter, readBuf int, obf *tunnel.TunnelObfuscator, accept tunnel.AcceptHandlers, logger logger.ContextLogger) *Bridge {
+	ctx, cancel := context.WithCancel(context.Background()) // the session outlives the dial
 	bridge := &Bridge{
 		dialer:    dialer,
 		dnsRouter: dnsRouter,
 		readBuf:   readBuf,
 		logger:    logger,
+		ctx:       ctx,
+		cancel:    cancel,
+		accept:    accept,
 	}
 	bridge.newRelay = func() Relay {
 		ur := NewTunnelRelay(dialer, logger)
 		ur.readBufSize = readBuf
 		ur.SetObfuscator(obf)
-		ur.OnConnected = func(tun tunnel.DataTunnel) {
-			bridgeReadBuf := common.VP8BufSize
-			if _, ok := tun.(*rtc.DCTunnel); ok {
-				bridgeReadBuf = readBuf
-			}
-			rb := tunnel.NewRelayBridge(tun, "creator", bridgeReadBuf, dialer, logger)
-			bridge.mu.Lock()
-			rb.InheritHandlers(bridge.activeBridge) // Hiddify: keep routing after a reconnect
-			bridge.mu.Unlock()
-			rb.MarkReady()
-			if st, ok := tun.(*rtc.SymmetricScreenTunnel); ok {
-				rb.SetOnPeerConfig(func(fps, batch, trackCount int) {
-					st.SetTrackCount(trackCount)
-					bridge.setScreenSharing(trackCount > 1)
-				})
-			}
-			bridge.mu.Lock()
-			bridge.activeBridge = rb
-			bridge.mu.Unlock()
-		}
+		ur.OnConnected = bridge.tunnelConnected
 		return ur
 	}
-	go bridge.Run(callInfo, cookieStr, cfg)
-	deadline := time.Now().Add(60 * time.Second)
-	for {
-		bridge.mu.Lock()
-		rb := bridge.activeBridge
-		bridge.mu.Unlock()
-		if rb != nil {
-			return rb, callInfo.JoinLink, nil
-		}
-		if time.Now().After(deadline) {
-			return nil, "", fmt.Errorf("vk: creator tunnel timed out")
-		}
-		select {
-		case <-ctx.Done():
-			return nil, "", ctx.Err()
-		case <-time.After(200 * time.Millisecond):
-		}
-	}
+	return bridge
 }
 
-func ConnectJoiner(ctx context.Context, joinLink, displayName string, readBuf int, dialer N.Dialer, dnsRouter adapter.DNSRouter, logger logger.ContextLogger) (*tunnel.RelayBridge, error) {
+// tunnelConnected makes the bridge of a peer that connected: its connections go to the handlers
+// the session was given.
+func (b *Bridge) tunnelConnected(tun tunnel.DataTunnel) {
+	rb := tunnel.NewCreatorBridge(tun, b.accept, b.logger)
+	rb.MarkReady()
+	if st, ok := tun.(*rtc.SymmetricScreenTunnel); ok {
+		rb.SetOnPeerConfig(func(fps, batch, trackCount int) {
+			st.SetTrackCount(trackCount)
+			b.setScreenSharing(trackCount > 1)
+		})
+	}
+	b.mu.Lock()
+	if b.ctx.Err() != nil { // closed while the peer connected
+		b.mu.Unlock()
+		rb.Close()
+		return
+	}
+	b.activeBridge = rb
+	b.mu.Unlock()
+}
+
+// ConnectJoiner joins the call and returns the bridge to dial through, and the function that
+// leaves the call.
+func ConnectJoiner(ctx context.Context, joinLink, displayName string, readBuf int, dialer N.Dialer, dnsRouter adapter.DNSRouter, logger logger.ContextLogger) (*tunnel.RelayBridge, func(), error) {
 	if displayName == "" {
 		displayName = "Joiner"
 	}
@@ -96,16 +101,16 @@ func ConnectJoiner(ctx context.Context, joinLink, displayName string, readBuf in
 	}
 	authJSON, err := RunVKAuth(dialer, joinLink, displayName, logger)
 	if err != nil {
-		return nil, fmt.Errorf("vk: auth: %w", err)
+		return nil, nil, fmt.Errorf("vk: auth: %w", err)
 	}
 	var params VKAuthParams
 	if err := json.Unmarshal([]byte(authJSON), &params); err != nil {
-		return nil, fmt.Errorf("vk: decode auth params: %w", err)
+		return nil, nil, fmt.Errorf("vk: decode auth params: %w", err)
 	}
 	params.TunnelMode = "video"
 	paramsJSON, err := json.Marshal(params)
 	if err != nil {
-		return nil, fmt.Errorf("vk: encode auth params: %w", err)
+		return nil, nil, fmt.Errorf("vk: encode auth params: %w", err)
 	}
 	joiner := NewVKJoiner(
 		logger,
@@ -125,12 +130,12 @@ func ConnectJoiner(ctx context.Context, joinLink, displayName string, readBuf in
 	go joiner.RunWithParams(string(paramsJSON))
 	select {
 	case tun := <-tunCh:
-		rb := tunnel.NewRelayBridge(tun, "joiner", readBuf, dialer, logger)
+		rb := tunnel.NewJoinerBridge(tun, logger)
 		rb.SetOnConfigAck(joiner.MarkConfigAcked)
 		rb.MarkReady()
-		return rb, nil
+		return rb, joiner.Close, nil
 	case <-ctx.Done():
 		joiner.Close()
-		return nil, ctx.Err()
+		return nil, nil, ctx.Err()
 	}
 }

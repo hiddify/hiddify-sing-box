@@ -14,11 +14,18 @@ var connectRetryDelays = []time.Duration{5 * time.Second, 10 * time.Second, 30 *
 // connectWithRetry connects until it works or ctx ends, and stores the bridge. afterFirst runs
 // after the first try, whatever its result, so dials waiting for the start do not wait for the
 // retries.
+//
+// The one who cancels ctx closes the stored bridge after cancelling. A bridge that comes in
+// after that is closed here: it was stored and left open, its call session running on with
+// nobody to close it.
 func connectWithRetry(ctx context.Context, logger logger.ContextLogger, connect func() (*call.Bridge, error), store func(*call.Bridge), afterFirst func()) {
 	for attempt := 0; ; attempt++ {
 		bridge, err := connect()
 		if err == nil {
 			store(bridge)
+			if ctx.Err() != nil {
+				bridge.Close()
+			}
 		}
 		if attempt == 0 && afterFirst != nil {
 			afterFirst()

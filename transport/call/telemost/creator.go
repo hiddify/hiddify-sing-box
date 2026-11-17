@@ -58,7 +58,8 @@ type Bridge struct {
 	peers        map[string]string
 	readBuf      int
 	activeBridge *tunnel.RelayBridge
-	bridgeAccess sync.Mutex // Hiddify: activeBridge is polled by ConnectCreator and replaced on reconnect
+	bridgeAccess sync.Mutex            // Hiddify: activeBridge is replaced on reconnect and closed by Close
+	accept       tunnel.AcceptHandlers // Hiddify: where every bridge of this session hands its connections
 	selfName     string
 	dialer       N.Dialer
 	logger       logger.ContextLogger
@@ -788,15 +789,19 @@ func (b *Bridge) initRelay() error {
 		b.logger.Debug("[relay] pub PC connected")
 	}
 	relay.OnConnected = func(tun tunnel.DataTunnel) {
-		next := tunnel.NewRelayBridge(tun, "creator", common.VP8BufSize, b.dialer, b.logger)
+		next := tunnel.NewCreatorBridge(tun, b.accept, b.logger)
 		b.bridgeAccess.Lock()
+		if b.ctx.Err() != nil { // closed while the peer connected
+			b.bridgeAccess.Unlock()
+			next.Close()
+			return
+		}
 		previous := b.activeBridge
 		b.activeBridge = next
 		b.bridgeAccess.Unlock()
 		if previous != nil {
 			previous.Reset()
 		}
-		next.InheritHandlers(previous) // Hiddify: keep routing after a reconnect
 		next.SetOnPeerConfig(func(fps, batch, trackCount int) {
 			if trackCount >= 2 {
 				b.enableScreenshare()
@@ -841,10 +846,17 @@ func (b *Bridge) closeWebSocket() {
 	}
 }
 
-// Close ends the bridge: the call session, its relay and the joining loop.
+// Close ends the bridge: the call session, its relay, the joining loop and the connections
+// that came through it.
 func (b *Bridge) Close() {
 	b.cancel()
 	b.closeWebSocket()
+	b.bridgeAccess.Lock()
+	active := b.activeBridge
+	b.bridgeAccess.Unlock()
+	if active != nil {
+		active.Close()
+	}
 }
 
 // sleep waits d, or until the bridge is closed; false when it is.

@@ -12,6 +12,7 @@ import (
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-box/transport/call"
+	"github.com/sagernet/sing-box/transport/call/tunnel"
 	"github.com/sagernet/sing/common/bufio"
 	"github.com/sagernet/sing/common/bufio/deadline"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -82,7 +83,15 @@ func (h *Inbound) run(ctx context.Context) {
 }
 
 func (h *Inbound) connect(ctx context.Context, dnsRouter adapter.DNSRouter) (*call.Bridge, error) {
-	bridge, err := call.Connect(ctx, call.Config{
+	return call.Connect(ctx, h.callConfig(dnsRouter))
+}
+
+// callConfig is the inbound's side of the call. The handlers are part of it, so every bridge
+// the call makes has them from the start: set on the bridge after the connect, the bridges
+// made later (a reconnect, a peer joining a session nobody waited for any more) had none and
+// dialed past the router.
+func (h *Inbound) callConfig(dnsRouter adapter.DNSRouter) call.Config {
+	return call.Config{
 		Platform:     h.options.Platform,
 		Mode:         h.options.Mode,
 		JoinLink:     h.options.JoinLink,
@@ -91,20 +100,18 @@ func (h *Inbound) connect(ctx context.Context, dnsRouter adapter.DNSRouter) (*ca
 		Password:     h.options.Password,
 		ReadBuffer:   h.options.ReadBuffer,
 		Role:         call.RoleCreator,
-		Dialer:       h.dialer,
-		DNSRouter:    dnsRouter,
-		Logger:       h.logger,
-	})
-	if err != nil {
-		return nil, err
+		Accept: tunnel.AcceptHandlers{
+			TCP: func(conn net.Conn, destination string) {
+				h.handleConnection(conn, M.ParseSocksaddr(destination))
+			},
+			UDP: func(conn net.Conn, destination string) {
+				h.handlePacketConnection(bufio.NewUnbindPacketConnWithAddr(conn, M.ParseSocksaddr(destination)), M.ParseSocksaddr(destination))
+			},
+		},
+		Dialer:    h.dialer,
+		DNSRouter: dnsRouter,
+		Logger:    h.logger,
 	}
-	bridge.SetAcceptHandler(func(conn net.Conn, destination string) {
-		h.handleConnection(conn, M.ParseSocksaddr(destination))
-	})
-	bridge.SetUDPAcceptHandler(func(conn net.Conn, destination string) {
-		h.handlePacketConnection(bufio.NewUnbindPacketConnWithAddr(conn, M.ParseSocksaddr(destination)), M.ParseSocksaddr(destination))
-	})
-	return bridge, nil
 }
 
 func (h *Inbound) handleConnection(conn net.Conn, destination M.Socksaddr) {

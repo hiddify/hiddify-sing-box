@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"sync"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/transport/call/bitrix"
@@ -34,12 +35,21 @@ type Config struct {
 	Password     string
 	ReadBuffer   int
 	Role         Role
-	Dialer       N.Dialer
-	DNSRouter    adapter.DNSRouter
-	Logger       logger.ContextLogger
+	// Accept takes the connections that arrive through the call. A creator needs both.
+	Accept    tunnel.AcceptHandlers
+	Dialer    N.Dialer
+	DNSRouter adapter.DNSRouter
+	Logger    logger.ContextLogger
 }
 
+// Connect joins the call and returns the bridge, which owns the session: closing it leaves the
+// call. A creator's bridge is returned once its session is up, whether a peer has joined yet or
+// not; a joiner's once its tunnel to the creator is.
 func Connect(ctx context.Context, cfg Config) (*Bridge, error) {
+	if cfg.Role == RoleCreator && (cfg.Accept.TCP == nil || cfg.Accept.UDP == nil) {
+		// Hiddify: checked here, as a creator's bridge refuses what it has no handler for
+		return nil, E.New("call: a creator needs accept handlers")
+	}
 	readBuf := cfg.ReadBuffer
 	if readBuf <= 0 {
 		readBuf = 32768
@@ -56,18 +66,18 @@ func Connect(ctx context.Context, cfg Config) (*Bridge, error) {
 	case "telemost":
 		switch cfg.Role {
 		case RoleCreator:
-			relay, joinLink, err := telemost.ConnectCreator(ctx, cookieStr, cfg.JoinLink, readBuf, cfg.Dialer, log)
+			leave, joinLink, err := telemost.ConnectCreator(ctx, cookieStr, cfg.JoinLink, readBuf, cfg.Dialer, cfg.Accept, log)
 			if err != nil {
 				return nil, err
 			}
 			log.Info(fmt.Sprintf("call[telemost]: join_link=%s", joinLink))
-			return &Bridge{relay: relay}, nil
+			return &Bridge{leave: leave}, nil
 		case RoleJoiner:
-			relay, err := telemost.ConnectJoiner(ctx, cfg.JoinLink, "", readBuf, cfg.Dialer, cfg.DNSRouter, log)
+			relay, leave, err := telemost.ConnectJoiner(ctx, cfg.JoinLink, "", readBuf, cfg.Dialer, cfg.DNSRouter, log)
 			if err != nil {
 				return nil, err
 			}
-			return &Bridge{relay: relay}, nil
+			return &Bridge{relay: relay, leave: leave}, nil
 		}
 	case "wbstream":
 		if err := CheckMode(cfg.Platform, cfg.Mode); err != nil { // Hiddify: an unknown mode never connected
@@ -75,91 +85,103 @@ func Connect(ctx context.Context, cfg Config) (*Bridge, error) {
 		}
 		switch cfg.Role {
 		case RoleCreator:
-			relay, joinLink, err := wbstream.ConnectCreator(ctx, cookieStr, cfg.JoinLink, cfg.Mode, readBuf, cfg.Dialer, log)
+			leave, joinLink, err := wbstream.ConnectCreator(ctx, cookieStr, cfg.JoinLink, cfg.Mode, readBuf, cfg.Dialer, cfg.Accept, log)
 			if err != nil {
 				return nil, err
 			}
 			log.Info(fmt.Sprintf("call[wbstream]: join_link=%s", joinLink))
-			return &Bridge{relay: relay}, nil
+			return &Bridge{leave: leave}, nil
 		case RoleJoiner:
-			relay, err := wbstream.ConnectJoiner(ctx, cfg.JoinLink, "", cfg.Mode, readBuf, cfg.Dialer, cfg.DNSRouter, log)
+			relay, leave, err := wbstream.ConnectJoiner(ctx, cfg.JoinLink, "", cfg.Mode, readBuf, cfg.Dialer, cfg.DNSRouter, log)
 			if err != nil {
 				return nil, err
 			}
-			return &Bridge{relay: relay}, nil
+			return &Bridge{relay: relay, leave: leave}, nil
 		}
 	case "vk":
 		switch cfg.Role {
 		case RoleCreator:
-			relay, joinLink, err := vk.ConnectCreator(ctx, cookieStr, cfg.JoinLink, readBuf, cfg.Dialer, cfg.DNSRouter, log)
+			leave, joinLink, err := vk.ConnectCreator(ctx, cookieStr, cfg.JoinLink, readBuf, cfg.Dialer, cfg.DNSRouter, cfg.Accept, log)
 			if err != nil {
 				return nil, err
 			}
 			log.Info(fmt.Sprintf("call[vk]: join_link=%s", joinLink))
-			return &Bridge{relay: relay}, nil
+			return &Bridge{leave: leave}, nil
 		case RoleJoiner:
-			relay, err := vk.ConnectJoiner(ctx, cfg.JoinLink, "", readBuf, cfg.Dialer, cfg.DNSRouter, log)
+			relay, leave, err := vk.ConnectJoiner(ctx, cfg.JoinLink, "", readBuf, cfg.Dialer, cfg.DNSRouter, log)
 			if err != nil {
 				return nil, err
 			}
-			return &Bridge{relay: relay}, nil
+			return &Bridge{relay: relay, leave: leave}, nil
 		}
 	case "bitrix":
 		switch cfg.Role {
 		case RoleJoiner:
-			relay, err := bitrix.ConnectJoiner(ctx, cfg.JoinLink, "", cfg.Mode, readBuf, cfg.Dialer, log)
+			relay, leave, err := bitrix.ConnectJoiner(ctx, cfg.JoinLink, "", cfg.Mode, readBuf, cfg.Dialer, log)
 			if err != nil {
 				return nil, err
 			}
-			return &Bridge{relay: relay}, nil
+			return &Bridge{relay: relay, leave: leave}, nil
 		}
 	case "dion":
 		switch cfg.Role {
 		case RoleCreator:
-			relay, joinLink, err := dion.ConnectCreator(ctx, cookieStr, cfg.JoinLink, cfg.Email, cfg.Password, readBuf, cfg.Dialer, cfg.DNSRouter, log)
+			leave, joinLink, err := dion.ConnectCreator(ctx, cookieStr, cfg.JoinLink, cfg.Email, cfg.Password, readBuf, cfg.Dialer, cfg.DNSRouter, cfg.Accept, log)
 			if err != nil {
 				return nil, err
 			}
 			log.Info(fmt.Sprintf("call[dion]: join_link=%s", joinLink))
-			return &Bridge{relay: relay}, nil
+			return &Bridge{leave: leave}, nil
 		case RoleJoiner:
-			relay, err := dion.ConnectJoiner(ctx, cfg.JoinLink, "", readBuf, cfg.Dialer, cfg.DNSRouter, log)
+			relay, leave, err := dion.ConnectJoiner(ctx, cfg.JoinLink, "", readBuf, cfg.Dialer, cfg.DNSRouter, log)
 			if err != nil {
 				return nil, err
 			}
-			return &Bridge{relay: relay}, nil
+			return &Bridge{relay: relay, leave: leave}, nil
 		}
 	}
 	return nil, E.New("call: unsupported platform ", cfg.Platform)
 }
 
+// Bridge is one side's part in a call. Hiddify: it owns the session. Close left only the first
+// relay bridge: the call session, its reconnect loop and every bridge made after a reconnect
+// went on until the process ended.
 type Bridge struct {
-	relay *tunnel.RelayBridge
+	relay     *tunnel.RelayBridge // a joiner's tunnel to dial through; nil for a creator, whose connections go to Config.Accept
+	leave     func()              // leaves the call and ends what was started for it
+	closeOnce sync.Once
 }
 
-func NewBridge(relay *tunnel.RelayBridge) *Bridge {
-	return &Bridge{relay: relay}
+// NewBridge is a bridge over relay, of a session that leave ends.
+func NewBridge(relay *tunnel.RelayBridge, leave func()) *Bridge {
+	return &Bridge{relay: relay, leave: leave}
 }
 
+// Close leaves the call. It may be called more than once.
 func (b *Bridge) Close() error {
-	b.relay.Close()
+	b.closeOnce.Do(func() {
+		if b.relay != nil {
+			b.relay.Close()
+		}
+		if b.leave != nil {
+			b.leave()
+		}
+	})
 	return nil
 }
 
 func (b *Bridge) DialContext(ctx context.Context, destination string) (net.Conn, error) {
+	if b.relay == nil {
+		return nil, E.New("call: a creator does not dial")
+	}
 	return b.relay.DialContext(ctx, destination)
 }
 
 func (b *Bridge) ListenPacket(ctx context.Context, destination string) (net.Conn, error) {
+	if b.relay == nil {
+		return nil, E.New("call: a creator does not dial")
+	}
 	return b.relay.ListenPacket(ctx, destination)
-}
-
-func (b *Bridge) SetAcceptHandler(fn func(conn net.Conn, destination string)) {
-	b.relay.SetAcceptHandler(fn)
-}
-
-func (b *Bridge) SetUDPAcceptHandler(fn func(conn net.Conn, destination string)) {
-	b.relay.SetUDPAcceptHandler(fn)
 }
 
 // CheckMode refuses a mode the platform does not have; only wbstream has modes.

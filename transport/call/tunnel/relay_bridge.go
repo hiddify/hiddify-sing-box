@@ -13,7 +13,6 @@ import (
 	"github.com/sagernet/sing-box/transport/call/common"
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
-	N "github.com/sagernet/sing/common/network"
 )
 
 type udpClient struct {
@@ -34,13 +33,7 @@ type RelayBridge struct {
 	ready      chan struct{}
 	once       sync.Once
 	closed     atomic.Bool
-	dialer     N.Dialer
-
-	acceptHandlerMu sync.Mutex
-	acceptHandler   func(conn net.Conn, destination string)
-
-	udpAcceptHandlerMu sync.Mutex
-	udpAcceptHandler   func(conn net.Conn, destination string)
+	accept     AcceptHandlers // Hiddify: a creator's, set when the bridge is made and never changed
 
 	onPeerConfigMu sync.Mutex
 	onPeerConfig   func(fps, batch, trackCount int)
@@ -49,51 +42,40 @@ type RelayBridge struct {
 	onConfigAck   func()
 }
 
-func NewRelayBridge(tunnel DataTunnel, mode string, readBuf int, dialer N.Dialer, logger logger.ContextLogger) *RelayBridge {
+// AcceptHandlers take the connections that arrive through a creator's bridge.
+//
+// Hiddify: they are given when the bridge is made. They were set on the bridge the connect
+// returned, so the bridge of a session nobody waited for any more, or one that got its first
+// message before the inbound had set them, had none and dialed each destination itself, past the
+// router and its route rules. A creator's bridge no longer dials: a connection it has no handler
+// for is refused.
+type AcceptHandlers struct {
+	TCP func(conn net.Conn, destination string)
+	UDP func(conn net.Conn, destination string)
+}
+
+// NewJoinerBridge is the bridge of the side that dials through the call.
+func NewJoinerBridge(tunnel DataTunnel, logger logger.ContextLogger) *RelayBridge {
+	return newRelayBridge(tunnel, "joiner", AcceptHandlers{}, logger)
+}
+
+// NewCreatorBridge is the bridge of the side that takes the connections of the call: each goes
+// to accept.
+func NewCreatorBridge(tunnel DataTunnel, accept AcceptHandlers, logger logger.ContextLogger) *RelayBridge {
+	return newRelayBridge(tunnel, "creator", accept, logger)
+}
+
+func newRelayBridge(tunnel DataTunnel, mode string, accept AcceptHandlers, logger logger.ContextLogger) *RelayBridge {
 	rb := &RelayBridge{
-		tunnel:  tunnel,
-		logger:  logger,
-		mode:    mode,
-		readBuf: readBuf,
-		dialer:  dialer,
-		ready:   make(chan struct{}),
+		tunnel: tunnel,
+		logger: logger,
+		mode:   mode,
+		accept: accept,
+		ready:  make(chan struct{}),
 	}
 	tunnel.SetOnData(rb.handleTunnelData)
 	tunnel.SetOnClose(rb.handleTunnelClose)
 	return rb
-}
-
-func (rb *RelayBridge) SetAcceptHandler(fn func(conn net.Conn, destination string)) {
-	rb.acceptHandlerMu.Lock()
-	rb.acceptHandler = fn
-	rb.acceptHandlerMu.Unlock()
-}
-
-func (rb *RelayBridge) SetUDPAcceptHandler(fn func(conn net.Conn, destination string)) {
-	rb.udpAcceptHandlerMu.Lock()
-	rb.udpAcceptHandler = fn
-	rb.udpAcceptHandlerMu.Unlock()
-}
-
-// InheritHandlers gives this bridge the accept handlers of the one it replaces after a
-// reconnect. Hiddify: without them a creator bridge dialed each destination itself, past the
-// router and its route rules.
-func (rb *RelayBridge) InheritHandlers(previous *RelayBridge) {
-	if previous == nil {
-		return
-	}
-	previous.acceptHandlerMu.Lock()
-	accept := previous.acceptHandler
-	previous.acceptHandlerMu.Unlock()
-	previous.udpAcceptHandlerMu.Lock()
-	udpAccept := previous.udpAcceptHandler
-	previous.udpAcceptHandlerMu.Unlock()
-	if accept != nil {
-		rb.SetAcceptHandler(accept)
-	}
-	if udpAccept != nil {
-		rb.SetUDPAcceptHandler(udpAccept)
-	}
 }
 
 func (rb *RelayBridge) SetOnPeerConfig(fn func(fps, batch, trackCount int)) {
@@ -210,9 +192,13 @@ func (rb *RelayBridge) closeAll() {
 	udpCount := 0
 	rb.udpClients.Range(func(key, value any) bool {
 		udpCount++
-		if uc, ok := value.(*udpClient); ok {
-			uc.closed.Store(true)
-			close(uc.pending)
+		switch uc := value.(type) {
+		case *udpClient:
+			if uc.closed.CompareAndSwap(false, true) { // not twice, with the conn's own Close
+				close(uc.pending)
+			}
+		case *creatorUDPConn: // Hiddify: was left open, its reader waiting for good
+			uc.remoteClosed()
 		}
 		rb.udpClients.Delete(key)
 		return true
@@ -313,18 +299,16 @@ func (rb *RelayBridge) handleJoinerMessage(connID uint32, msgType byte, payload 
 func (rb *RelayBridge) handleCreatorMessage(connID uint32, msgType byte, payload []byte) {
 	switch msgType {
 	case MsgConnect:
-		rb.acceptHandlerMu.Lock()
-		handler := rb.acceptHandler
-		rb.acceptHandlerMu.Unlock()
-		if handler != nil {
-			destination := string(payload)
-			tc := newTunnelConn(connID, rb)
-			rb.conns.Store(connID, tc)
-			rb.send(connID, MsgConnectOK, nil)
-			go handler(tc, destination)
+		handler := rb.accept.TCP
+		if handler == nil { // Hiddify: refused, not dialed past the router
+			rb.send(connID, MsgConnectErr, []byte("no route"))
 			return
 		}
-		go rb.connectTCP(connID, string(payload))
+		destination := string(payload)
+		tc := newTunnelConn(connID, rb)
+		rb.conns.Store(connID, tc)
+		rb.send(connID, MsgConnectOK, nil)
+		go handler(tc, destination)
 	case MsgUDP:
 		payloadCopy := make([]byte, len(payload))
 		copy(payloadCopy, payload)
@@ -336,33 +320,16 @@ func (rb *RelayBridge) handleCreatorMessage(connID uint32, msgType byte, payload
 			rb.send(connID, MsgClose, nil)
 			return
 		}
-		switch c := val.(type) {
-		case *tunnelConn:
-			c.deliver(payload)
-		case net.Conn:
-			if _, err := c.Write(payload); err != nil {
-				rb.logger.Debug(fmt.Sprintf("relay[creator]: write to target %d failed: %s", connID, common.MaskError(err)))
-			}
-		}
+		val.(*tunnelConn).deliver(payload)
 	case MsgClose:
 		found := false
 		if val, ok := rb.conns.LoadAndDelete(connID); ok {
 			found = true
-			switch c := val.(type) {
-			case *tunnelConn:
-				c.remoteClosed()
-			case net.Conn:
-				c.Close()
-			}
+			val.(*tunnelConn).remoteClosed()
 		}
 		if uval, ok := rb.udpClients.LoadAndDelete(connID); ok {
 			found = true
-			switch uc := uval.(type) {
-			case *creatorUDPConn:
-				uc.remoteClosed()
-			case net.Conn:
-				uc.Close()
-			}
+			uval.(*creatorUDPConn).remoteClosed()
 		}
 		if !found {
 			rb.logger.Debug(fmt.Sprintf("relay[creator]: drop MsgClose for unknown conn %d", connID))
@@ -383,111 +350,23 @@ func (rb *RelayBridge) handleUDP(connID uint32, payload []byte) {
 	}
 	addr := string(payload[1 : 1+addrLen])
 	data := payload[1+addrLen:]
-	rb.udpAcceptHandlerMu.Lock()
-	handler := rb.udpAcceptHandler
-	rb.udpAcceptHandlerMu.Unlock()
-	if handler != nil {
-		var cuc *creatorUDPConn
-		if val, ok := rb.udpClients.Load(connID); ok {
-			existing, ok := val.(*creatorUDPConn)
-			if !ok {
-				return
-			}
-			cuc = existing
-		} else {
-			created := newCreatorUDPConn(connID, rb, addr)
-			if actual, loaded := rb.udpClients.LoadOrStore(connID, created); loaded {
-				existing, ok := actual.(*creatorUDPConn)
-				if !ok {
-					return
-				}
-				cuc = existing
-			} else {
-				cuc = created
-				go handler(cuc, addr)
-			}
-		}
-		cuc.deliver(data)
+	handler := rb.accept.UDP
+	if handler == nil { // Hiddify: dropped, not sent past the router
 		return
 	}
-	var egress net.Conn
+	var cuc *creatorUDPConn
 	if val, ok := rb.udpClients.Load(connID); ok {
-		existing, ok := val.(net.Conn)
-		if !ok {
-			return
-		}
-		egress = existing
+		cuc = val.(*creatorUDPConn)
 	} else {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		created, err := rb.dialer.DialContext(ctx, N.NetworkUDP, M.ParseSocksaddr(addr))
-		cancel()
-		if err != nil {
-			rb.logger.Warn(fmt.Sprintf("relay[creator]: UDP %d open %s failed: %v", connID, common.MaskAddr(addr), err))
-			return
-		}
+		created := newCreatorUDPConn(connID, rb, addr)
 		if actual, loaded := rb.udpClients.LoadOrStore(connID, created); loaded {
-			created.Close()
-			existing, ok := actual.(net.Conn)
-			if !ok {
-				return
-			}
-			egress = existing
+			cuc = actual.(*creatorUDPConn)
 		} else {
-			egress = created
-			go func(conn net.Conn, id uint32, target string) {
-				defer conn.Close()
-				defer rb.udpClients.Delete(id)
-				defer rb.send(id, MsgClose, nil)
-				buf := make([]byte, common.UDPBufSize)
-				for {
-					conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-					n, err := conn.Read(buf)
-					if err != nil {
-						return
-					}
-					rb.send(id, MsgUDPReply, buf[:n])
-				}
-			}(egress, connID, addr)
+			cuc = created
+			go handler(cuc, addr)
 		}
 	}
-	egress.SetWriteDeadline(time.Now().Add(5 * time.Second))
-	if _, err := egress.Write(data); err != nil {
-		rb.logger.Debug(fmt.Sprintf("relay[creator]: UDP %d write %s failed: %v", connID, common.MaskAddr(addr), err))
-	}
-}
-
-func (rb *RelayBridge) connectTCP(connID uint32, addr string) {
-	rb.logger.Debug(fmt.Sprintf("relay: CONNECT %d -> %s", connID, common.MaskAddr(addr)))
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	conn, err := rb.dialer.DialContext(ctx, N.NetworkTCP, M.ParseSocksaddr(addr))
-	cancel()
-	if err != nil {
-		rb.logger.Warn(fmt.Sprintf("relay: CONNECT %d failed: %s", connID, common.MaskError(err)))
-		rb.send(connID, MsgConnectErr, []byte(common.MaskError(err)))
-		return
-	}
-	rb.conns.Store(connID, conn)
-	rb.send(connID, MsgConnectOK, nil)
-	rb.logger.Debug(fmt.Sprintf("relay: CONNECTED %d -> %s", connID, common.MaskAddr(addr)))
-	buf := make([]byte, rb.readBuf)
-	var totalRead int64
-	var reads int
-	for {
-		n, err := conn.Read(buf)
-		if n > 0 {
-			rb.send(connID, MsgData, buf[:n])
-			totalRead += int64(n)
-			reads++
-		}
-		if err != nil {
-			if err != io.EOF {
-				rb.logger.Warn(fmt.Sprintf("relay: conn %d read error: %s (read %d times, %dB)", connID, common.MaskError(err), reads, totalRead))
-			}
-			break
-		}
-	}
-	rb.send(connID, MsgClose, nil)
-	rb.conns.Delete(connID)
+	cuc.deliver(data)
 }
 
 type tunnelAddr struct{}

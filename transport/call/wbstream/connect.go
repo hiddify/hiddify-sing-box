@@ -4,17 +4,24 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/transport/call/common"
 	"github.com/sagernet/sing-box/transport/call/tunnel"
-	"github.com/sagernet/sing-box/transport/call/tunnel/rtc"
 	"github.com/sagernet/sing/common/logger"
 	N "github.com/sagernet/sing/common/network"
 )
 
-func ConnectCreator(ctx context.Context, cookieStr, roomID, mode string, readBuf int, dialer N.Dialer, logger logger.ContextLogger) (*tunnel.RelayBridge, string, error) {
+// ConnectCreator joins the room (or makes one) and returns once the session runs: the function
+// that ends it, and the link the other side joins with. Connections of the peers that join, now
+// or after a reconnect, go to accept.
+//
+// Hiddify: it waited 60 s for a first peer and failed without one, and the inbound tried again:
+// a server nobody had joined yet joined its room anew every two minutes. Its rejoining loop
+// ended only with the context of the connect, and closing the bridge left the session up.
+func ConnectCreator(ctx context.Context, cookieStr, roomID, mode string, readBuf int, dialer N.Dialer, accept tunnel.AcceptHandlers, logger logger.ContextLogger) (func(), string, error) {
 	deviceID := common.CookieValue(cookieStr, "__wb_device_id")
 	if deviceID == "" {
 		return nil, "", fmt.Errorf("wbstream: cookies missing __wb_device_id")
@@ -42,7 +49,7 @@ func ConnectCreator(ctx context.Context, cookieStr, roomID, mode string, readBuf
 		return nil, "", fmt.Errorf("wbstream: obfuscator init: %w", err)
 	}
 
-	var relay *tunnel.RelayBridge
+	var relay atomic.Pointer[tunnel.RelayBridge] // made when the first peer connects
 	joinSession := func(token, access, server string) (*Session, <-chan tunnel.DataTunnel) {
 		tunCh := make(chan tunnel.DataTunnel, 1)
 		sess := NewSession(SessionConfig{
@@ -64,8 +71,8 @@ func ConnectCreator(ctx context.Context, cookieStr, roomID, mode string, readBuf
 			}
 		}
 		sess.OnPeerRestart = func() {
-			if relay != nil {
-				relay.Reset()
+			if active := relay.Load(); active != nil {
+				active.Reset()
 			}
 		}
 		return sess, tunCh
@@ -75,23 +82,15 @@ func ConnectCreator(ctx context.Context, cookieStr, roomID, mode string, readBuf
 	if err := sess.Start(); err != nil {
 		return nil, "", fmt.Errorf("wbstream: session start: %w", err)
 	}
-	var firstTun tunnel.DataTunnel
-	select {
-	case firstTun = <-tunCh:
-	case <-ctx.Done():
-		sess.Close()
-		return nil, "", ctx.Err()
-	case <-time.After(60 * time.Second):
-		sess.Close()
-		return nil, "", fmt.Errorf("wbstream: creator tunnel timed out")
-	}
-
-	relay = tunnel.NewRelayBridge(firstTun, "creator", bridgeReadBufFor(firstTun, readBuf), dialer, logger)
-	go creatorReconnectLoop(ctx, relay, sess, joinSession, httpClient, cookieHeader, bearer, deviceID, resolvedRoomID, readBuf, logger)
-	return relay, APIBase + "/room/" + resolvedRoomID, nil
+	// the session outlives the dial; cancelled, the loop closes the session and the bridge
+	sessionCtx, cancel := context.WithCancel(context.Background())
+	go creatorLoop(sessionCtx, &relay, accept, sess, tunCh, joinSession, httpClient, cookieHeader, bearer, deviceID, resolvedRoomID, logger)
+	return cancel, APIBase + "/room/" + resolvedRoomID, nil
 }
 
-func ConnectJoiner(ctx context.Context, roomID, displayName, mode string, readBuf int, dialer N.Dialer, dnsRouter adapter.DNSRouter, logger logger.ContextLogger) (*tunnel.RelayBridge, error) {
+// ConnectJoiner joins the room and returns the bridge to dial through, and the function that
+// leaves the room.
+func ConnectJoiner(ctx context.Context, roomID, displayName, mode string, readBuf int, dialer N.Dialer, dnsRouter adapter.DNSRouter, logger logger.ContextLogger) (*tunnel.RelayBridge, func(), error) {
 	roomID = ParseRoomID(roomID)
 	if displayName == "" {
 		displayName = "Joiner"
@@ -114,48 +113,61 @@ func ConnectJoiner(ctx context.Context, roomID, displayName, mode string, readBu
 	go joiner.RunWithParams(params)
 	select {
 	case tun := <-tunCh:
-		rb := tunnel.NewRelayBridge(tun, "joiner", bridgeReadBufFor(tun, readBuf), dialer, logger)
+		rb := tunnel.NewJoinerBridge(tun, logger)
 		rb.SetOnConfigAck(joiner.MarkConfigAcked)
 		rb.MarkReady()
-		return rb, nil
+		return rb, joiner.Close, nil
 	case <-ctx.Done():
 		joiner.Close()
-		return nil, ctx.Err()
+		return nil, nil, ctx.Err()
 	}
 }
 
-func creatorReconnectLoop(
+// creatorLoop is a creator's session from the moment it is up until ctx ends: it gives each
+// peer's tunnel to the bridge, and joins the room again when the session ends.
+func creatorLoop(
 	ctx context.Context,
-	relay *tunnel.RelayBridge,
-	sess *Session,
+	relay *atomic.Pointer[tunnel.RelayBridge],
+	accept tunnel.AcceptHandlers,
+	current *Session,
+	tunCh <-chan tunnel.DataTunnel,
 	joinSession func(token, access, server string) (*Session, <-chan tunnel.DataTunnel),
 	httpClient *http.Client,
 	cookieHeader, bearer, deviceID, roomID string,
-	readBuf int,
 	logger logger.ContextLogger,
 ) {
-	current := sess
+	defer func() {
+		current.Close()
+		if active := relay.Load(); active != nil {
+			active.Close()
+		}
+	}()
 	for {
+		// the session is up: a peer's tunnel comes, or the session ends
 		select {
+		case tun := <-tunCh:
+			if active := relay.Load(); active != nil {
+				active.SwapTunnel(tun)
+				logger.Info("wbstream: creator tunnel reconnected")
+			} else {
+				relay.Store(tunnel.NewCreatorBridge(tun, accept, logger))
+			}
+			select {
+			case <-current.Done():
+			case <-ctx.Done():
+				return
+			}
 		case <-current.Done():
 		case <-ctx.Done():
 			return
 		}
 		current.Close()
-		if relay.IsClosed() {
-			return
-		}
 		logger.Debug("wbstream: creator session ended, rejoining")
-
-		var newTun tunnel.DataTunnel
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-time.After(3 * time.Second):
-			}
-			if relay.IsClosed() {
-				return
 			}
 			_, roomToken, accessToken, serverURL, err := AuthAsLoggedIn(httpClient, cookieHeader, bearer, roomID, "Creator")
 			if err != nil {
@@ -173,33 +185,13 @@ func creatorReconnectLoop(
 					continue
 				}
 			}
-			newSess, tunCh := joinSession(roomToken, accessToken, serverURL)
+			newSess, newTunCh := joinSession(roomToken, accessToken, serverURL)
 			if err := newSess.Start(); err != nil {
 				logger.Warn(fmt.Sprintf("wbstream: rejoin session start failed: %v, retrying", err))
 				continue
 			}
-			select {
-			case newTun = <-tunCh:
-			case <-ctx.Done():
-				newSess.Close()
-				return
-			case <-time.After(60 * time.Second):
-				logger.Warn("wbstream: rejoin tunnel timed out, retrying")
-				newSess.Close()
-				continue
-			}
-			current = newSess
+			current, tunCh = newSess, newTunCh
 			break
 		}
-		relay.SwapTunnel(newTun)
-		logger.Info(fmt.Sprintf("wbstream: creator tunnel reconnected, buf=%d", bridgeReadBufFor(newTun, readBuf)))
 	}
-}
-
-func bridgeReadBufFor(tun tunnel.DataTunnel, readBuf int) int {
-	switch tun.(type) {
-	case *rtc.DCTunnel, *rtc.MultiTrackKCPTunnel:
-		return readBuf
-	}
-	return common.VP8BufSize
 }

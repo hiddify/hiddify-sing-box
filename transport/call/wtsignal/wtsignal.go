@@ -51,7 +51,9 @@ type Conn struct {
 	writeMu  sync.Mutex
 }
 
-func Dial(endpoint, serverName, resolvedIP, origin string) (*Conn, error) {
+// Dial opens the session. Hiddify: ctx ends the dial, so a bridge that is closed does not wait
+// out the timeout.
+func Dial(ctx context.Context, endpoint, serverName, resolvedIP, origin string) (*Conn, error) {
 	target, err := url.Parse(endpoint)
 	if err != nil {
 		return nil, err
@@ -62,7 +64,7 @@ func Dial(endpoint, serverName, resolvedIP, origin string) (*Conn, error) {
 	}
 	compress := target.Query().Get("compression") == "deflate-raw"
 
-	dialCtx, cancel := context.WithTimeout(context.Background(), dialTimeout)
+	dialCtx, cancel := context.WithTimeout(ctx, dialTimeout)
 	defer cancel()
 
 	qconn, err := headless.ChromeWindows.DialQUIC(dialCtx, net.JoinHostPort(resolvedIP, port), headless.QUICOptions{

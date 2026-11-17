@@ -377,7 +377,7 @@ func (h *VKJoiner) connectSFU() {
 		"&appVersion=" + h.authParams.AppVersion +
 		"&version=" + h.authParams.ProtocolVersion +
 		"&device=browser&capabilities=" + capabilities + "&clientType=VK&tgt=join&compression=deflate-raw"
-	sfu, err := wtsignal.Dial(wtURL, hostname, resolvedIP, vkOrigin)
+	sfu, err := wtsignal.Dial(context.Background(), wtURL, hostname, resolvedIP, vkOrigin)
 	if err != nil {
 		h.logger.Error(fmt.Sprintf("vk-joiner: WebTransport connect failed: %s", common.MaskError(err)))
 		return

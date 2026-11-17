@@ -3,17 +3,21 @@ package dion
 import (
 	"context"
 	"fmt"
-	"time"
+	"sync"
 
 	"github.com/sagernet/sing-box/adapter"
-	"github.com/sagernet/sing-box/transport/call/common"
 	"github.com/sagernet/sing-box/transport/call/tunnel"
-	"github.com/sagernet/sing-box/transport/call/tunnel/rtc"
 	"github.com/sagernet/sing/common/logger"
 	N "github.com/sagernet/sing/common/network"
 )
 
-func ConnectCreator(ctx context.Context, cookieStr, roomID, email, password string, readBuf int, dialer N.Dialer, dnsRouter adapter.DNSRouter, logger logger.ContextLogger) (*tunnel.RelayBridge, string, error) {
+// ConnectCreator joins the room (or makes one) and returns once the session runs: the function
+// that ends it, and the link the other side joins with. Connections of the peers that join go to
+// accept.
+//
+// Hiddify: it waited 60 s for a first peer and failed without one, and the inbound tried again:
+// a server nobody had joined yet made a new room every two minutes.
+func ConnectCreator(ctx context.Context, cookieStr, roomID, email, password string, readBuf int, dialer N.Dialer, dnsRouter adapter.DNSRouter, accept tunnel.AcceptHandlers, logger logger.ContextLogger) (func(), string, error) {
 	auth, err := NewSession(dialer)
 	if err != nil {
 		return nil, "", fmt.Errorf("dion: new session: %w", err)
@@ -48,8 +52,11 @@ func ConnectCreator(ctx context.Context, cookieStr, roomID, email, password stri
 	if err != nil {
 		return nil, "", fmt.Errorf("dion: obfuscator init: %w", err)
 	}
-	relayCh := make(chan *tunnel.RelayBridge, 1)
-	var activeRelay *tunnel.RelayBridge
+	var (
+		access      sync.Mutex
+		activeRelay *tunnel.RelayBridge
+		closed      bool
+	)
 	call := NewCall(CallConfig{
 		Auth:        auth,
 		Event:       event,
@@ -61,45 +68,48 @@ func ConnectCreator(ctx context.Context, cookieStr, roomID, email, password stri
 		Role:        RoleCreator,
 	})
 	call.OnConnected = func(tun tunnel.DataTunnel) {
-		if activeRelay != nil {
-			activeRelay.Reset()
-		}
-		bridgeReadBuf := common.VP8BufSize
-		if _, ok := tun.(*rtc.DCTunnel); ok {
-			bridgeReadBuf = readBuf
+		next := tunnel.NewCreatorBridge(tun, accept, logger)
+		next.MarkReady()
+		access.Lock()
+		if closed { // closed while the peer connected
+			access.Unlock()
+			next.Close()
+			return
 		}
 		previous := activeRelay
-		activeRelay = tunnel.NewRelayBridge(tun, "creator", bridgeReadBuf, dialer, logger)
-		activeRelay.InheritHandlers(previous) // Hiddify: keep routing after a reconnect
-		activeRelay.MarkReady()
-		select {
-		case relayCh <- activeRelay:
-		default:
+		activeRelay = next
+		access.Unlock()
+		if previous != nil {
+			previous.Reset()
 		}
 	}
 	call.OnPeerRestart = func() {
-		if activeRelay != nil {
-			activeRelay.Reset()
+		access.Lock()
+		active := activeRelay
+		access.Unlock()
+		if active != nil {
+			active.Reset()
 		}
 	}
-	go func() {
-		if err := call.Start(); err != nil {
-			logger.Error(fmt.Sprintf("dion: call start failed: %v", err))
-		}
-	}()
-	select {
-	case relay := <-relayCh:
-		return relay, joinLink, nil
-	case <-ctx.Done():
+	if err := call.Start(); err != nil {
 		call.Close()
-		return nil, "", ctx.Err()
-	case <-time.After(60 * time.Second):
-		call.Close()
-		return nil, "", fmt.Errorf("dion: creator tunnel timed out")
+		return nil, "", fmt.Errorf("dion: call start: %w", err)
 	}
+	return func() {
+		call.Close()
+		access.Lock()
+		closed = true
+		active := activeRelay
+		access.Unlock()
+		if active != nil {
+			active.Close()
+		}
+	}, joinLink, nil
 }
 
-func ConnectJoiner(ctx context.Context, roomID, displayName string, readBuf int, dialer N.Dialer, dnsRouter adapter.DNSRouter, logger logger.ContextLogger) (*tunnel.RelayBridge, error) {
+// ConnectJoiner joins the room and returns the bridge to dial through, and the function that
+// leaves the room.
+func ConnectJoiner(ctx context.Context, roomID, displayName string, readBuf int, dialer N.Dialer, dnsRouter adapter.DNSRouter, logger logger.ContextLogger) (*tunnel.RelayBridge, func(), error) {
 	if displayName == "" {
 		displayName = "Joiner"
 	}
@@ -118,12 +128,12 @@ func ConnectJoiner(ctx context.Context, roomID, displayName string, readBuf int,
 	go joiner.RunWithParams(params)
 	select {
 	case tun := <-tunCh:
-		rb := tunnel.NewRelayBridge(tun, "joiner", readBuf, dialer, logger)
+		rb := tunnel.NewJoinerBridge(tun, logger)
 		rb.SetOnConfigAck(joiner.MarkConfigAcked)
 		rb.MarkReady()
-		return rb, nil
+		return rb, joiner.Close, nil
 	case <-ctx.Done():
 		joiner.Close()
-		return nil, ctx.Err()
+		return nil, nil, ctx.Err()
 	}
 }
