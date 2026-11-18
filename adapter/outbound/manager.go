@@ -27,6 +27,8 @@ type Manager struct {
 	defaultOutboundFallback func() (adapter.Outbound, error)
 	scope                   *adapter.Scope // H: where outbounds created by hot reload are started
 	started                 bool
+
+	insecure map[string]string // H: why each outbound is not secure (option.InsecureReason)
 }
 
 func NewManager(registry adapter.OutboundRegistry, endpoint adapter.EndpointManager, defaultTag string) *Manager {
@@ -35,6 +37,7 @@ func NewManager(registry adapter.OutboundRegistry, endpoint adapter.EndpointMana
 		endpoint:      endpoint,
 		defaultTag:    defaultTag,
 		outboundByTag: make(map[string]adapter.Outbound),
+		insecure:      make(map[string]string), //H
 	}
 }
 
@@ -201,6 +204,7 @@ func (m *Manager) remove(tag string, ignoreDependents bool) error {
 		}
 	}
 	delete(m.outboundByTag, tag)
+	delete(m.insecure, tag) //H
 	index := slices.Index(m.outbounds, outbound)
 	if index == -1 {
 		panic("invalid outbound index")
@@ -274,6 +278,7 @@ func (m *Manager) Create(ctx context.Context, router adapter.Router, logger log.
 		m.outbounds = append(m.outbounds, outbound)
 	}
 	m.outboundByTag[tag] = outbound
+	m.insecure[tag] = option.InsecureReason(options) //H
 	if tag == m.defaultTag || (m.defaultTag == "" && m.defaultOutbound == nil) || m.defaultOutbound == existsOutbound && replaced {
 		m.defaultOutbound = outbound
 	}

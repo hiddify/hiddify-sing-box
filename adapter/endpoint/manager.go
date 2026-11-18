@@ -8,6 +8,7 @@ import (
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/log"
+	"github.com/sagernet/sing-box/option" //H
 	E "github.com/sagernet/sing/common/exceptions"
 )
 
@@ -20,12 +21,14 @@ type Manager struct {
 	started       bool // H: components created from now on are started right away (hot reload)
 	endpoints     []adapter.Endpoint
 	endpointByTag map[string]adapter.Endpoint
+	insecure      map[string]string // H: why each endpoint is not secure (option.InsecureReason)
 }
 
 func NewManager(registry adapter.EndpointRegistry) *Manager {
 	return &Manager{
 		registry:      registry,
 		endpointByTag: make(map[string]adapter.Endpoint),
+		insecure:      make(map[string]string), //H
 	}
 }
 
@@ -77,6 +80,7 @@ func (m *Manager) Remove(tag string) error {
 		return os.ErrInvalid
 	}
 	delete(m.endpointByTag, tag)
+	delete(m.insecure, tag) //H
 	index := slices.Index(m.endpoints, endpoint)
 	if index == -1 {
 		panic("invalid endpoint index")
@@ -123,6 +127,7 @@ func (m *Manager) Create(ctx context.Context, router adapter.Router, logger log.
 		m.endpoints = append(m.endpoints, endpoint)
 	}
 	m.endpointByTag[tag] = endpoint
+	m.insecure[tag] = option.InsecureReason(options) //H
 	m.access.Unlock()
 	if replaced {
 		err = adapter.CloseLate(m.scope, existsEndpoint)
