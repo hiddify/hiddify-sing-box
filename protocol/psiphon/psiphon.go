@@ -109,7 +109,10 @@ var noticeHub struct {
 	listeners map[*Psiphon]func(NoticeEvent)
 }
 
-func listenNotices(p *Psiphon, listener func(NoticeEvent)) error {
+// installNoticeHub installs the hub, once for the process. PreStart calls it before anything of
+// tunnel-core runs, so no notice goes to the default writer, the stderr of the program's start:
+// on Windows that is still the pipe to the app, which reads it for a crash's last lines.
+func installNoticeHub() error {
 	// installed outside the hub's lock, for the reason above
 	noticeHub.install.Do(func() {
 		// SetNoticeWriter takes the place of the default writer only, and it knows the default by
@@ -135,8 +138,12 @@ func listenNotices(p *Psiphon, listener func(NoticeEvent)) error {
 			}
 		}))
 	})
-	if noticeHub.installed != nil {
-		return noticeHub.installed
+	return noticeHub.installed
+}
+
+func listenNotices(p *Psiphon, listener func(NoticeEvent)) error {
+	if err := installNoticeHub(); err != nil {
+		return err
 	}
 	noticeHub.access.Lock()
 	defer noticeHub.access.Unlock()
@@ -195,6 +202,9 @@ func noticeCount(data map[string]interface{}) (float64, bool) {
 }
 
 func (p *Psiphon) PreStart() error {
+	if err := installNoticeHub(); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(p.config.DataRootDirectory, 0o755); err != nil {
 		return err
 	}

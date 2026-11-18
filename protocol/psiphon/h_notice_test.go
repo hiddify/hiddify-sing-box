@@ -3,6 +3,7 @@ package psiphon
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"sync"
 	"testing"
@@ -98,25 +99,38 @@ func TestH_NoticeOfAnotherInstance(t *testing.T) {
 	require.Eventually(t, first.connected.Load, time.Second, 10*time.Millisecond)
 }
 
+// startProcess puts tunnel-core's notice writer and the hub as a new process has them, with
+// startStderr as the stderr of the program's start, and then points os.Stderr at NUL as
+// hprocess.DetachStdio does on Windows. Everything is put back after the test, and the hub is
+// installed again by the next test that listens.
+func startProcess(t *testing.T, startStderr *os.File) {
+	stderr := os.Stderr
+	os.Stderr = startStderr
+	psiphon.ResetNoticeWriter()
+	null, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	require.NoError(t, err)
+	os.Stderr = null
+	resetHub := func() {
+		noticeHub.access.Lock()
+		noticeHub.install = sync.Once{}
+		noticeHub.installed = nil
+		noticeHub.listeners = nil
+		noticeHub.access.Unlock()
+	}
+	resetHub()
+	t.Cleanup(func() {
+		os.Stderr = stderr
+		psiphon.ResetNoticeWriter()
+		resetHub()
+		null.Close()
+	})
+}
+
 // SetNoticeWriter refuses unless the writer is the default, which it finds by comparing with the
 // current os.Stderr. The Windows core points os.Stderr at NUL once it is set up
 // (hprocess.DetachStdio): the hub then could not be installed and no Psiphon ever connected.
 func TestH_NoticeHubInstallsWhenStderrIsReplaced(t *testing.T) {
-	psiphon.ResetNoticeWriter() // the writer of the program's start: the real stderr
-	stderr := os.Stderr
-	null, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
-	require.NoError(t, err)
-	os.Stderr = null
-	t.Cleanup(func() {
-		os.Stderr = stderr
-		null.Close()
-		psiphon.ResetNoticeWriter()
-	})
-	noticeHub.access.Lock()
-	noticeHub.install = sync.Once{}
-	noticeHub.installed = nil
-	noticeHub.listeners = nil
-	noticeHub.access.Unlock()
+	startProcess(t, os.Stderr)
 
 	p := &Psiphon{logger: log.NewNOPFactory().Logger(), ctx: context.Background()}
 	seen := make(chan struct{}, 1)
@@ -132,4 +146,21 @@ func TestH_NoticeHubInstallsWhenStderrIsReplaced(t *testing.T) {
 		t.Fatal("the installed hub gets no notice")
 	}
 	stopListeningNotices(p)
+}
+
+// Once the hub is installed (PreStart, before tunnel-core runs), a notice with no instance
+// listening goes nowhere: not to the stderr of the program's start, on Windows the pipe to the app,
+// which reads it for a crash's last lines.
+func TestH_NoticeHubKeepsNoticesOffStartStderr(t *testing.T) {
+	reader, writer, err := os.Pipe()
+	require.NoError(t, err)
+	defer reader.Close()
+	startProcess(t, writer)
+
+	require.NoError(t, installNoticeHub())
+	psiphon.NoticeTunnels(0) // a notice with nobody listening
+	writer.Close()
+	written, err := io.ReadAll(reader)
+	require.NoError(t, err)
+	require.Empty(t, string(written))
 }
