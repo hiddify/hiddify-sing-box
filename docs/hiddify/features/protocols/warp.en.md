@@ -129,6 +129,19 @@ from the status the core sends, as for every outbound and endpoint:
 
 For example `WARP · MASQUE · 🔍 162.159.198.1:443`, or, failed, `WARP · WG: <error>`.
 
+**Waiting for the detour.** Naming the network, the race of auto mode, the scanner and the
+handshakes all go through `detour`. When it does not carry traffic yet, as with WARP in WARP,
+whose inner WARP starts together with the outer one, each of them fails at once. So once WARP has
+its devices (they are registered without `detour`), it waits until the detour is ready. For a
+group it waits for the member the group uses now, through nested groups. A lazy detour at rest
+says it is ready, so WARP holds it while it waits: it is created and connects then. While the
+detour is registering or searching, WARP waits for as long as that takes, since nothing gets
+through it meanwhile. While the detour is connecting, WARP waits at most 30 seconds, then connects
+through it as it is, because some proxies connect only at their first connection. It does not
+wait for a detour that failed. Meanwhile its dials fail with `waiting for its detour <tag>`, and
+the log says when the wait starts and ends. While the detour is down, auto mode does not count the
+tunnel in use as failed, and the port rotation does not move to the next port.
+
 **Group detour.** When `detour` is a group (a selector, URL test or balancer), WARP follows the
 member it resolves to, through nested groups. The WireGuard or AmneziaWG socket, or the MASQUE
 connection, would otherwise stay on the member the group left. How WARP moves depends on who

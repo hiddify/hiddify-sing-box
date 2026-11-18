@@ -204,6 +204,11 @@ func (w *WARPEndpoint) start() {
 	if profile == nil || !w.publish(done, func() { w.profile = profile }) {
 		return
 	}
+	// the network, the scanner and the handshakes go through the detour (the devices do not); in
+	// auto mode chooseMode has waited for it already
+	if !w.waitDetour(done) {
+		return
+	}
 	if !w.candidate {
 		// before connecting: a start that keeps failing (the tunnel cannot open through the
 		// detour) blocks in connect, and must be left as well
@@ -239,6 +244,10 @@ func (w *WARPEndpoint) confirmAuto(done <-chan struct{}, mode string) {
 	}
 	if adapter.IsReady(w) {
 		w.tunnelConnected(mode)
+		return
+	}
+	if !w.detourReady() { // nothing gets through a detour that is down: no tunnel is to blame
+		w.restart("auto mode: the detour is not ready")
 		return
 	}
 	if !w.paused() { // a paused device connects nothing: no tunnel is to blame
@@ -437,13 +446,13 @@ func (w *WARPEndpoint) watchHealth(done <-chan struct{}) {
 	}
 }
 
-// chooseMode gets the devices auto mode needs, races the tunnels, and draws one of those that
-// answered by their rating on the network (pickTunnel). When none answers, it draws one of those
-// that did not fail to connect yet, so the scanner and the port rotation can still look for a
-// way. Empty when the start ends first. The network is named meanwhile, for the ratings.
+// chooseMode gets the devices auto mode needs, waits for the detour (see h_detour_wait.go), races
+// the tunnels, and draws one of those that answered by their rating on the network (pickTunnel).
+// When none answers, it draws one of those that did not fail to connect yet, so the scanner and
+// the port rotation can still look for a way. Empty when the start ends first. The network is
+// named meanwhile, for the ratings.
 func (w *WARPEndpoint) chooseMode(session *warpSession) string {
 	done := session.done
-	detected := w.detectNetwork(session.ctx)
 	for _, kind := range []string{kindWireGuard, kindAWG} {
 		if w.obtainProfile(done, kind) == nil {
 			return ""
@@ -454,9 +463,10 @@ func (w *WARPEndpoint) chooseMode(session *warpSession) string {
 			return ""
 		}
 	}
-	if !w.waitDetour(done) { //H
+	if !w.waitDetour(done) { // the network and the race go through it
 		return ""
 	}
+	detected := w.detectNetwork(session.ctx)
 	race := w.raceModes(done)
 	select {
 	case network, ok := <-detected:

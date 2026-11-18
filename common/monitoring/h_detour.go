@@ -20,21 +20,7 @@ func ResolveDetour(detour adapter.Outbound, network string) string {
 
 // detourPath is detour, the member each group on the way selects, and the outbound at the end.
 func detourPath(detour adapter.Outbound, network string) []adapter.Outbound {
-	path := []adapter.Outbound{detour}
-	outbound := detour
-	for range maxGroupDepth {
-		group, isGroup := outbound.(adapter.OutboundGroup)
-		if !isGroup {
-			break
-		}
-		selected := group.Selected(network)
-		if selected == nil {
-			break
-		}
-		outbound = selected
-		path = append(path, outbound)
-	}
-	return path
+	return adapter.GroupPath(detour, network)
 }
 
 // DetourChange is a move of a group detour from one outbound to another.

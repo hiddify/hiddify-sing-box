@@ -30,7 +30,10 @@ func (w *WARPEndpoint) notReady() error {
 		return E.Cause(err, "WARP failed")
 	}
 	var doing string
+	waitingDetour := w.waitingDetour.Load()
 	switch {
+	case waitingDetour != nil:
+		doing = "waiting for its detour " + *waitingDetour
 	case w.registering.Load():
 		doing = "registering a device"
 	case w.selecting.Load():

@@ -48,6 +48,11 @@ func (w *WARPEndpoint) rotatePorts(done <-chan struct{}, config *C.WARPConfig, a
 			wait = failoverInterval // answering: check again later
 			continue
 		}
+		if !w.detourReady() { // the port is not to blame: give it its time once the detour is back
+			connectedAt = time.Now()
+			wait = firstHandshakeWait
+			continue
+		}
 		current = (current + 1) % len(ports)
 		replaced, err := w.replaceInner(done, config, address, ports[current])
 		if err != nil {

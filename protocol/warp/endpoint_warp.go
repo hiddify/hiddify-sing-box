@@ -62,6 +62,8 @@ type WARPEndpoint struct {
 
 	ratedNetwork atomic.Pointer[warpscan.NetworkInfo] // H: the network the tunnels are rated on, see h_tunnel_rating.go
 
+	waitingDetour atomic.Pointer[string] // H: the detour a start waits for, see h_detour_wait.go
+
 	mode          string        // H: the tunnel, see h_mode.go
 	active        atomic.Value  // H: in auto mode, the tunnel chosen
 	selecting     atomic.Bool   // H: auto mode races the tunnels

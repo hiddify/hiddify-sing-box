@@ -83,9 +83,8 @@ func (t *GroupTransport) detourReady(transportManager adapter.DNSTransportManage
 	if transport.Type() == C.DNSTypeUDP {
 		network = N.NetworkUDP
 	}
-	visited := make(map[string]bool)
 	for _, detour := range referrer.References() {
-		if !outboundReady(outboundManager, detour, network, visited) {
+		if !outboundReady(outboundManager, detour, network) {
 			return false
 		}
 	}
@@ -96,27 +95,13 @@ func (t *GroupTransport) detourReady(transportManager adapter.DNSTransportManage
 // fallback, balancer), whether the outbound it uses now for network is, down to the last group:
 // a selector is always ready itself, while the proxy selected in it may still be connecting. A
 // group that has not picked one yet counts as ready. //H
-func outboundReady(outboundManager adapter.OutboundManager, tag string, network string, visited map[string]bool) bool {
-	if visited[tag] {
-		return true
-	}
-	visited[tag] = true
+func outboundReady(outboundManager adapter.OutboundManager, tag string, network string) bool {
 	outbound, loaded := outboundManager.Outbound(tag)
 	if !loaded {
 		return true
 	}
-	if !adapter.IsReady(outbound) {
-		return false
-	}
-	group, isGroup := outbound.(adapter.OutboundGroup)
-	if !isGroup {
-		return true
-	}
-	selected := group.Selected(network)
-	if selected == nil {
-		return true
-	}
-	return outboundReady(outboundManager, selected.Tag(), network, visited)
+	status, _ := adapter.PathStatus(adapter.GroupPath(outbound, network))
+	return status == adapter.StatusReady
 }
 
 // score is a server's current score, for tests and the log. //H
