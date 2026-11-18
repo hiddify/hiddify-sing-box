@@ -12,6 +12,7 @@ import (
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/dialer"
 	C "github.com/sagernet/sing-box/constant"
+	"github.com/sagernet/sing-box/hiddify/edgescan"
 	"github.com/sagernet/sing-box/hiddify/rating"
 	"github.com/sagernet/sing-box/hiddify/warpscan"
 	"github.com/sagernet/sing-box/log"
@@ -38,6 +39,7 @@ const (
 
 type warpFailover struct {
 	config      *C.WARPConfig
+	store       *edgescan.Store // shared with the other scanners on the network, see scanStore
 	book        *warpscan.Book
 	probeDialer N.Dialer
 	dialer      N.Dialer // resolves domains, for network detection
@@ -71,8 +73,9 @@ func (w *WARPEndpoint) connect(session *warpSession, config *C.WARPConfig) {
 		return
 	}
 	var (
-		current  netip.AddrPort
-		failover *warpFailover
+		current     netip.AddrPort
+		failover    *warpFailover
+		deepPending bool // a deep search from the start goes on once the endpoint runs
 	)
 	if w.scannerEnabled() {
 		w.mtx.Lock()
@@ -86,7 +89,8 @@ func (w *WARPEndpoint) connect(session *warpSession, config *C.WARPConfig) {
 			if !w.publish(done, func() { w.failover, session.failover = failover, failover }) {
 				return
 			}
-			results, err := w.scanWith(session.ctx, failover, nil)
+			results, err := w.searchWithin(session.ctx, failover, nil, true, false)
+			deepPending = err != nil && edgescan.ConfiguredDeep(searchOptions(w.options.Scanner))
 			if err != nil {
 				w.logger.WarnContext(w.ctx, err, ", using the profile's endpoint")
 			} else {
@@ -117,6 +121,12 @@ func (w *WARPEndpoint) connect(session *warpSession, config *C.WARPConfig) {
 		}
 	}) {
 		adapter.CloseLate(w.scope, inner) // the start ended meanwhile
+		return
+	}
+	if deepPending {
+		if err := w.StartDeepSearch(); err != nil {
+			w.logger.WarnContext(w.ctx, err)
+		}
 	}
 }
 
@@ -195,9 +205,11 @@ func (w *WARPEndpoint) newFailover(ctx context.Context, config *C.WARPConfig, ne
 	if err != nil {
 		return nil, err
 	}
+	store := w.scanStore()
 	failover := &warpFailover{
 		config:      config,
-		book:        warpscan.Load(service.FromContext[adapter.CacheFile](w.ctx), w.uniqueID),
+		store:       store,
+		book:        store.Book(edgescan.KindWARP),
 		probeDialer: probeDialer,
 		dialer:      traceDialer,
 		logger:      w.logger,
@@ -215,7 +227,12 @@ func (w *WARPEndpoint) newFailover(ctx context.Context, config *C.WARPConfig, ne
 
 // detectNetwork names the network the box is on now (see warpscan.DetectNetwork).
 func (f *warpFailover) detectNetwork(ctx context.Context) {
-	network := warpscan.DetectNetwork(ctx, f.logger, f.dialer)
+	var network warpscan.NetworkInfo
+	if f.store != nil {
+		network = f.store.Network(ctx, f.logger, f.dialer)
+	} else {
+		network = warpscan.DetectNetwork(ctx, f.logger, f.dialer)
+	}
 	f.networkAccess.Lock()
 	f.network = network
 	f.networkAccess.Unlock()
@@ -356,13 +373,18 @@ func noiseCount(book *warpscan.Book, networkName string, candidates []string, i 
 	return noiseSearchCount
 }
 
-// scan looks for endpoints on the current network, without exclude, with the failover in use.
+// scan looks for endpoints on the current network, without exclude, with the failover in use, in
+// one round.
 func (w *WARPEndpoint) scan(exclude []netip.AddrPort) ([]warpscan.Result, error) {
 	failover := w.currentFailover()
 	if failover == nil {
 		return nil, errNoFailover
 	}
-	return w.scanWith(w.ctx, failover, exclude)
+	results, noise, err := w.scanWith(w.ctx, failover, exclude, false)
+	if err == nil {
+		w.useNoise(failover, noise)
+	}
+	return results, err
 }
 
 // scanWith looks for endpoints on the current network, without exclude, and saves the scores.
@@ -372,7 +394,8 @@ func (w *WARPEndpoint) scan(exclude []netip.AddrPort) ([]warpscan.Result, error)
 // It works on failover to the end: a restart clears the endpoint's while a scan of the start that
 // ends still runs. ctx is the session's: the scan of a start that ended stops, where it went on
 // for as long as its probes took.
-func (w *WARPEndpoint) scanWith(ctx context.Context, failover *warpFailover, exclude []netip.AddrPort) ([]warpscan.Result, error) {
+// It returns the noise that got through; the caller puts it in use (see search).
+func (w *WARPEndpoint) scanWith(ctx context.Context, failover *warpFailover, exclude []netip.AddrPort, deep bool) ([]warpscan.Result, string, error) {
 	defaults := warpscan.Defaults{CIDRs: warpscan.WireGuardCIDRs, Ports: warpscan.WireGuardPorts}
 	if ports := failover.config.Peers[0].Endpoint.Ports; len(ports) > 0 {
 		defaults.Ports = make([]uint16, 0, len(ports))
@@ -381,7 +404,6 @@ func (w *WARPEndpoint) scanWith(ctx context.Context, failover *warpFailover, exc
 		}
 	}
 	network := failover.currentNetwork()
-	w.scanStatus.Begin()
 	var (
 		lastErr error
 		failed  []string // the noises no endpoint answered
@@ -398,6 +420,7 @@ func (w *WARPEndpoint) scanWith(ctx context.Context, failover *warpFailover, exc
 			options.Count = noiseCount(failover.book, network.Name, candidates, i, options.Count)
 		}
 		results, err := warpscan.Scan(ctx, w.logger, warpscan.Request{
+			Deep:     deep,
 			Options:  &options,
 			Defaults: defaults,
 			IPv4:     network.IPv4,
@@ -418,21 +441,23 @@ func (w *WARPEndpoint) scanWith(ctx context.Context, failover *warpFailover, exc
 		if len(candidates) > 1 {
 			failover.book.SettleMethods(network.Name, warpscan.NoiseMethod(noise), failed, time.Now())
 		}
-		failover.noiseAccess.Lock()
-		changed := failover.noise != noise
-		failover.noise = noise
-		failover.noiseAccess.Unlock()
-		if changed {
-			score, _ := failover.book.MethodScore(network.Name, warpscan.NoiseMethod(noise))
-			w.logger.InfoContext(w.ctx, "WARP scanner: noise ", noiseName(noise), " gets through (score ", score, ")")
-		}
 		w.saveScores(failover)
-		w.scanStatus.Found(results[0].AddrPort)
-		return results, nil
+		return results, noise, nil
 	}
 	w.saveScores(failover)
-	w.scanStatus.NotFound()
-	return nil, lastErr
+	return nil, "", lastErr
+}
+
+// useNoise puts noise in use for the next inner endpoint.
+func (w *WARPEndpoint) useNoise(failover *warpFailover, noise string) {
+	failover.noiseAccess.Lock()
+	changed := failover.noise != noise
+	failover.noise = noise
+	failover.noiseAccess.Unlock()
+	if changed {
+		score, _ := failover.book.MethodScore(failover.currentNetwork().Name, warpscan.NoiseMethod(noise))
+		w.logger.InfoContext(w.ctx, "WARP scanner: noise ", noiseName(noise), " gets through (score ", score, ")")
+	}
 }
 
 // noiseName names a noise of noiseCandidates for the log.
@@ -454,7 +479,10 @@ func (w *WARPEndpoint) currentFailover() *warpFailover {
 var errNoFailover = E.New("WARP scanner: not set up")
 
 func (w *WARPEndpoint) saveScores(failover *warpFailover) {
-	if err := warpscan.Save(service.FromContext[adapter.CacheFile](w.ctx), w.uniqueID, failover.book); err != nil {
+	if failover.store == nil {
+		return
+	}
+	if err := failover.store.Save(); err != nil {
 		w.logger.WarnContext(w.ctx, "WARP scanner: save scores: ", err)
 	}
 }
@@ -482,6 +510,9 @@ func (w *WARPEndpoint) InterfaceUpdated(ctx context.Context) {
 		case <-time.After(networkSettle):
 		case <-session.done:
 			return
+		}
+		if failover.store != nil {
+			failover.store.NetworkChanged()
 		}
 		failover.detectNetwork(session.ctx)
 		detected := failover.currentNetwork()
@@ -561,7 +592,7 @@ func (w *WARPEndpoint) check(session *warpSession, networkChanged bool) {
 		}
 	}
 	w.logger.WarnContext(w.ctx, "WARP: endpoint ", failover.current, " does not answer, looking for another")
-	results, err := w.scanWith(session.ctx, failover, []netip.AddrPort{failover.current})
+	results, err := w.search(session.ctx, failover, []netip.AddrPort{failover.current})
 	if err != nil {
 		// no endpoint answers: the network is down, not the endpoint in use
 		w.logger.WarnContext(w.ctx, err, ", keeping ", failover.current)

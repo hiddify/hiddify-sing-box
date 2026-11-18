@@ -90,7 +90,7 @@ func TestH_WARPScanEndsWithItsStart(t *testing.T) {
 	}
 	scanned := make(chan error, 1)
 	go func() {
-		_, err := ep.scanWith(session.ctx, failover, nil)
+		_, _, err := ep.scanWith(session.ctx, failover, nil, false)
 		scanned <- err
 	}()
 	select {

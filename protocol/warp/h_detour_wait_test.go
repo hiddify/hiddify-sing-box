@@ -41,6 +41,7 @@ func (d *hStatusDetour) udpDial(ctx context.Context) error {
 }
 
 func (d *hStatusDetour) Tag() string            { return d.tag }
+func (d *hStatusDetour) Type() string           { return "detour" }
 func (d *hStatusDetour) Status() adapter.Status { return adapter.Status(d.status.Load()) }
 func (d *hStatusDetour) dials() int32           { return d.udp.Load() + d.tcp.Load() }
 func (d *hStatusDetour) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
@@ -63,6 +64,7 @@ type hGroupDetour struct {
 }
 
 func (g *hGroupDetour) Tag() string                              { return g.tag }
+func (g *hGroupDetour) Type() string                             { return "selector" }
 func (g *hGroupDetour) Status() adapter.Status                   { return adapter.StatusReady }
 func (g *hGroupDetour) All() []string                            { return []string{g.selected.Tag()} }
 func (g *hGroupDetour) Selected(network string) adapter.Outbound { return g.selected }

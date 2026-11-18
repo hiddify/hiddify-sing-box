@@ -61,6 +61,8 @@ func (o *hFakeOutbound) DialContext(ctx context.Context, network string, destina
 	return o.hRecordingDialer.DialContext(ctx, network, destination)
 }
 
+func (o *hFakeOutbound) Type() string { return "fake" }
+
 func (o *hFakeOutbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
 	return o.hRecordingDialer.ListenPacket(ctx, destination)
 }

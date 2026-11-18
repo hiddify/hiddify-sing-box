@@ -224,11 +224,16 @@ func (w *Outbound) startTunnel(appConfig *Config) error {
 		ReconnectDelay:       options.ReconnectDelay.Build(),
 	})
 	if err != nil {
+		if scanner != nil { //H
+			scanner.Close() //H
+		} //H
 		return err
 	}
 	if scanner != nil { //H: scores and failover
 		tunnel.SetFailover(scanner.OnConnected, scanner.NextEndpoint)
+		w.tunnelAccess.Lock() //H
 		w.scanner = scanner
+		w.tunnelAccess.Unlock() //H
 	}
 	if w.onRejected != nil { //H
 		tunnel.SetOnRejected(w.onRejected) //H
@@ -328,6 +333,10 @@ func (w *Outbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 
 func (w *Outbound) Close() error {
 	w.doneOnce.Do(func() { close(w.done) }) // ends a registration in progress
+
+	if scanner := w.currentScanner(); scanner != nil { //H: its searches end with it
+		scanner.Close() //H
+	} //H
 	select {
 	case <-w.await:
 		return w.closeTunnel()
@@ -442,8 +451,8 @@ func (w *Outbound) InterfaceUpdated(ctx context.Context) {
 		return
 	}
 	go func() {
-		if w.scanner != nil {
-			w.scanner.DetectNetwork()
+		if scanner := w.currentScanner(); scanner != nil { //H
+			scanner.DetectNetwork(true)
 		}
 		tunnel.ResetConnection()
 	}()

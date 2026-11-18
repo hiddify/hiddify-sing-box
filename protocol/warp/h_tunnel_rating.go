@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/dialer"
+	"github.com/sagernet/sing-box/hiddify/edgescan"
 	"github.com/sagernet/sing-box/hiddify/rating"
 	"github.com/sagernet/sing-box/hiddify/warpscan"
 	"github.com/sagernet/sing/service"
@@ -52,27 +52,27 @@ func (w *WARPEndpoint) detectNetwork(ctx context.Context) <-chan warpscan.Networ
 		return result
 	}
 	go func() {
-		network := warpscan.DetectNetwork(ctx, w.logger, traceDialer)
+		network := w.scanStore().Network(ctx, w.logger, traceDialer)
 		w.ratedNetwork.Store(&network)
 		result <- network
 	}()
 	return result
 }
 
+// tunnelBook is the tunnel ratings of the scan store: shared by the WARP endpoints on the network.
 func (w *WARPEndpoint) tunnelBook() *warpscan.Book {
-	return warpscan.Load(service.FromContext[adapter.CacheFile](w.ctx), w.uniqueID+tunnelBookSuffix)
+	return w.scanStore().Book(edgescan.KindWARPTunnels)
 }
 
-// rateTunnels records an outcome on the current network and saves it. The book is read again
-// each time: a candidate tunnel (see h_switch.go) rates under the same key.
+// rateTunnels records an outcome on the current network and saves it.
 func (w *WARPEndpoint) rateTunnels(record func(book *warpscan.Book, network string, now time.Time)) {
 	network := w.tunnelNetwork()
 	if network == "" {
 		return
 	}
-	book := w.tunnelBook()
-	record(book, network, time.Now())
-	if err := warpscan.Save(service.FromContext[adapter.CacheFile](w.ctx), w.uniqueID+tunnelBookSuffix, book); err != nil {
+	store := w.scanStore()
+	record(store.Book(edgescan.KindWARPTunnels), network, time.Now())
+	if err := store.Save(); err != nil {
 		w.logger.WarnContext(w.ctx, "WARP auto mode: save tunnel ratings: ", err)
 	}
 }

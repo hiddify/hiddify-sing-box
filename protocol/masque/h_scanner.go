@@ -2,14 +2,19 @@ package masque
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"net"
 	"net/netip"
+	"slices"
 	"sync"
 	"time"
 
-	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/dialer"
 	"github.com/sagernet/sing-box/common/tls"
+	"github.com/sagernet/sing-box/hiddify/edgescan"
 	"github.com/sagernet/sing-box/hiddify/warpscan"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
@@ -17,7 +22,6 @@ import (
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
-	"github.com/sagernet/sing/service"
 )
 
 const defaultServerName = "consumer-masque.cloudflareclient.com"
@@ -48,12 +52,25 @@ type masqueScanner struct {
 
 	status *warpscan.Status
 
+	store   *edgescan.Store // shared with the other scanners on the network, see newMASQUEScanner
 	access  sync.Mutex
 	book    *warpscan.Book
 	network warpscan.NetworkInfo
+	cancel  context.CancelFunc // ends the searches with the outbound
+
+	// the search for an endpoint runs in the background, per HTTP/2: the tunnel asks for one
+	// while it holds its lock, and gets the one it found at its next ask
+	searching map[bool]bool
+	found     map[bool]net.Addr
+}
+
+// Close ends the searches.
+func (s *masqueScanner) Close() {
+	s.cancel()
 }
 
 func newMASQUEScanner(ctx context.Context, logger log.ContextLogger, key string, options option.MASQUEOutboundOptions, probeDialer N.Dialer, tlsConfig tls.Config, status *warpscan.Status) (*masqueScanner, error) {
+	ctx, cancel := context.WithCancel(ctx)
 	traceDialer, err := dialer.NewWithOptions(dialer.Options{ // the trace URLs are named by domain
 		Context:          ctx,
 		Options:          options.DialerOptions,
@@ -61,10 +78,14 @@ func newMASQUEScanner(ctx context.Context, logger log.ContextLogger, key string,
 		ResolverOnDetour: true,
 	})
 	if err != nil {
+		cancel()
 		return nil, err
 	}
 	scanner := &masqueScanner{
 		ctx:         ctx,
+		cancel:      cancel,
+		searching:   make(map[bool]bool),
+		found:       make(map[bool]net.Addr),
 		logger:      logger,
 		options:     options,
 		key:         key,
@@ -74,14 +95,22 @@ func newMASQUEScanner(ctx context.Context, logger log.ContextLogger, key string,
 			false: warpscan.MASQUEProbe(probeDialer, tlsConfig, false),
 			true:  warpscan.MASQUEProbe(probeDialer, tlsConfig, true),
 		},
-		book: warpscan.Load(service.FromContext[adapter.CacheFile](ctx), key),
 	}
-	scanner.DetectNetwork()
+	// the store shared by the scanners that reach the network directly, where the scores kept
+	// under the profile's key before join the others
+	scanner.store = edgescan.OpenScannerStore(ctx, options.Detour, key+"/edge-scanner")
+	scanner.store.Adopt(edgescan.KindWARPMASQUE, key+"/warp-scanner")
+	scanner.book = scanner.store.Book(edgescan.KindWARPMASQUE)
+	scanner.DetectNetwork(false)
 	return scanner, nil
 }
 
-func (s *masqueScanner) DetectNetwork() {
-	network := warpscan.DetectNetwork(s.ctx, s.logger, s.traceDialer)
+// DetectNetwork names the network (see edgescan.Store.Network); changed, after a network change.
+func (s *masqueScanner) DetectNetwork(changed bool) {
+	if changed {
+		s.store.NetworkChanged()
+	}
+	network := s.store.Network(s.ctx, s.logger, s.traceDialer)
 	s.access.Lock()
 	s.network = network
 	s.access.Unlock()
@@ -94,13 +123,100 @@ func (s *masqueScanner) currentNetwork() warpscan.NetworkInfo {
 }
 
 func (s *masqueScanner) save() {
-	if err := warpscan.Save(service.FromContext[adapter.CacheFile](s.ctx), s.key, s.book); err != nil {
+	if err := s.store.Save(); err != nil {
 		s.logger.WarnContext(s.ctx, "WARP scanner: save scores: ", err)
 	}
 }
 
-// Scan finds the best answering endpoint of the HTTP version, without exclude.
+// Scan finds the best answering endpoint of the HTTP version, without exclude, in one round: the
+// tunnel's start waits for it.
 func (s *masqueScanner) Scan(http2 bool, exclude []netip.AddrPort) (net.Addr, error) {
+	s.status.Begin()
+	results, err := s.scanRound(s.ctx, http2, exclude, false)
+	if err != nil {
+		s.status.NotFound()
+		return nil, err
+	}
+	return s.use(results, http2), nil
+}
+
+func (s *masqueScanner) use(results []warpscan.Result, http2 bool) net.Addr {
+	best := results[0]
+	s.status.Found(best.AddrPort)
+	s.logger.InfoContext(s.ctx, "WARP scanner: using ", best.AddrPort, versionSuffix(http2), " (score ", best.Score, ", ", best.RTT, ")")
+	return endpointAddr(best.AddrPort, http2)
+}
+
+// search finds the best answering endpoint of the HTTP version, without exclude, round after
+// round for the search time, or without a limit in a deep search (see edgescan.SearchLimit); an
+// exhausted search offers a deep search. The WARP over MASQUE tunnels that search the same network at the
+// same time share one search (see edgescan.Store.Do).
+func (s *masqueScanner) search(http2 bool, exclude []netip.AddrPort, deepAsked bool) (net.Addr, error) {
+	timeout, deep := edgescan.SearchLimit(searchOptions(s.options.Scanner), deepAsked)
+	if !edgescan.Direct(s.ctx, s.options.Detour) {
+		timeout, deep = -1, false // behind another proxy: one round, as before (see edgescan.Search)
+	}
+	run := func(ctx context.Context) (any, error) {
+		return edgescan.Search(ctx, s.logger, timeout, func(ctx context.Context) ([]warpscan.Result, error) {
+			return s.scanRound(ctx, http2, exclude, deep)
+		})
+	}
+	s.status.Begin()
+	value, err := s.store.Do(s.ctx, s.searchKey(http2, deep), run)
+	results, _ := value.([]warpscan.Result)
+	results = excludeResults(results, exclude)
+	if err == nil && len(results) == 0 { // every answer of the shared search is excluded here
+		value, err = run(s.ctx)
+		results, _ = value.([]warpscan.Result)
+	}
+	switch {
+	case err == nil && len(results) > 0:
+		s.status.Exhausted(false)
+		if deepAsked {
+			s.status.Deep(false)
+		}
+		return s.use(results, http2), nil
+	case errors.Is(err, edgescan.ErrSearchExhausted):
+		s.status.NotFound()
+		if deepAsked {
+			s.status.Deep(false)
+		}
+		s.status.Exhausted(true)
+	default:
+		s.status.NotFound()
+	}
+	if err == nil {
+		err = E.New("WARP scanner: nothing answered")
+	}
+	return nil, err
+}
+
+// searchKey names a search for sharing: the network, the HTTP version and the scanner's options.
+func (s *masqueScanner) searchKey(http2 bool, deep bool) string {
+	content, _ := json.Marshal(struct {
+		Scanner any
+		IPv6    bool
+		Deep    bool
+	}{s.options.Scanner, s.options.UseIPv6, deep})
+	sum := sha256.Sum256(content)
+	return edgescan.KindWARPMASQUE + "|" + s.currentNetwork().Name + versionSuffix(http2) + "|" + hex.EncodeToString(sum[:8])
+}
+
+func excludeResults(results []warpscan.Result, exclude []netip.AddrPort) []warpscan.Result {
+	if len(exclude) == 0 {
+		return results
+	}
+	kept := make([]warpscan.Result, 0, len(results))
+	for _, result := range results {
+		if !slices.Contains(exclude, result.AddrPort) {
+			kept = append(kept, result)
+		}
+	}
+	return kept
+}
+
+// scanRound is one round of a search.
+func (s *masqueScanner) scanRound(ctx context.Context, http2 bool, exclude []netip.AddrPort, deep bool) ([]warpscan.Result, error) {
 	network := s.currentNetwork()
 	ipv4, ipv6 := network.IPv4, network.IPv6
 	if s.options.UseIPv6 {
@@ -110,8 +226,8 @@ func (s *masqueScanner) Scan(http2 bool, exclude []netip.AddrPort) (net.Addr, er
 	if http2 {
 		defaults.CIDRs = warpscan.MASQUEHTTP2CIDRs
 	}
-	s.status.Begin()
-	results, err := warpscan.Scan(s.ctx, s.logger, warpscan.Request{
+	results, err := warpscan.Scan(ctx, s.logger, warpscan.Request{
+		Deep:     deep,
 		Options:  s.options.Scanner,
 		Defaults: defaults,
 		IPv4:     ipv4,
@@ -122,14 +238,7 @@ func (s *masqueScanner) Scan(http2 bool, exclude []netip.AddrPort) (net.Addr, er
 		Probe:    s.probes[http2],
 	})
 	s.save()
-	if err != nil {
-		s.status.NotFound()
-		return nil, err
-	}
-	best := results[0]
-	s.status.Found(best.AddrPort)
-	s.logger.InfoContext(s.ctx, "WARP scanner: using ", best.AddrPort, versionSuffix(http2), " (score ", best.Score, ", ", best.RTT, ")")
-	return endpointAddr(best.AddrPort, http2), nil
+	return results, err
 }
 
 // OnConnected counts a connect of the tunnel as an answer of its endpoint.
@@ -142,18 +251,63 @@ func (s *masqueScanner) OnConnected(endpoint net.Addr, http2 bool, elapsed time.
 
 // NextEndpoint looks for another endpoint than failed, and counts the failure once another one
 // answers: when none does, the network is down, not the endpoint.
+// The tunnel asks while it holds its lock, so it gets one round, and the search goes on in the
+// background (see searchInBackground); its endpoint is the answer to the next ask.
 func (s *masqueScanner) NextEndpoint(failed net.Addr, http2 bool) net.Addr {
 	addrPort, ok := addrPortOf(failed)
-	next, err := s.Scan(http2, []netip.AddrPort{addrPort})
-	if err != nil {
-		s.logger.WarnContext(s.ctx, err, ", keeping ", failed)
-		return nil
+	s.access.Lock()
+	next := s.found[http2]
+	delete(s.found, http2)
+	s.access.Unlock()
+	if next == nil || next.String() == failed.String() {
+		var exclude []netip.AddrPort
+		if ok {
+			exclude = append(exclude, addrPort)
+		}
+		s.status.Begin()
+		results, err := s.scanRound(s.ctx, http2, exclude, false)
+		if err != nil {
+			s.status.NotFound()
+			s.logger.WarnContext(s.ctx, err, ", keeping ", failed, "; searching on")
+			s.searchInBackground(http2, exclude, false)
+			return nil
+		}
+		next = s.use(results, http2)
 	}
 	if ok {
 		s.book.Failure(s.currentNetwork().Name+versionSuffix(http2), addrPort, time.Now())
 		s.save()
 	}
 	return next
+}
+
+// searchInBackground searches for an endpoint of the HTTP version for the search time, or as the
+// deep search the user asked for, unless one runs; the tunnel takes what it finds at its next ask
+// for an endpoint. It ends with the outbound.
+func (s *masqueScanner) searchInBackground(http2 bool, exclude []netip.AddrPort, deepAsked bool) {
+	s.access.Lock()
+	if s.searching[http2] {
+		s.access.Unlock()
+		return
+	}
+	s.searching[http2] = true
+	s.access.Unlock()
+	go func() {
+		next, err := s.search(http2, exclude, deepAsked)
+		if err != nil && !deepAsked && s.status.IsDeep() && s.ctx.Err() == nil {
+			// a deep search was asked for while this one ran: it goes on as that one
+			next, err = s.search(http2, exclude, true)
+		}
+		s.access.Lock()
+		s.searching[http2] = false
+		if err == nil {
+			s.found[http2] = next
+		}
+		s.access.Unlock()
+		if err != nil && s.ctx.Err() == nil {
+			s.logger.WarnContext(s.ctx, err)
+		}
+	}()
 }
 
 // HTTP/3 and HTTP/2 endpoints are scored apart: they are different servers.

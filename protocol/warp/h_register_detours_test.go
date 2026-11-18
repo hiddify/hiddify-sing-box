@@ -14,7 +14,8 @@ type hTaggedOutbound struct {
 	tag string
 }
 
-func (o *hTaggedOutbound) Tag() string { return o.tag }
+func (o *hTaggedOutbound) Tag() string  { return o.tag }
+func (o *hTaggedOutbound) Type() string { return "tagged" }
 
 // hHeldOutbound is a lazy outbound that records whether it is held.
 type hHeldOutbound struct {
