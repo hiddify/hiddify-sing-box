@@ -349,7 +349,10 @@ do about it. Items marked **Required** break or misbehave until they are handled
   use beside the fastest. `OutboundGroup.keep_top_picking` says a pick is under way, for the
   footer of the list; it is also true while keep top fills a free place or tests the proxies at
   rest again (after 10 and 30 minutes, then 1, 2, 4 and every 6 hours), which needs nothing from the app. A proxy at
-  rest that answers a test of the list is used at once while a place is free. While the first pick still has proxies
+  rest that answers a test of the list is used at once while a place is free, and in the place of
+  the slowest kept one when it is faster. With every place taken, keep top looks at the proxies at
+  rest again every `keep_top.refresh` (1 hour), and at once after a reload that brings proxies never
+  tested (a subscription's update); `keep_top_picking` is true meanwhile. While the first pick still has proxies
   to test, the core reports `WAITING`, not `NO_AVAILABLE_PROXIES`
   (`OutboundMonitoring.KeepTopSearching`). Keep top manages the outbound proxies whose start is
   cheap (VLESS, VMess, Trojan, Shadowsocks, SOCKS, HTTP, Hysteria, Hysteria2, TUIC, AnyTLS,

@@ -100,11 +100,20 @@ It does not. It only decides which outbounds exist and which are used.
   and every 6 hours while none of them answers; once one does, the wait is 10 minutes again. The ones
   in use are not tested for it.
 - An outbound at rest that answers a test asked for by its tag (the user tests the list) is used
-  at once, while there is a place for it.
+  at once, while there is a place for it. With every place taken, it takes the place of the
+  slowest kept one when it answers faster; that one rests.
+- With every place taken, a pick goes through the ones at rest again every `refresh` (1 hour):
+  the kept ones that answer stay and are not tested for it, and one found faster takes the place
+  of the slowest. With `quick` it tests the ones never tested or not for 24 hours, the ones whose
+  last ping may beat the kept ones, and every one that answered, then or before, whose last
+  result is older than `refresh`: a proxy that got faster, or failed once and works again, comes
+  back within the hour, not after a day. Ones that never answered wait the 24 hours.
 - An outbound with no result 30 seconds into its stage counts as not answering (10 seconds more
   for every 10 outbounds of a batch above 10).
 - A hot reload keeps the pick while the kept outbounds are unchanged; a replaced or removed one
-  starts a new pick, which keeps the ones that answer. The `keep_top` options themselves can be
+  starts a new pick, which keeps the ones that answer. A reload that brings outbounds never
+  tested (a subscription's update) starts a refresh at once, so the new ones do not rest
+  untested. The `keep_top` options themselves can be
   changed, added or removed by a hot reload.
 - A test of a group tests the members in use. A test of one outbound by its tag runs also when
   it rests.
@@ -151,6 +160,7 @@ Outbound field:
 | `batch` | int | `10` | How many outbounds are tested at a time, beside the best so far. Below `0`: all at once. |
 | `quick` | bool | `false` | End the pick once the outbounds still to test were slower at their last test than the ones found. |
 | `pinned` | list of strings | | Tags of lazy outbounds that are always in use beside the `count` fastest, whatever their ping, like the one selected in a selector. |
+| `refresh` | duration | `1h` | With every place taken, how often a pick looks at the ones at rest again, and with `quick` how old an answer may be before it is tested again. Below `0`: never. |
 
 ## Notes
 
