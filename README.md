@@ -89,6 +89,9 @@ its changes small and close to upstream so it can follow every sing-box release.
   outbound, [lazy outbounds and keep top](docs/hiddify/features/groups/keep-top.en.md) (only the
   fastest few proxies of a large profile exist and are tested),
   [unified delay](docs/hiddify/features/groups/unified-delay.en.md).
+- [Proxy security](docs/hiddify/features/proxy-security.en.md): every outbound and endpoint is
+  marked secure or not secure from its options, with the reason (plaintext, no cipher, weak
+  cipher, TLS without verification).
 
 ### Performance
 

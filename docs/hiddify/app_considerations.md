@@ -276,6 +276,13 @@ do about it. Items marked **Required** break or misbehave until they are handled
   is not a symbol and does nothing. Keep inbounds on `127.0.0.1` unless the LAN really needs
   them, and keep the Linux kernel updated.
 
+- **Not secure proxies.** `adapter.InsecureReason(box.Outbound(), tag)` says why an outbound or
+  endpoint can be read or changed on the way to its server: `plaintext`, `no_cipher`,
+  `weak_cipher` or `tls_insecure` (`C.Insecure*`), or "" when it is secure or a group
+  ([proxy security](features/proxy-security.en.md)). hiddify-core sends it in
+  `OutboundInfo.is_secure` and `insecure_reason`; the app marks those proxies in its list and
+  explains the reason when one is tapped.
+
 ## Network changes and caches
 
 - **Network change callbacks.** WARP and MASQUE now react to network changes: they check the

@@ -14,6 +14,7 @@ an English and a Persian version.
 - [Adaptive processors](features/adaptive-processors.en.md): the core runs on one Go processor while it has little to do and takes more under load, which halves the CPU a QUIC, WireGuard or OpenVPN tunnel uses on macOS.
 - [Paced reads](features/paced-reads.en.md): a busy connection is read a moment later, so that each read brings a batch of packets instead of one, which saves CPU on fast downloads.
 - [Read ahead](features/read-ahead.en.md): a VMess or Shadowsocks client over plain TCP reads its socket 64 KB at a time instead of in two system calls per chunk; downloads a quarter (VMess) to two thirds (Shadowsocks) faster.
+- [Proxy security](features/proxy-security.en.md): every outbound and endpoint is marked secure or not secure from its options (plaintext, no cipher, weak cipher, TLS without verification), for the app to show.
 
 ## Protocols
 
