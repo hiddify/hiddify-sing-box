@@ -454,6 +454,9 @@ func (w *WARPEndpoint) chooseMode(session *warpSession) string {
 			return ""
 		}
 	}
+	if !w.waitDetour(done) { //H
+		return ""
+	}
 	race := w.raceModes(done)
 	select {
 	case network, ok := <-detected:
