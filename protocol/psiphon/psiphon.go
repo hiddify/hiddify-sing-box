@@ -111,6 +111,13 @@ var noticeHub struct {
 func listenNotices(p *Psiphon, listener func(NoticeEvent)) error {
 	// installed outside the hub's lock, for the reason above
 	noticeHub.install.Do(func() {
+		// SetNoticeWriter takes the place of the default writer only, and it knows the default by
+		// comparing with os.Stderr at the time of the call, while its logger took the os.Stderr of
+		// the program's start. A process that points os.Stderr elsewhere (the Windows core
+		// detaching its stdio, hprocess.DetachStdio) is never found at the default, and every
+		// Psiphon failed with "notice writer already set", forever. Reset makes the default the
+		// current os.Stderr. Nothing else of this process sets a notice writer, so none is lost.
+		psiphon.ResetNoticeWriter()
 		noticeHub.installed = psiphon.SetNoticeWriter(psiphon.NewNoticeReceiver(func(notice []byte) {
 			var event NoticeEvent
 			if json.Unmarshal(notice, &event) != nil {

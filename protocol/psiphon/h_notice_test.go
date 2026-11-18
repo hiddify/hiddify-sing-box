@@ -3,6 +3,8 @@ package psiphon
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -94,4 +96,40 @@ func TestH_NoticeOfAnotherInstance(t *testing.T) {
 	stopListeningNotices(second)
 	psiphon.NoticeTunnels(1) // alone, the notice is its own
 	require.Eventually(t, first.connected.Load, time.Second, 10*time.Millisecond)
+}
+
+// SetNoticeWriter refuses unless the writer is the default, which it finds by comparing with the
+// current os.Stderr. The Windows core points os.Stderr at NUL once it is set up
+// (hprocess.DetachStdio): the hub then could not be installed and no Psiphon ever connected.
+func TestH_NoticeHubInstallsWhenStderrIsReplaced(t *testing.T) {
+	psiphon.ResetNoticeWriter() // the writer of the program's start: the real stderr
+	stderr := os.Stderr
+	null, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	require.NoError(t, err)
+	os.Stderr = null
+	t.Cleanup(func() {
+		os.Stderr = stderr
+		null.Close()
+		psiphon.ResetNoticeWriter()
+	})
+	noticeHub.access.Lock()
+	noticeHub.install = sync.Once{}
+	noticeHub.installed = nil
+	noticeHub.listeners = nil
+	noticeHub.access.Unlock()
+
+	p := &Psiphon{logger: log.NewNOPFactory().Logger(), ctx: context.Background()}
+	seen := make(chan struct{}, 1)
+	require.NoError(t, listenNotices(p, func(event NoticeEvent) {
+		if event.Type == "Tunnels" {
+			seen <- struct{}{}
+		}
+	}))
+	psiphon.NoticeTunnels(1)
+	select {
+	case <-seen:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the installed hub gets no notice")
+	}
+	stopListeningNotices(p)
 }
