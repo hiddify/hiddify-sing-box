@@ -4,6 +4,8 @@ import (
 	"slices"
 	"sort"
 	"time"
+
+	"github.com/sagernet/sing-box/option"
 )
 
 // After a pick, keep top fills the places that come free, without testing the outbounds at rest
@@ -19,7 +21,13 @@ import (
 //     30, then 1, 2, 4 and every 6 hours while none of them answers, and from 10 minutes again
 //     once one does.
 //   - An outbound at rest that answers a test asked for by its tag (the user tests the list) is
-//     used at once, while there is a place for it.
+//     used at once, while there is a place for it, or in the place of the slowest kept one when
+//     it is faster.
+//   - With every place taken, a pick goes through the ones at rest again every keep_top.refresh
+//     (an hour by default): the kept ones that answer stay, and a faster one takes the place of
+//     the slowest. With quick it tests the ones whose last ping may beat the kept ones, the ones
+//     never tested or not for a day, and the ones that answered before and failed more than
+//     refresh ago. A hot reload that brings outbounds never tested does the same at once.
 
 // keepTopRecheckWait is how long after going through the outbounds at rest they are gone through
 // again, by how many times in a row that brought none back.
@@ -89,15 +97,58 @@ func (k *keepTopState) countryLocked(tag string) string {
 	return proxyCountry(tag, nil)
 }
 
+// keepTopRefreshDefault is keep_top.refresh when it is not set.
+const keepTopRefreshDefault = time.Hour
+
+// keepTopRefresh is how often a pick goes through the ones at rest with every place taken; 0 for
+// never.
+func keepTopRefresh(options *option.KeepTopOptions) time.Duration {
+	switch refresh := time.Duration(options.Refresh); {
+	case refresh < 0:
+		return 0
+	case refresh == 0:
+		return keepTopRefreshDefault
+	default:
+		return refresh
+	}
+}
+
 // keepTopBackLocked are the outbounds at rest that answered a test in the last recentResult, the
-// fastest first, as many as there are places for.
+// fastest first: as many as there are places for, and with a count the ones faster than the
+// slowest kept one, which then rests (trimKept keeps the count fastest).
 func (m *OutboundMonitoring) keepTopBackLocked(now time.Time) []string {
 	k := &m.keepTop
 	room, resting := m.keepTopRoomLocked()
+	slowest := int32(0)
+	if room <= 0 && k.on && !k.picking && k.kept != nil && !k.options.Answering {
+		// every place is taken: one that answers faster than the slowest kept one takes its place
+		for tag := range k.kept {
+			if _, guest := k.guests[tag]; guest {
+				continue
+			}
+			ping := k.pings[tag]
+			if ping == nil || ping.pick != k.pick || !pingAlive(ping.Delay) {
+				slowest = 0 // one has no ping of this pick yet: nothing to compare with
+				break
+			}
+			slowest = max(slowest, ping.Delay)
+		}
+		if slowest > 0 {
+			room = k.count
+			for _, tag := range k.tags {
+				if _, is := k.kept[tag]; !is && !outsideCountries(k.countries, k.countryLocked(tag), false) {
+					resting = append(resting, tag)
+				}
+			}
+		}
+	}
 	var back []string
 	for _, tag := range resting {
 		ping := k.pings[tag]
 		if ping == nil || ping.pick != k.pick || !pingAlive(ping.Delay) || now.Sub(time.Unix(ping.Time, 0)) >= recentResult {
+			continue
+		}
+		if slowest > 0 && ping.Delay >= slowest {
 			continue
 		}
 		if !outsideCountries(k.countries, k.countryLocked(tag), true) {

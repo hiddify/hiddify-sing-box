@@ -41,6 +41,8 @@ type topOrder struct {
 	fill bool
 	// add: outbounds at rest that answered a test just now, to keep beside the kept ones
 	add []string
+	// refresh: the new pick looks again at the ones at rest whose results are old (topPing.hint)
+	refresh bool
 }
 
 // keepTopState is what keep top does: nothing (no options, or nothing to leave out), a pick
@@ -79,6 +81,10 @@ type keepTopState struct {
 	// they were through
 	searching map[string]time.Time
 	saved     time.Time // when a step last saved the pings (keepTopSaveEvery)
+	// refreshAt is when, with every place taken, a pick goes through the ones at rest again
+	// (keep_top.refresh, h_keep_top_refill.go); zero when it does not
+	refreshAt  time.Time
+	refreshing bool // the pick under way is a refresh: its retry is keep_top.refresh
 }
 
 // keepTopSaveEvery is how often the steps of a pick save the pings they got so far.
@@ -116,7 +122,7 @@ func (m *OutboundMonitoring) SetKeepTop(options *option.KeepTopOptions) {
 		}
 		return
 	}
-	changed := m.keepTopRefreshLocked(m.reg())
+	changed, _ := m.keepTopRefreshLocked(m.reg())
 	m.keepTopStepLocked(topOrder{restart: changed})
 }
 
@@ -132,7 +138,10 @@ func (m *OutboundMonitoring) keepTopStart() {
 	m.keepTopStepLocked(topOrder{})
 }
 
-// keepTopReload follows a hot reload of the outbounds: registry is the new one.
+// keepTopReload follows a hot reload of the outbounds: registry is the new one. Outbounds that
+// are new and were never tested (a subscription's update brought them) start a pick once the
+// last one is over, which keeps the kept ones that answer and tests the new ones: otherwise they
+// would rest untested for as long as the kept ones answer.
 func (m *OutboundMonitoring) keepTopReload(registry *monitoringRegistry) {
 	k := &m.keepTop
 	k.access.Lock()
@@ -140,7 +149,12 @@ func (m *OutboundMonitoring) keepTopReload(registry *monitoringRegistry) {
 	if k.options == nil {
 		return
 	}
-	changed := m.keepTopRefreshLocked(registry)
+	changed, added := m.keepTopRefreshLocked(registry)
+	if added && !changed && k.on && !k.picking && k.kept != nil {
+		m.logger.Info("KEEP TOP new outbounds that were never tested: going through the ones at rest again")
+		m.keepTopStepLocked(topOrder{restart: true, refresh: true})
+		return
+	}
 	m.keepTopStepLocked(topOrder{restart: changed})
 }
 
@@ -266,6 +280,13 @@ func (m *OutboundMonitoring) keepTopEvaluateLocked() {
 				m.logger.Info("KEEP TOP ", room, " more may be kept: testing the ", len(resting), " at rest again")
 			}
 		}
+		if !step && !k.refreshAt.IsZero() && !now.Before(k.refreshAt) {
+			k.refreshAt = time.Time{}
+			if room, _ := m.keepTopRoomLocked(); room <= 0 {
+				step, order.restart, order.refresh = true, true, true
+				m.logger.Info("KEEP TOP refresh: going through the ones at rest again, the kept ones that answer stay")
+			}
+		}
 		if !step {
 			if back := m.keepTopBackLocked(now); len(back) > 0 {
 				step, order.add = true, back
@@ -301,8 +322,9 @@ func (m *OutboundMonitoring) keepTopEvaluateLocked() {
 
 // keepTopRefreshLocked reads the lazy outbounds and endpoints of registry. An outbound that is new,
 // or was replaced, has no ping of this run: its last result, cached, only orders the tests. It
-// reports whether a kept outbound was replaced or is gone.
-func (m *OutboundMonitoring) keepTopRefreshLocked(registry *monitoringRegistry) bool {
+// reports whether a kept outbound was replaced or is gone, and whether an outbound under a new tag
+// has no result at all, of this run or a cached one.
+func (m *OutboundMonitoring) keepTopRefreshLocked(registry *monitoringRegistry) (changed, added bool) {
 	k := &m.keepTop
 	if k.owners == nil {
 		k.owners = make(map[string]adapter.Outbound)
@@ -311,7 +333,6 @@ func (m *OutboundMonitoring) keepTopRefreshLocked(registry *monitoringRegistry) 
 		k.pings = make(map[string]*topPing)
 	}
 	var tags []string
-	changed := false
 	// the lazy endpoints too (the clients: WireGuard, OpenVPN, ...), after the outbounds
 	candidates := m.outboundManager.Outbounds()
 	for _, endpoint := range m.endpointManager.Endpoints() {
@@ -330,10 +351,14 @@ func (m *OutboundMonitoring) keepTopRefreshLocked(registry *monitoringRegistry) 
 		if _, was := k.kept[tag]; was {
 			changed = true
 		}
+		_, known := k.owners[tag]
 		k.owners[tag] = outbound
 		state.mu.Lock()
 		history := state.history
 		state.mu.Unlock()
+		if !known && history.Delay == 0 {
+			added = true
+		}
 		delete(k.pings, tag)
 		if history.Delay != 0 {
 			ping := &topPing{Delay: int32(history.Delay), Time: history.Time.Unix(), Good: int32(history.LastGood), Country: proxyCountry(tag, &history)}
@@ -355,7 +380,7 @@ func (m *OutboundMonitoring) keepTopRefreshLocked(registry *monitoringRegistry) 
 		}
 	}
 	k.tags = tags
-	return changed
+	return changed, added
 }
 
 // keepTopStopLocked forgets the pick: nothing rests.
@@ -364,6 +389,7 @@ func (m *OutboundMonitoring) keepTopStopLocked() {
 	k.on, k.kept, k.picking, k.round, k.hold, k.loaded, k.batch = false, nil, false, 0, time.Time{}, nil, nil
 	k.guests = nil
 	k.fill, k.had, k.rechecks, k.recheckAt = false, 0, 0, time.Time{}
+	k.refreshAt, k.refreshing = time.Time{}, false
 	k.searching = nil
 	if k.timer != nil {
 		k.timer.Stop()
@@ -480,6 +506,9 @@ func (m *OutboundMonitoring) keepTopArmLocked() {
 		}
 	}
 	at = m.keepTopRecheckLocked(at)
+	if k.on && !k.picking && k.kept != nil && !k.refreshAt.IsZero() && (at.IsZero() || k.refreshAt.Before(at)) {
+		at = k.refreshAt
+	}
 	if k.on && len(k.searching) > 0 {
 		// how the ones that search are doing is not told: it is looked at
 		if poll := time.Now().Add(keepTopSearchPoll); at.IsZero() || poll.Before(at) {
@@ -723,6 +752,7 @@ func (m *OutboundMonitoring) keepTopStepLocked(order topOrder) {
 		k.fill = fill
 	} else {
 		k.fill = order.fill
+		k.refreshing = order.refresh
 		if !order.fill {
 			k.had = 0
 		}
@@ -752,6 +782,9 @@ func (m *OutboundMonitoring) keepTopStepLocked(order topOrder) {
 	input := topPlanInput{
 		tags: tags, pings: k.pings, pick: k.pick, count: count, batch: options.Batch, countries: countries,
 		quick: options.Quick, pinned: pinned, loading: loading, now: now, fill: k.fill,
+	}
+	if k.refreshing {
+		input.retry = keepTopRefresh(options)
 	}
 	if input.batch == 0 {
 		input.batch = keepTopBatchDefault
@@ -822,7 +855,11 @@ func (m *OutboundMonitoring) keepTopStepLocked(order topOrder) {
 		if plan.best > k.had {
 			k.rechecks = 0 // it found some: the next look at the ones at rest is the first again
 		}
-		k.fill = false
+		k.fill, k.refreshing = false, false
+		k.refreshAt = time.Time{}
+		if refresh := keepTopRefresh(options); refresh > 0 {
+			k.refreshAt = now.Add(refresh)
+		}
 		apply(plan.load, fmt.Sprint(how, len(plan.load), " of the ", total, " lazy outbounds", where, ", the others rest"))
 	default:
 		k.picking = true

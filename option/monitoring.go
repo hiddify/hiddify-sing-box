@@ -52,4 +52,9 @@ type KeepTopOptions struct {
 	// Pinned are the tags of lazy outbounds that are always in use, whatever their ping, as the
 	// one a selector has selected is, beside the count fastest.
 	Pinned badoption.Listable[string] `json:"pinned,omitempty"`
+	// Refresh is how often, while as many are kept as may be, a pick goes through the ones at
+	// rest again: a faster one takes the place of the slowest kept. With quick it tests the ones
+	// that may beat the kept ones, and an outbound that answered before and failed more than
+	// refresh ago. 1 hour when 0; below 0, never.
+	Refresh badoption.Duration `json:"refresh,omitempty"`
 }

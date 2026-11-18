@@ -44,10 +44,15 @@ type topPing struct {
 
 // hint is what the ping was the last time, to tell whether the outbound may beat the ones that
 // answered now: previousFailed when that test failed, 0 when there is none of the last
-// previousMaxAge.
-func (p *topPing) hint(now time.Time) int32 {
+// previousMaxAge. With a retry (above 0, a refresh pick), the result of an outbound that answered,
+// then or before, counts as none once it is older than retry: its speed has changed since, and one
+// bad moment (a lost packet, a filter that let go since) does not leave a working outbound at rest
+// for a day while the others answer. One that never answered waits for previousMaxAge.
+func (p *topPing) hint(now time.Time, retry time.Duration) int32 {
 	switch {
 	case p == nil, p.Delay == 0, now.Sub(time.Unix(p.Time, 0)) > previousMaxAge:
+		return 0
+	case retry > 0 && (pingAlive(p.Delay) || p.Good > 0) && now.Sub(time.Unix(p.Time, 0)) > retry:
 		return 0
 	case pingTimedOut(p.Delay):
 		return previousFailed
@@ -114,6 +119,7 @@ type topPlanInput struct {
 	pinned    []string            // the ones a selector has selected: always in use
 	loading   []string            // the batch of the stage before: what it still tests stays
 	fill      bool                // the pick ends once count answer (h_keep_top_refill.go)
+	retry     time.Duration       // a refresh pick: a result older than this, of one that answered, is tested again (topPing.hint)
 	now       time.Time
 }
 
@@ -186,7 +192,7 @@ func planKeepTop(in topPlanInput) topPlan {
 			delays[tag] = known[tag].Delay
 		}
 		for _, tag := range left {
-			delays[tag], hints[tag] = 0, known[tag].hint(in.now)
+			delays[tag], hints[tag] = 0, known[tag].hint(in.now, in.retry)
 		}
 		plan.final = pickTopEarly(delays, hints, in.count) != nil
 		plan.early = plan.final

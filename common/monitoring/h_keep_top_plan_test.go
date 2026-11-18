@@ -259,20 +259,32 @@ func TestH_KeepTopTopPingHint(t *testing.T) {
 	now := time.Now()
 	recent, old := now.Add(-time.Hour).Unix(), now.Add(-48*time.Hour).Unix()
 	tests := []struct {
-		name string
-		ping *topPing
-		want int32
+		name  string
+		ping  *topPing
+		want  int32
+		retry int // -1: not a refresh pick
 	}{
-		{"none", nil, 0},
-		{"pinged", &topPing{Time: recent, Delay: 120}, 120},
-		{"timed out", &topPing{Time: recent, Delay: timeoutPing}, previousFailed},
-		{"never tested", &topPing{}, 0},
-		{"pinged two days ago", &topPing{Time: old, Delay: 120}, 0},
-		{"timed out two days ago", &topPing{Time: old, Delay: timeoutPing}, 0},
+		{"none", nil, 0, -1},
+		{"pinged", &topPing{Time: recent, Delay: 120}, 120, -1},
+		{"timed out", &topPing{Time: recent, Delay: timeoutPing}, previousFailed, -1},
+		{"answered before, timed out", &topPing{Time: recent, Delay: timeoutPing, Good: 90}, previousFailed, -1},
+		{"never tested", &topPing{}, 0, -1},
+		{"pinged two days ago", &topPing{Time: old, Delay: 120}, 0, -1},
+		{"timed out two days ago", &topPing{Time: old, Delay: timeoutPing}, 0, -1},
+		// a refresh pick, with a retry of 30 minutes: what answered is tested again after it
+		{"pinged an hour ago", &topPing{Time: recent, Delay: 120}, 0, 0},
+		{"pinged just now", &topPing{Time: now.Unix(), Delay: 120}, 120, 0},
+		{"answered before, timed out an hour ago", &topPing{Time: recent, Delay: timeoutPing, Good: 90}, 0, 0},
+		{"answered before, timed out just now", &topPing{Time: now.Unix(), Delay: timeoutPing, Good: 90}, previousFailed, 0},
+		{"never answered, timed out an hour ago", &topPing{Time: recent, Delay: timeoutPing}, previousFailed, 0},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := test.ping.hint(now); got != test.want {
+			retry := 30 * time.Minute
+			if test.retry < 0 {
+				retry = 0
+			}
+			if got := test.ping.hint(now, retry); got != test.want {
 				t.Fatalf("got %d, want %d", got, test.want)
 			}
 		})

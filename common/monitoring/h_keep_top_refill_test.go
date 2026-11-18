@@ -1,7 +1,9 @@
 package monitoring
 
 import (
+	"context"
 	"fmt"
+	"net"
 	"slices"
 	"testing"
 	"time"
@@ -10,6 +12,7 @@ import (
 	"github.com/sagernet/sing-box/adapter/htest"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing/common/json/badoption"
+	M "github.com/sagernet/sing/common/metadata"
 
 	"github.com/stretchr/testify/require"
 )
@@ -125,3 +128,72 @@ func TestH_KeepTopAnsweringComesBack(t *testing.T) {
 	require.Eventually(t, keptAre(m, "p0", "p1", "p2"), 30*time.Second, 5*time.Millisecond)
 	require.Equal(t, tests, lazies[0].tests.Load(), "the ones in use are not tested for it")
 }
+
+// With every place taken, an outbound at rest that answers a test asked for by its tag faster than
+// the slowest kept one takes its place; one that is slower stays at rest.
+func TestH_KeepTopFasterAtRestTakesThePlace(t *testing.T) {
+	setRecheckWait(t, time.Hour)
+	m, lazies := refillMonitor(t, &option.KeepTopOptions{Count: 2, Batch: 1, Refresh: badoption.Duration(-1)}, []int64{100, 200, 300, 400})
+	require.Eventually(t, keptAre(m, "p0", "p1"), 20*time.Second, 5*time.Millisecond)
+
+	m.TestOutbounds([]string{"p3"}, "test")
+	require.Eventually(t, func() bool { return lazies[3].tests.Load() >= 2 }, 20*time.Second, 5*time.Millisecond)
+	time.Sleep(300 * time.Millisecond)
+	require.Equal(t, []string{"p0", "p1"}, keptLazies(m), "slower than the kept ones: it stays at rest")
+
+	lazies[2].delay.Store(20)
+	m.TestOutbounds([]string{"p2"}, "test")
+	require.Eventually(t, keptAre(m, "p0", "p2"), 20*time.Second, 5*time.Millisecond, "faster: it takes the slowest one's place")
+	require.True(t, m.Parked("p1"))
+}
+
+// With every place taken, a refresh goes through the ones at rest again: one that got faster since
+// the pick, and one that answered before and failed, are tested and the faster takes a place. The
+// kept ones that answer are not tested for it.
+func TestH_KeepTopRefreshLooksAtTheOnesAtRest(t *testing.T) {
+	setRecheckWait(t, time.Hour)
+	m, lazies := refillMonitor(t, &option.KeepTopOptions{Count: 2, Batch: 1, Quick: true, Refresh: badoption.Duration(time.Hour)}, []int64{100, 200, 300, 400})
+	require.Eventually(t, keptAre(m, "p0", "p1"), 20*time.Second, 5*time.Millisecond)
+	before := lazies[0].tests.Load()
+
+	// the results of the ones at rest are older than the refresh, and p2 is fast now
+	m.keepTop.access.Lock()
+	for _, tag := range []string{"p2", "p3"} {
+		m.keepTop.pings[tag].Time = time.Now().Add(-2 * time.Hour).Unix()
+	}
+	m.keepTop.refreshAt = time.Now()
+	m.keepTop.access.Unlock()
+	lazies[2].delay.Store(20)
+	m.keepTopEvaluate()
+	require.Eventually(t, keptAre(m, "p0", "p2"), 20*time.Second, 5*time.Millisecond, "the refresh finds the faster one")
+	require.Equal(t, before, lazies[0].tests.Load(), "the kept ones that answer are not tested for it")
+
+	m.keepTop.access.Lock()
+	next := m.keepTop.refreshAt
+	m.keepTop.access.Unlock()
+	require.WithinDuration(t, time.Now().Add(time.Hour), next, time.Minute, "the next refresh is set")
+}
+
+// A hot reload that brings outbounds never tested (a subscription's update) tests them at once:
+// the kept ones that answer stay, and a new one that is faster takes a place.
+func TestH_KeepTopReloadTestsTheNewOnes(t *testing.T) {
+	setRecheckWait(t, time.Hour)
+	m, lazies := refillMonitor(t, &option.KeepTopOptions{Count: 2, Batch: 1, Quick: true}, []int64{100, 200, 300})
+	require.Eventually(t, keptAre(m, "p0", "p1"), 20*time.Second, 5*time.Millisecond)
+	before := lazies[0].tests.Load()
+
+	fresh := &topLazy{}
+	fresh.tag = "p9"
+	fresh.dial = func(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
+		fresh.tests.Add(1)
+		time.Sleep(20 * time.Millisecond)
+		var dialer net.Dialer
+		return dialer.DialContext(ctx, network, destination.String())
+	}
+	manager := m.outboundManager.(*fakeOutboundManager)
+	manager.list = append(manager.list, fresh)
+	require.NoError(t, m.Reload())
+	require.Eventually(t, keptAre(m, "p0", "p9"), 20*time.Second, 5*time.Millisecond, "the new one is tested, and it is faster")
+	require.Equal(t, before, lazies[0].tests.Load(), "the kept ones that answer are not tested for it")
+}
+
