@@ -29,7 +29,7 @@ an English and a Persian version.
 - [Mieru](features/protocols/mieru.en.md): a fully encrypted, padded proxy over TCP or UDP port ranges with no fixed pattern.
 - [TrustTunnel](features/protocols/trusttunnel.en.md): proxy traffic as HTTP CONNECT streams over HTTP/2 or HTTP/3.
 - [SSH](features/protocols/ssh.en.md): an SSH server inbound for port forwarding, plus UDP over TCP and a background connection for the SSH outbound.
-- [Psiphon](features/protocols/psiphon.en.md): connect through the Psiphon network with no server of your own, and pick the exit country.
+- [Psiphon](features/protocols/psiphon.en.md): connect through the Psiphon network with no server of your own, pick the exit country, and front through the CDN edges a scanner finds on your network.
 - [DNSTT](features/protocols/dnstt.en.md): carry traffic inside DNS queries through public resolvers, which it finds by itself.
 - [MasterDNS](features/protocols/masterdns.en.md): the MasterDnsVPN tunnel over public resolvers, with a small header, packet duplication over several resolvers and MTU tests; the server connects to the destination itself.
 - [Soar](features/protocols/soar.en.md): Lantern's DNS tunnel, every resolver a path of its own with fast loss recovery and resolver discovery, through the smart pool by default; `soar://` links.

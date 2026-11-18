@@ -26,7 +26,8 @@ its changes small and close to upstream so it can follow every sing-box release.
   per-network scores and failover, noise presets and a noise search, a pool of registered devices
   that is only renewed when Cloudflare refuses one.
 - [WARP scanner and noise](docs/hiddify/features/protocols/warp-scanner.en.md): how the scanner,
-  the noise presets (DNS, QUIC, SIP, random), the noise search and auto mode work together.
+  the noise presets (DNS, QUIC, SIP, random), the noise search and auto mode work together. The same
+  scanner finds the CDN edges [Psiphon](docs/hiddify/features/protocols/psiphon.en.md) fronts through.
 - [WARP over MASQUE](docs/hiddify/features/protocols/warp-masque.en.md): the `masque` outbound for
   WARP over HTTP/3 or HTTP/2, with a device already enrolled (`device`, no API); the `warp`
   endpoint registers devices and takes a link's device as `masque.device`.

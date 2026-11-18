@@ -198,8 +198,8 @@ answers before it connects:
 The same score rates the noises and the tunnels of auto mode, which are drawn by it (see
 [WARP scanner and noise](warp-scanner.en.md#ratings)).
 
-Scores are kept in the cache file when `cache_file` is enabled. A network not seen for 90 days
-is forgotten, and each network keeps its best 64 endpoints.
+Scores are kept in the cache file when `cache_file` is enabled. A network not seen for 30 days
+is forgotten, and each network keeps its best 128 endpoints and 512 address blocks.
 
 **Network names.** A network is named by the type of the default interface (Wi-Fi, cellular,
 ethernet), plus the country and the /16 (IPv4) or /32 (IPv6) of the public address. The public
@@ -335,10 +335,14 @@ Ranges take a number (`5`), a string (`"5-10"`) or an object (`{"from": 5, "to":
 | `cidrs` | list of prefixes | Cloudflare's WARP ranges | Ranges to pick random addresses from. |
 | `max_rtt` | duration | `1s` | Slowest handshake accepted. |
 | `timeout` | duration | `2s` | How long one probe waits for an answer. |
-| `count` | number | `64` | Most endpoints tried in one scan. Known endpoints are always tried. |
-| `concurrency` | number | `8` | Probes run at once. |
+| `count` | number | `64` | Most endpoints tried in one round of a scan. Known endpoints are always tried. |
+| `concurrency` | number | `8` on Android and iOS, `32` elsewhere | Probes run at once. All the scans of the process together run at most 32 (phones) or 128 (desktops). |
 | `search_noise` | bool | `false` | Also look for noise that gets through. See below. |
 | `noise_presets` | list of strings | all presets | The presets `search_noise` tries, in order. |
+| `search_timeout` | duration | `3m` | How long a search goes on, round after round, before it gives up and offers a deep search. A deep search has no limit or a long one: below zero, a deep search from the start; above `3m`, a deep one with that limit. |
+| `deep_concurrency` | number | twice `concurrency` | Probes a deep search runs at once. |
+| `block_bits_ipv4` | number | `24` | Size of the IPv4 blocks rated on each network. |
+| `block_bits_ipv6` | number | `48` | Size of the IPv6 blocks rated on each network. |
 
 **Noise search.** With `search_noise`, when no endpoint answers with the configured noise, the
 scan is tried again with each noise preset, on at most 16 endpoints each, and the first preset
@@ -366,8 +370,10 @@ The default ranges are `162.159.192.0/24`, `162.159.193.0/24`, `162.159.195.0/24
 wider ranges WARP endpoints were also seen in: `162.159.192.0/21`, `188.114.96.0/20`,
 `8.6.112.0/24`, `8.34.70.0/24`, `8.34.146.0/24`, `8.35.211.0/24`, `8.39.125.0/24`,
 `8.39.204.0/24`, `8.39.214.0/24`, `8.47.69.0/24`, `2606:4700:100::/48` and `2606:4700:d0::/48`.
-The scanner picks a range first and then an address in it, so the narrow ranges, which answer
-most, keep most of the tries.
+The ranges take turns, drawn by their rating on the network, and a new address comes from a walk
+of the range, so the narrow ranges, which answer most, keep their share of the tries next to the
+wide ones. See [WARP scanner and noise](warp-scanner.en.md#search-and-deep-search) for the search
+time, the deep search and the block ratings.
 
 Notes:
 

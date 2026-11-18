@@ -182,6 +182,7 @@ do about it. Items marked **Required** break or misbehave until they are handled
     templates, for the "WG Mimic" DNS, QUIC and SIP configs); the `awg`
     block with AmneziaWG 3.x settings and the QUIC masquerade (`ip`, `id`, `ib`).
   - MASQUE: `vhttp` (`h3`, `h2`, `auto`), `server_name`, `scanner`, `mtu`, `unique_identifier`.
+  - Psiphon: `scanner` (CDN edge scanner, on by default as the first hop) with `sets`.
   - AmneziaWG: 3.x settings (`header_protection_key`, `content_padding_addition`, the timers,
     `random_trailers`, `disable_cookies`), `s3`/`s4` and `h1`–`h4` ranges now work.
   - Multiplex: `protocol: "rmux"`.
@@ -196,6 +197,33 @@ do about it. Items marked **Required** break or misbehave until they are handled
   `fallback_address`: the endpoint tries the profile's IPv4 address, then that IPv6 one. It also
   turns off the scanner of a `masque` outbound with a `detour`. MTU discovery is on for every
   WireGuard and AmneziaWG tunnel; a config can turn it off with `"mtu_discovery": false`.
+- **Psiphon uses a fork of the tunnel core, and scans CDN edges as the first hop.** The tunnel
+  core is the `shirokhorshid` fork (CDN fronted protocols and its CDN fronting scan), pulled in
+  with a `replace github.com/Psiphon-Labs/psiphon-tunnel-core => github.com/CluvexStudio/psiphon-tunnel-core`
+  line. hiddify-core needs the same `replace` line in its own `go.mod`: replace lines only apply
+  in the main module, and without it the build uses the upstream core and the CDN options fail to
+  load. A `psiphon` outbound with no `detour` and no `upstream_proxy_url` (the unblocker hop) runs
+  the [scanner](features/protocols/psiphon.en.md) by default; behind a `detour` (the extra
+  security hop) it does not, and tries the TCP protocols with tactics off, so the app sets
+  nothing for either. `scanner.enabled` overrides both. Its scores are in the shared scan store
+  (see below). The default `client_platform` is now `<system>_hiddify` and
+  `establish_tunnel_timeout` 3 minutes.
+- **Deep search: ask the user.** WARP (over WireGuard, AmneziaWG or MASQUE) and the unblocker's Psiphon
+  implement `adapter.DeepSearcher`: when their search finds nothing within `search_timeout`
+  (3 minutes), `DeepSearchAvailable()` is true, and hiddify-core sends it as
+  `OutboundInfo.deep_search_available`. The app asks the user (it may take hours and use a lot of
+  battery and CPU) and calls the `StartDeepSearch` RPC with the tag. The search options
+  (`search_timeout`, which is also the deep search setting: below zero a deep search from the
+  start, above 3 minutes a deep one with that limit; `deep_concurrency`, `block_bits_ipv4`,
+  `block_bits_ipv6`) are in the scanner objects of `warp` and `psiphon`; hiddify-core
+  sets them on the unblocker hop only. Scans run 8 (WARP) or 16 (Psiphon) probes at once on
+  phones and 32 or 48 on desktops, and at most 32 or 128 for the whole process. The scanners that
+  reach the network directly (no detour, or a direct one) share one store for the process,
+  under the cache key `edge-scanner`; it is kept 30 days, in a compact form that an older core
+  cannot read (it starts over). A Psiphon outbound with a `direct` detour is a first hop too.
+  Searches and Psiphon attempts wait while the device has no network (no default interface, or the
+  network or device paused through the platform's pause calls), so the app's network and sleep
+  callbacks matter: they are what stops the probing.
 - **WARP devices are kept, in a pool.** Registered devices are kept in one pool in the cache file
   (key `warp-profiles`), shared by every warp endpoint; each endpoint leases devices of its own,
   so several warp endpoints in one config never share one. A device is only replaced when

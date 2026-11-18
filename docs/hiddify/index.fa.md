@@ -31,7 +31,7 @@
 - [Mieru](features/protocols/mieru.fa.md): یک پراکسی کاملاً رمزشده و padding‌دار روی بازه‌های پورت TCP یا UDP، بدون هیچ الگوی ثابت.
 - [TrustTunnel](features/protocols/trusttunnel.fa.md): ترافیک پراکسی به شکل جریان‌های HTTP CONNECT روی HTTP/2 یا HTTP/3.
 - [SSH](features/protocols/ssh.fa.md): یک ورودی سرور SSH برای port forwarding، به‌علاوهٔ UDP روی TCP و اتصال پس‌زمینه برای خروجی SSH.
-- [سایفون](features/protocols/psiphon.fa.md): بدون سرور شخصی از راه شبکهٔ سایفون وصل شوید و کشور خروجی را انتخاب کنید.
+- [سایفون](features/protocols/psiphon.fa.md): بدون سرور شخصی از راه شبکهٔ سایفون وصل شوید، کشور خروجی را انتخاب کنید، و از راه لبه‌های CDN که اسکنر در شبکهٔ شما پیدا می‌کند fronting کنید.
 - [DNSTT](features/protocols/dnstt.fa.md): ترافیک را درون پرس‌وجوهای DNS از راه resolverهای عمومی می‌برد و خودش آن‌ها را پیدا می‌کند.
 - [MasterDNS](features/protocols/masterdns.fa.md): تونل MasterDnsVPN از راه resolverهای عمومی، با سربار کم، تکرار بسته‌ها روی چند resolver و آزمایش MTU؛ سرور خودش به مقصد وصل می‌شود.
 - [Soar](features/protocols/soar.fa.md): تونل DNS پروژهٔ Lantern، هر resolver یک مسیر جدا با بازیابی سریع از دست رفتن بسته‌ها و کشف resolver، به‌طور پیش‌فرض از راه مجموعهٔ هوشمند؛ لینک‌های `soar://`.

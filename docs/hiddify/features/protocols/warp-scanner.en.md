@@ -85,8 +85,12 @@ as its noise `mode` (`"mode": "sip"`), and any [AmneziaWG](amneziawg.en.md) endp
 With `scanner.enabled`, before it connects WARP probes endpoints (address and port) with a real
 WireGuard handshake made with the device's own key, after the same noise the tunnel will send,
 through the endpoint's dialer (so `detour` applies). Endpoints are tried in this order: the ones
-that worked on this network, by score; then ones that scored well elsewhere; then random addresses
-in `cidrs` on `ports`; the lowest scores last. The scan stops when an endpoint with a score of 3 or
+that worked on this network, by score; then ones that scored well elsewhere; then new addresses
+in `cidrs` on `ports`; the lowest scores last. New addresses come from a walk: each network walks
+the addresses and ports of each range in an order of its own, and a scan goes on where the last
+one stopped, so an endpoint that failed is not tried again until the range was walked, and two
+devices walk it in different orders. The ranges, and the blocks of addresses that answered, are
+drawn by their rating on the network (see [Search and deep search](#search-and-deep-search)). The scan stops when an endpoint with a score of 3 or
 more answers, or 4 have answered, and the best is used. Scores (-10 to 10 per endpoint and
 network) are kept in the cache file; a network is named by its interface type, country and public
 address range. After a network change, and when traffic goes out with no handshake for 3 minutes,
@@ -94,6 +98,9 @@ the endpoint in use is probed again and replaced when it no longer answers.
 
 For MASQUE the scanner probes with a TLS handshake to the MASQUE endpoints, over HTTP/3 and HTTP/2
 apart.
+
+The same scanner, with its scores and its walk, finds the CDN edges of the
+[Psiphon](psiphon.en.md) outbound.
 
 ### Ratings
 
@@ -105,8 +112,8 @@ score that Hiddify uses for DNS resolvers and the servers of a sequential DNS gr
   works again is not held back by its past.
 - A failure takes 1, at most once an hour, so one outage costs one point. A choice that succeeded
   in the last 7 days never drops below -5.
-- An endpoint is marked down only when it answered on the network before: a random endpoint that
-  failed is all but never drawn again from ranges this large, so it is not recorded.
+- An endpoint is marked down only when it answered on the network before: a new endpoint that
+  failed is not tried again before the walk of the space ends, so it is not recorded.
 - A failure counts only when another choice succeeded in its place. When nothing answers at all,
   the network is the likely cause, not the choices, and no score moves: a scan in which no
   endpoint answers marks no endpoint down, a noise is marked down only when another noise got
@@ -118,6 +125,57 @@ as one at -10. The noise or tunnel that works on the network is used most of the
 others are still tried now and then: when the network starts blocking the one in use, or lets an
 old one through again, the ratings follow without a reset. Endpoints are ranked, not drawn: the
 scan already probes 8 at a time and adds random addresses, and the best answer wins.
+
+### Search and deep search
+
+A search goes on round after round for `search_timeout` (3 minutes): the first round usually
+finds an endpoint, and on a network that filters most of them the next rounds walk on through
+the ranges, each where the last stopped. A round that ends in less than 5 seconds waits for the
+rest of them, so a small space is not probed in a tight loop. When nothing answers in that time,
+the endpoint uses the profile's endpoint as before, and offers a **deep search**: the app asks
+the user, since it may go on for hours and use a lot of battery and CPU. A deep search has no
+time limit and runs `deep_concurrency` probes at once (twice `concurrency`); when it finds an
+endpoint, WARP switches to it. `search_timeout` is the one setting: below zero, the search is a
+deep one from the start (the endpoint starts with a 3 minute search, then goes on deep in the
+background); above 3 minutes, a deep one with that limit. Phones scan with fewer workers than
+desktops: `concurrency` is 8 on Android and iOS and 32 elsewhere, and all the scans of the
+process together run at most 32 probes at once on a phone and 128 on a desktop, however many WARP
+endpoints and Psiphon outbounds search.
+
+**Behind another proxy** (a `detour` that is not `direct`), a search is a single round, as
+before: it searches that proxy's network, and waiting minutes there only delays the fallback to
+the profile's endpoint.
+
+**Only with a network.** A search probes only while the device has a network: with no Wi-Fi
+and no mobile data, or with the network paused by the system (a phone asleep), it waits, on the
+network monitor's events and without polling, and spends no CPU or battery on probes that cannot
+answer. The time it waits does not count toward `search_timeout`, so a search is not given up
+because the network was away. Psiphon waits the same way before each attempt of its tunnel core.
+
+**Shared between the scanners.** The WARP scanner (for WARP over WireGuard, AmneziaWG and
+MASQUE) and the Psiphon scanner, when they reach the network
+directly (no `detour`, or a `direct` one) share one store for the whole process: the same scores,
+one name for the network, found once, and the same search when they look for the same thing at the
+same time (two WARP endpoints with the same tunnel and noise wait for one search instead of
+probing the network twice). The store survives a hot reload, so a changed outbound goes on with
+what was learned, and it is saved in the cache file in one entry (`edge-scanner`), with a book
+per kind of target. What an endpoint kept under its own key before joins it once. A scanner
+behind another detour sees that detour's network, and keeps a store of its own.
+
+**Blocks, sets and server names.** Each network also rates the address blocks it tried, an
+IPv4 /24 and an IPv6 /48 by default (`block_bits_ipv4`, `block_bits_ipv6`), from -10 to 10 like
+the endpoints: an answer adds a point, and a failure while other addresses answered takes one, at
+most once an hour. New addresses are drawn by weighted random: a block that answered comes up
+more the better it scored, and a block that did not answer only as often as its weight, so most
+tries go where the network lets traffic through. The ranges (or the CDN sets of the Psiphon
+scanner) and the TLS server names are drawn the same way, by their rating on the network: a scan
+does not go through every name or every set in turn, and the ones that never answered still get
+their turn.
+
+**The cache.** The scores are kept in the cache file for 30 days: a network not seen for that
+long is forgotten, and so is a record, block or rating that neither succeeded nor failed in that
+time. A network keeps at most 128 endpoints and 512 blocks, and the book is saved in a compact
+form (arrays of numbers, Unix times, short keys).
 
 ### Noise search
 
