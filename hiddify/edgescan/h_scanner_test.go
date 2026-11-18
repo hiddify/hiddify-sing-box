@@ -1,4 +1,4 @@
-package warpscan
+package edgescan
 
 import (
 	"context"
@@ -233,15 +233,6 @@ func TestH_ScanStopsEarly(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, results, enoughResults)
 	require.Equal(t, enoughResults, probes)
-}
-
-// Random addresses stay inside their range.
-func TestH_RandomAddress(t *testing.T) {
-	for _, prefix := range []netip.Prefix{netip.MustParsePrefix("162.159.192.0/24"), netip.MustParsePrefix("2606:4700:103::/64"), netip.MustParsePrefix("10.1.2.3/32")} {
-		for range 100 {
-			require.True(t, prefix.Contains(randomAddress(prefix)), prefix)
-		}
-	}
 }
 
 // An endpoint with a record on this network ends the scan as soon as it answers.

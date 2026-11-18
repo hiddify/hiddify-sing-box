@@ -1,17 +1,18 @@
-package warpscan
+package edgescan
 
 import (
 	"cmp"
 	"encoding/json"
 	"net/netip"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/sagernet/sing-box/hiddify/rating"
 )
 
-// Scores (see rating) rank endpoints per network: an endpoint that works on one network (a home
+// Scores (see rating) rank targets (endpoints) per network: an endpoint that works on one network (a home
 // Wi-Fi) may be blocked on another (a mobile carrier), so each network keeps its own record of
 // every endpoint tried on it. Each network also rates the methods tried on it, such as the noises
 // and the tunnels (see Book.OrderMethods).
@@ -24,9 +25,11 @@ const (
 	// FailurePeriod is the shortest time between two penalties of one endpoint, so a burst of
 	// failures (one outage) costs a single point.
 	FailurePeriod = time.Hour
-	// records kept per network, and networks forgotten after
+	// records kept per network
 	maxRecordsPerNetwork = 128
-	networkLifetime      = 90 * 24 * time.Hour
+	// Lifetime is how long the cache keeps what it learned: a network not seen for that long is
+	// forgotten, and so is a record, block or method that neither succeeded nor failed within it.
+	Lifetime = 30 * 24 * time.Hour
 )
 
 // EndpointPolicy tempers the failures of endpoints and methods alike.
@@ -45,8 +48,16 @@ type Book struct {
 }
 
 type network struct {
-	LastSeen time.Time                  `json:"last_seen"`
-	Records  map[netip.AddrPort]*Record `json:"records"`
+	LastSeen time.Time `json:"last_seen"`
+	// Records are keyed by Target.String: the address and port alone for a target without a
+	// server name, as the book was before server names.
+	Records map[string]*Record `json:"records"`
+	// Walks are where the scans of this network stand in each set of a candidate space, by its key.
+	Walks map[string]*walk `json:"walks,omitempty"`
+	// Blocks rate the address blocks (an IPv4 /24, an IPv6 /48 by default) tried on this
+	// network, by prefix: the scan draws new addresses from the blocks that answer more often,
+	// and seldom from the ones that do not (see draw).
+	Blocks map[netip.Prefix]*rating.Record `json:"-"`
 	// Methods rates the ways of getting through tried on this network, by a key the caller
 	// names (NoiseMethod).
 	Methods map[string]*rating.Record `json:"methods,omitempty"`
@@ -70,14 +81,67 @@ func (b *Book) network(name string, now time.Time) *network {
 		n = &network{}
 		b.networks[name] = n
 	}
+	n.ensureMaps()
+	n.LastSeen = now
+	return n
+}
+
+func (n *network) ensureMaps() {
 	if n.Records == nil {
-		n.Records = make(map[netip.AddrPort]*Record)
+		n.Records = make(map[string]*Record)
 	}
 	if n.Methods == nil {
 		n.Methods = make(map[string]*rating.Record)
 	}
-	n.LastSeen = now
-	return n
+	if n.Walks == nil {
+		n.Walks = make(map[string]*walk)
+	}
+	if n.Blocks == nil {
+		n.Blocks = make(map[netip.Prefix]*rating.Record)
+	}
+}
+
+// MethodSuccess records that method got through on network.
+func (b *Book) MethodSuccess(networkName string, key string, now time.Time) {
+	b.access.Lock()
+	defer b.access.Unlock()
+	method(b.network(networkName, now).Methods, key).Success(now)
+}
+
+// BlockSuccess records that an address of block answered on network.
+func (b *Book) BlockSuccess(networkName string, block netip.Prefix, now time.Time) {
+	b.access.Lock()
+	defer b.access.Unlock()
+	blockRecord(b.network(networkName, now).Blocks, block).Success(now)
+}
+
+// BlockFailure records that an address of block did not answer on network while others did
+// (see EndpointPolicy: one point an hour at most).
+func (b *Book) BlockFailure(networkName string, block netip.Prefix, now time.Time) {
+	b.access.Lock()
+	defer b.access.Unlock()
+	blockRecord(b.network(networkName, now).Blocks, block).Failure(now, EndpointPolicy)
+}
+
+// BlockScore returns the score of block on network, 0 when unknown.
+func (b *Book) BlockScore(networkName string, block netip.Prefix) rating.Score {
+	b.access.Lock()
+	defer b.access.Unlock()
+	if n := b.networks[networkName]; n != nil {
+		if record := n.Blocks[block]; record != nil {
+			return record.Score
+		}
+	}
+	return 0
+}
+
+func blockRecord(blocks map[netip.Prefix]*rating.Record, block netip.Prefix) *rating.Record {
+	record := blocks[block]
+	if record == nil {
+		record = &rating.Record{}
+		blocks[block] = record
+	}
+	return record
 }
 
 // MethodScore returns the score of method on network, and whether it was rated there.
@@ -146,13 +210,19 @@ func method(methods map[string]*rating.Record, key string) *rating.Record {
 
 // Success records that addrPort answered on network: +1, or 1 when it was negative.
 func (b *Book) Success(networkName string, addrPort netip.AddrPort, rtt time.Duration, now time.Time) {
+	b.SuccessTarget(networkName, Target{AddrPort: addrPort}, rtt, now)
+}
+
+// SuccessTarget records that target answered on network (see Success).
+func (b *Book) SuccessTarget(networkName string, target Target, rtt time.Duration, now time.Time) {
 	b.access.Lock()
 	defer b.access.Unlock()
 	records := b.network(networkName, now).Records
-	record := records[addrPort]
+	key := target.String()
+	record := records[key]
 	if record == nil {
 		record = &Record{}
-		records[addrPort] = record
+		records[key] = record
 	}
 	record.Success(now)
 	if rtt > 0 {
@@ -166,13 +236,18 @@ func (b *Book) Success(networkName string, addrPort netip.AddrPort, rtt time.Dur
 // port pairs, so a random one that failed is all but never drawn again, and its record would
 // only push the endpoints that work out of the book.
 func (b *Book) Failure(networkName string, addrPort netip.AddrPort, now time.Time) {
+	b.FailureTarget(networkName, Target{AddrPort: addrPort}, now)
+}
+
+// FailureTarget records that target did not answer on network (see Failure).
+func (b *Book) FailureTarget(networkName string, target Target, now time.Time) {
 	b.access.Lock()
 	defer b.access.Unlock()
 	n := b.networks[networkName]
 	if n == nil {
 		return
 	}
-	if record := n.Records[addrPort]; record != nil && !record.LastSuccess.IsZero() {
+	if record := n.Records[target.String()]; record != nil && !record.LastSuccess.IsZero() {
 		n.LastSeen = now
 		record.Failure(now, EndpointPolicy)
 	}
@@ -180,10 +255,15 @@ func (b *Book) Failure(networkName string, addrPort netip.AddrPort, now time.Tim
 
 // Score returns the score of addrPort on network, and whether it is known there.
 func (b *Book) Score(networkName string, addrPort netip.AddrPort) (rating.Score, bool) {
+	return b.TargetScore(networkName, Target{AddrPort: addrPort})
+}
+
+// TargetScore returns the score of target on network, and whether it is known there.
+func (b *Book) TargetScore(networkName string, target Target) (rating.Score, bool) {
 	b.access.Lock()
 	defer b.access.Unlock()
 	if n := b.networks[networkName]; n != nil {
-		if record := n.Records[addrPort]; record != nil {
+		if record := n.Records[target.String()]; record != nil {
 			return record.Score, true
 		}
 	}
@@ -191,14 +271,14 @@ func (b *Book) Score(networkName string, addrPort netip.AddrPort) (rating.Score,
 }
 
 type ranked struct {
-	addrPort netip.AddrPort
-	record   Record
+	key    string
+	record Record
 }
 
-func rank(records map[netip.AddrPort]*Record) []ranked {
+func rank(records map[string]*Record) []ranked {
 	list := make([]ranked, 0, len(records))
-	for addrPort, record := range records {
-		list = append(list, ranked{addrPort, *record})
+	for key, record := range records {
+		list = append(list, ranked{key, *record})
 	}
 	slices.SortFunc(list, func(a, b ranked) int {
 		if c := cmp.Compare(b.record.Score, a.record.Score); c != 0 {
@@ -207,7 +287,7 @@ func rank(records map[netip.AddrPort]*Record) []ranked {
 		if c := cmp.Compare(a.record.RTT, b.record.RTT); c != 0 {
 			return c
 		}
-		return a.addrPort.Compare(b.addrPort)
+		return strings.Compare(a.key, b.key)
 	})
 	return list
 }
@@ -215,53 +295,124 @@ func rank(records map[netip.AddrPort]*Record) []ranked {
 // Candidates returns the endpoints to try on network, best first: the network's own endpoints
 // above MinScore by score, then endpoints with a positive score on other networks (not yet tried
 // on this one). Endpoints at MinScore on this network are returned separately, to try last.
+// Targets with a server name are left out (see CandidateTargets).
 func (b *Book) Candidates(networkName string) (preferred []netip.AddrPort, last []netip.AddrPort) {
+	preferredTargets, lastTargets := b.CandidateTargets(networkName)
+	addrPorts := func(targets []Target) []netip.AddrPort {
+		var list []netip.AddrPort
+		for _, target := range targets {
+			if target.ServerName == "" {
+				list = append(list, target.AddrPort)
+			}
+		}
+		return list
+	}
+	return addrPorts(preferredTargets), addrPorts(lastTargets)
+}
+
+// CandidateTargets is Candidates with the server names.
+func (b *Book) CandidateTargets(networkName string) (preferred []Target, last []Target) {
 	b.access.Lock()
 	defer b.access.Unlock()
-	local := map[netip.AddrPort]*Record{}
+	local := map[string]*Record{}
 	if n := b.networks[networkName]; n != nil {
 		local = n.Records
 	}
+	parse := func(key string) (Target, bool) {
+		target, err := ParseTarget(key)
+		return target, err == nil
+	}
 	for _, entry := range rank(local) {
+		target, ok := parse(entry.key)
+		if !ok {
+			continue
+		}
 		if entry.record.Score <= MinScore {
-			last = append(last, entry.addrPort)
+			last = append(last, target)
 		} else {
-			preferred = append(preferred, entry.addrPort)
+			preferred = append(preferred, target)
 		}
 	}
-	others := map[netip.AddrPort]*Record{}
+	others := map[string]*Record{}
 	for name, n := range b.networks {
 		if name == networkName {
 			continue
 		}
-		for addrPort, record := range n.Records {
-			if record.Score <= 0 || local[addrPort] != nil {
+		for key, record := range n.Records {
+			if record.Score <= 0 || local[key] != nil {
 				continue
 			}
-			if current := others[addrPort]; current == nil || record.Score > current.Score {
-				others[addrPort] = record
+			if current := others[key]; current == nil || record.Score > current.Score {
+				others[key] = record
 			}
 		}
 	}
 	for _, entry := range rank(others) {
-		preferred = append(preferred, entry.addrPort)
+		if target, ok := parse(entry.key); ok {
+			preferred = append(preferred, target)
+		}
 	}
 	return preferred, last
 }
 
-// prune drops old networks and the worst records past the limit.
+// maxBlocksPerNetwork bounds the blocks kept per network: the ones that most clearly answer or do
+// not stay.
+const maxBlocksPerNetwork = 512
+
+// prune drops what was not seen within Lifetime, and the worst records and the least telling
+// blocks past the limits.
 func (b *Book) prune(now time.Time) {
+	stale := func(record rating.Record) bool {
+		last := record.LastSuccess
+		if record.LastFailure.After(last) {
+			last = record.LastFailure
+		}
+		return now.Sub(last) > Lifetime
+	}
 	for name, n := range b.networks {
-		if now.Sub(n.LastSeen) > networkLifetime {
+		if now.Sub(n.LastSeen) > Lifetime {
 			delete(b.networks, name)
 			continue
+		}
+		for key, record := range n.Records {
+			if stale(record.Record) {
+				delete(n.Records, key)
+			}
+		}
+		for key, record := range n.Methods {
+			if stale(*record) {
+				delete(n.Methods, key)
+			}
+		}
+		for key, walk := range n.Walks {
+			if now.Sub(walk.LastUsed) > Lifetime {
+				delete(n.Walks, key)
+			}
+		}
+		for key, record := range n.Blocks {
+			if record.Score == 0 || stale(*record) {
+				delete(n.Blocks, key)
+			}
+		}
+		if len(n.Blocks) > maxBlocksPerNetwork {
+			keys := make([]netip.Prefix, 0, len(n.Blocks))
+			for key := range n.Blocks {
+				keys = append(keys, key)
+			}
+			abs := func(score rating.Score) int { return max(int(score), -int(score)) }
+			slices.SortFunc(keys, func(x, y netip.Prefix) int {
+				return cmp.Compare(abs(n.Blocks[y].Score), abs(n.Blocks[x].Score))
+			})
+			for _, key := range keys[maxBlocksPerNetwork:] {
+				delete(n.Blocks, key)
+			}
 		}
 		if len(n.Records) <= maxRecordsPerNetwork {
 			continue
 		}
 		list := rank(n.Records)
 		for _, entry := range list[maxRecordsPerNetwork:] {
-			delete(n.Records, entry.addrPort)
+			delete(n.Records, entry.key)
 		}
 	}
 }
@@ -273,13 +424,29 @@ func (b *Book) MarshalJSON() ([]byte, error) {
 	b.access.Lock()
 	defer b.access.Unlock()
 	b.prune(time.Now())
-	return json.Marshal(b.networks)
+	return marshalCompact(b.networks)
 }
 
+// UnmarshalJSON reads the compact format (see compact.go), or the one before it.
 func (b *Book) UnmarshalJSON(content []byte) error {
+	networks, err := unmarshalCompact(content)
+	if err == errNotCompact {
+		networks, err = unmarshalLegacy(content)
+	}
+	if err != nil {
+		return err
+	}
+	b.access.Lock()
+	b.networks = networks
+	b.access.Unlock()
+	return nil
+}
+
+// unmarshalLegacy reads the book as it was saved before the compact format.
+func unmarshalLegacy(content []byte) (map[string]*network, error) {
 	networks := make(map[string]*network)
 	if err := json.Unmarshal(content, &networks); err != nil {
-		return err
+		return nil, err
 	}
 	for name, n := range networks {
 		if n == nil {
@@ -287,13 +454,15 @@ func (b *Book) UnmarshalJSON(content []byte) error {
 			continue
 		}
 		if n.Records == nil {
-			n.Records = make(map[netip.AddrPort]*Record)
+			n.Records = make(map[string]*Record)
 		}
-		for addrPort, record := range n.Records {
-			if record == nil || record.LastSuccess.IsZero() {
-				delete(n.Records, addrPort) // a failure of an endpoint that never answered, saved before
+		for key, record := range n.Records {
+			if _, err := ParseTarget(key); err != nil || record == nil || record.LastSuccess.IsZero() {
+				delete(n.Records, key) // a failure of an endpoint that never answered, saved before
 			}
 		}
+		n.Walks = make(map[string]*walk) // the walks of before were of whole spaces
+		n.Blocks = make(map[netip.Prefix]*rating.Record)
 		if n.Methods == nil {
 			n.Methods = make(map[string]*rating.Record)
 		}
@@ -306,8 +475,5 @@ func (b *Book) UnmarshalJSON(content []byte) error {
 			n.LegacyNoise = ""
 		}
 	}
-	b.access.Lock()
-	b.networks = networks
-	b.access.Unlock()
-	return nil
+	return networks, nil
 }

@@ -12,6 +12,7 @@ import (
 
 	box "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/hiddify/edgescan"
 	"github.com/sagernet/sing-box/hiddify/warpscan"
 	"github.com/sagernet/sing-box/include"
 	"github.com/sagernet/sing-box/option"
@@ -212,7 +213,7 @@ func hReserveUDPPort(t *testing.T) (int, func()) {
 // hLocalTraces keeps the scanner's network detection off the internet for the test.
 func hLocalTraces(t *testing.T) {
 	t.Helper()
-	urls := warpscan.TraceURLs
-	warpscan.TraceURLs = nil
-	t.Cleanup(func() { warpscan.TraceURLs = urls })
+	urls := edgescan.TraceURLs
+	edgescan.TraceURLs = nil
+	t.Cleanup(func() { edgescan.TraceURLs = urls })
 }

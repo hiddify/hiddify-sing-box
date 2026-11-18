@@ -1,4 +1,4 @@
-package warpscan
+package edgescan
 
 import (
 	"bufio"
@@ -98,7 +98,7 @@ func publicAddress(ctx context.Context, logger logger.ContextLogger, dialer N.Di
 		if err == nil {
 			return address, location, true
 		}
-		logger.DebugContext(ctx, "WARP scanner: ", url, ": ", err)
+		logger.DebugContext(ctx, "network detection: ", url, ": ", err)
 	}
 	return netip.Addr{}, "", false
 }

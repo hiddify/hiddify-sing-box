@@ -1,4 +1,4 @@
-package warpscan
+package edgescan
 
 import (
 	"net/netip"
@@ -38,4 +38,33 @@ func TestH_StatusOverlappingScans(t *testing.T) {
 	require.True(t, status.IsScanning(), "the other scan is still running")
 	status.NotFound()
 	require.Equal(t, " · 🔍 Not found", status.String())
+}
+
+// An exhausted search offers a deep search until one is asked for; the deep search shows while it
+// scans, and ends with what it found.
+func TestH_StatusDeepSearch(t *testing.T) {
+	var status Status
+	require.False(t, status.DeepSearchAvailable())
+	status.Exhausted(true)
+	require.True(t, status.DeepSearchAvailable())
+	status.Deep(true)
+	require.False(t, status.DeepSearchAvailable(), "it runs")
+	status.Begin()
+	require.Equal(t, " · 🔍 Deep search", status.String())
+	status.Found(netip.MustParseAddrPort("162.159.192.1:2408"))
+	status.Exhausted(false)
+	status.Deep(false)
+	require.False(t, status.DeepSearchAvailable())
+	require.Equal(t, " · 🔍 162.159.192.1:2408", status.String())
+	require.True(t, status.TryStartDeep())
+	require.False(t, status.TryStartDeep(), "started once")
+	status.Deep(false) // the deep search ended
+	status.Exhausted(true)
+	require.True(t, status.DeepSearchAvailable(), "an exhausted deep search offers another")
+
+	// a deep search asked for while a normal one ran is kept when the normal one ends
+	require.True(t, status.TryStartDeep())
+	status.Exhausted(true)
+	require.True(t, status.IsDeep())
+	require.False(t, status.DeepSearchAvailable())
 }

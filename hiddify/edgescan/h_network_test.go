@@ -1,4 +1,4 @@
-package warpscan
+package edgescan
 
 import (
 	"context"
