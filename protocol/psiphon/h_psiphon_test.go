@@ -39,7 +39,7 @@ func TestH_PsiphonBuildConfigDefaults(t *testing.T) {
 	require.Empty(t, config.UpstreamProxyURL)
 	require.Empty(t, config.EgressRegion)
 	require.NotNil(t, config.EstablishTunnelTimeoutSeconds)
-	require.Equal(t, 60, *config.EstablishTunnelTimeoutSeconds)
+	require.Equal(t, 180, *config.EstablishTunnelTimeoutSeconds)
 	require.Equal(t, defaultDataDirectory, config.MigrateDataStoreDirectory)
 	require.Equal(t, defaultDataDirectory, config.MigrateObfuscatedServerListDownloadDirectory)
 	require.Equal(t, filepath.Join(defaultDataDirectory, "server_list_compressed"), config.MigrateRemoteServerListDownloadFilename)

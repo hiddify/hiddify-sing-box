@@ -67,7 +67,8 @@ type Psiphon struct {
 	connected       atomic.Bool // driven by NoticeTunnels; read by IsReady/DisplayType
 	tag             string
 	access          sync.Mutex
-	runDone         chan struct{} // closed when the controller started last stops
+	runDone         chan struct{}     // closed when the controller started last stops
+	onInfo          func(NoticeEvent) // H: the scanner's, for the edge the tunnel core connected over
 }
 
 // Dial opens a connection through the tunnel. The controller only dials while a tunnel is up, so
@@ -279,6 +280,9 @@ func NewPsiphon(ctx context.Context, l logger.ContextLogger, config *psiphon.Con
 // one check its own controller (hasTunnel).
 func (p *Psiphon) onNotice(event NoticeEvent, connectedSignal func()) {
 	p.logger.Debug(fmt.Sprint("Notice ", event.Type, " data ", event.Data))
+	if event.Type == "Info" && p.onInfo != nil {
+		p.onInfo(event)
+	}
 	if event.Type != "Tunnels" {
 		return
 	}

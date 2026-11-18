@@ -16,6 +16,7 @@ import (
 	"github.com/sagernet/sing-box/common/dialer"
 	"github.com/sagernet/sing-box/common/proxybridge"
 	C "github.com/sagernet/sing-box/constant"
+	"github.com/sagernet/sing-box/hiddify/edgescan"
 	"github.com/sagernet/sing-box/hiddify/secret"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
@@ -30,12 +31,13 @@ const (
 	defaultPropagationChannelID     = "FFFFFFFFFFFFFFFF"
 	defaultSponsorID                = "FFFFFFFFFFFFFFFF"
 	defaultNetworkID                = "test"
-	defaultClientPlatform           = "Android_4.0.4_com.example.exampleClientLibraryApp"
 	defaultRemoteServerListURL      = "https://s3.amazonaws.com//psiphon/web/mjr4-p23r-puwl/server_list_compressed"
 	defaultRemoteServerListFilename = "remote_server_list"
 	defaultSignaturePublicKey       = "MIICIDANBgkqhkiG9w0BAQEFAAOCAg0AMIICCAKCAgEAt7Ls+/39r+T6zNW7GiVpJfzq/xvL9SBH5rIFnk0RXYEYavax3WS6HOD35eTAqn8AniOwiH+DOkvgSKF2caqk/y1dfq47Pdymtwzp9ikpB1C5OfAysXzBiwVJlCdajBKvBZDerV1cMvRzCKvKwRmvDmHgphQQ7WfXIGbRbmmk6opMBh3roE42KcotLFtqp0RRwLtcBRNtCdsrVsjiI1Lqz/lH+T61sGjSjQ3CHMuZYSQJZo/KrvzgQXpkaCTdbObxHqb6/+i1qaVOfEsvjoiyzTxJADvSytVtcTjijhPEV6XskJVHE1Zgl+7rATr/pDQkw6DPCNBS1+Y6fy7GstZALQXwEDN/qhQI9kWkHijT8ns+i1vGg00Mk/6J75arLhqcodWsdeG/M/moWgqQAnlZAGVtJI1OgeF5fsPpXu4kctOfuZlGjVZXQNW34aOzm8r8S0eVZitPlbhcPiR4gT/aSMz/wd8lZlzZYsje/Jr8u/YtlwjjreZrGRmG8KMOzukV3lLmMppXFMvl4bxv6YFEmIuTsOhbLTwFgh7KYNjodLj/LsqRVfwz31PgWQFTEPICV7GCvgVlPRxnofqKSjgTWI4mxDhBpVcATvaoBl1L/6WLbFvBsoAUBItWwctO2xalKxF5szhGm8lccoc5MZr8kfE0uxMgsxz4er68iCID+rsCAQM="
 	defaultDataDirectory            = "data/psiphon"
-	defaultEstablishTunnelTimeout   = time.Minute
+	// the first connection on a censored network downloads a server list and walks the CDN
+	// edges; a minute cut it short, and each restart began the walk again
+	defaultEstablishTunnelTimeout = 3 * time.Minute
 )
 
 func RegisterOutbound(registry *outbound.Registry) {
@@ -63,6 +65,12 @@ type Outbound struct {
 	psiphon     *Psiphon
 	tracker     adapter.StatusTracker //H
 	proxy       *proxybridge.Bridge
+	scanner     *edgeScanner // H: nil behind a detour, see scannerEnabled
+	// fixedNetworkID: network_id, or the config, names the network; the scanner does not
+	fixedNetworkID bool
+	// establishTimeout is establish_tunnel_timeout, which a search shortens (see h_search.go)
+	establishTimeout time.Duration
+	options          option.PsiphonOutboundOptions // H: for the first hop by detour, see PreStart
 }
 
 type tunnelOwner struct{ notify func() }
@@ -108,12 +116,26 @@ func NewOutbound(ctx context.Context, _ adapter.Router, logger log.ContextLogger
 		ctx:         ctx,
 		dnsRouter:   service.FromContext[adapter.DNSRouter](ctx),
 		reconnectCh: make(chan struct{}, 1),
+		options:     options,
+		// the network named by the scanner's detection, unless set (see scanEdges)
+		fixedNetworkID:   config.NetworkID != defaultNetworkID,
+		establishTimeout: timeout,
 	}
-
+	if scannerEnabled(options) {
+		outbound.useScanner()
+	}
 	return outbound, nil
 
 }
 func (h *Outbound) PreStart() error {
+	if h.scanner == nil && scannerByDetour(h.ctx, h.options) { //H: a direct detour: the first hop
+		if err := h.firstHopByDetour(); err != nil {
+			return err
+		}
+	}
+	if h.scanner != nil { //H: the cache file and the detour exist now
+		h.scanner.open(h.ctx, h.options.Detour)
+	}
 	return h.psiphon.PreStart()
 }
 func (h *Outbound) Start() error {
@@ -292,6 +314,8 @@ func buildConfig(options option.PsiphonOutboundOptions, timeout time.Duration, t
 	config.EgressRegion = pick(options.EgressRegion, config.EgressRegion, "")
 	config.UpstreamProxyURL = pick(options.UpstreamProxyURL, config.UpstreamProxyURL, "")
 
+	applyTunnelProtocols(config, options)
+
 	config.AllowDefaultDNSResolverWithBindToDevice = true
 	if options.AllowDefaultDNSResolverWithBindToDevice != nil {
 		config.AllowDefaultDNSResolverWithBindToDevice = *options.AllowDefaultDNSResolverWithBindToDevice
@@ -347,28 +371,48 @@ const (
 // a controller that gave up left the outbound dead until the box restarted.
 func (h *Outbound) run() {
 	backoff := restartMin
+	searchStart := time.Now() //H: see h_search.go
 	for {
+		// H: no network (no Wi-Fi, no mobile data, or paused): wait for one instead of trying,
+		// and the wait does not count toward the search
+		waited, reachable := edgescan.WaitReachable(h.ctx, h.logger)
+		if !reachable {
+			return
+		}
+		searchStart = searchStart.Add(waited)
+		h.limitSearch(searchStart) //H
 		err := h.connectOnce()
 		if err == nil {
 			backoff = restartMin // it connected: a later stop starts over quickly
+			h.searchFound()      //H
 			h.psiphon.Wait()
 			err = E.New("the controller stopped")
+			searchStart = time.Now() //H: the tunnel was lost: a new search
 		}
 		h.psiphon.stop()
 		if h.ctx.Err() != nil {
 			return
+		}
+		if h.searchExhausted(searchStart) { //H: wait for a deep search or another network
+			if !h.waitSearch() {
+				return
+			}
+			searchStart, backoff = time.Now(), restartMin
+			continue
 		}
 		h.logger.Warn("psiphon: ", err, ", starting again in ", backoff)
 		select {
 		case <-h.ctx.Done():
 			return
 		case <-time.After(backoff):
+		case <-h.reconnectCh: //H: a deep search asked for, or another network
 		}
 		backoff = min(backoff*2, restartMax)
 	}
 }
 
 func (h *Outbound) connectOnce() error {
+	h.scanEdges()
 	return h.psiphon.Start()
 }
 
@@ -404,4 +448,11 @@ func (h *Outbound) Status() adapter.Status { //H
 func (h *Outbound) InterfaceUpdated(ctx context.Context) {
 	h.logger.Info("Network Changed... Restarting Psiphon Tunnel")
 	h.psiphon.NetworkChanged()
+	if h.scanner != nil && h.scanner.store != nil { //H: named again by the next scan
+		h.scanner.store.NetworkChanged()
+		if !h.psiphon.IsConnected() { //H: a search starts over on the new network, with a scan of it
+			h.psiphon.stop()
+		}
+	}
+	h.requestReconnect() //H: a search that gave up starts over on the new network
 }
