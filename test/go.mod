@@ -16,6 +16,8 @@ replace github.com/Psiphon-Labs/quic-go => ../replace/psiphon-quic-go
 
 replace github.com/Psiphon-Labs/psiphon-tls => ../replace/psiphon-tls
 
+replace github.com/Psiphon-Labs/psiphon-tunnel-core => github.com/CluvexStudio/psiphon-tunnel-core v0.0.0-20260828000332-83aa73b9b982
+
 replace github.com/net2share/vaydns => github.com/hiddify/vaydns v0.0.0-20260401180616-890dc987a6a9
 
 replace github.com/kianmhz/GooseRelayVPN => github.com/hiddify/GooseRelayVPN v0.0.0-20260429125124-0e68c2a3ae4c
@@ -64,11 +66,13 @@ require (
 	github.com/PoriyaVali/mirage v0.2.1-0.20261024195444-7c21af6f60d8 // indirect
 	github.com/Psiphon-Labs/bolt v0.0.0-20200624191537-23cedaef7ad7 // indirect
 	github.com/Psiphon-Labs/consistent v0.0.0-20240322131436-20aaa4e05737 // indirect
-	github.com/Psiphon-Labs/goptlib v0.0.0-20200406165125-c0e32a7a3464 // indirect
-	github.com/Psiphon-Labs/psiphon-tls v0.0.0-20250318183125-2a2fae2db378 // indirect
+	github.com/Psiphon-Labs/covert-dtls v0.0.0-20260423180104-2d3b15cbc8be // indirect
+	github.com/Psiphon-Labs/pion-ice/v4 v4.0.0-20260423180031-37d6e92d021f // indirect
+	github.com/Psiphon-Labs/pion-webrtc/v4 v4.0.0-20260423180049-7ff453f9681a // indirect
+	github.com/Psiphon-Labs/psiphon-tls v0.0.0-20260429174135-190516348878 // indirect
 	github.com/Psiphon-Labs/psiphon-tunnel-core v1.0.11-0.20260126173038-c86a1497a760 // indirect
 	github.com/Psiphon-Labs/quic-go v0.0.0-20250527153145-79fe45fb83b1 // indirect
-	github.com/Psiphon-Labs/utls v0.0.0-20260129182755-24497d415a8d // indirect
+	github.com/Psiphon-Labs/utls v1.1.1-0.20260423193914-69eb96d02588 // indirect
 	github.com/RyuaNerin/go-krypto v1.3.0 // indirect
 	github.com/ajg/form v1.5.1 // indirect
 	github.com/akutz/memconn v0.1.0 // indirect
@@ -92,7 +96,6 @@ require (
 	github.com/cespare/xxhash v1.1.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cheekybits/genny v0.0.0-20170328200008-9127e812e1e9 // indirect
-	github.com/cloudflare/circl v1.6.4 // indirect
 	github.com/cognusion/go-cache-lru v0.0.0-20170419142635-f73e2280ecea // indirect
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/coreos/go-iptables v0.7.1-0.20240112124308-65c67c9f46e6 // indirect
@@ -182,30 +185,26 @@ require (
 	github.com/net2share/vaydns v0.2.8 // indirect
 	github.com/openai/openai-go/v3 v3.26.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
+	github.com/oschwald/maxminddb-golang v1.13.1 // indirect
 	github.com/pelletier/go-toml v1.9.5 // indirect
 	github.com/pierrec/lz4/v4 v4.1.26 // indirect
 	github.com/pion/datachannel v1.6.0 // indirect
 	github.com/pion/dtls/v2 v2.2.7 // indirect
 	github.com/pion/dtls/v3 v3.1.5 // indirect
-	github.com/pion/ice/v2 v2.3.24 // indirect
 	github.com/pion/interceptor v0.1.44 // indirect
 	github.com/pion/logging v0.2.4 // indirect
-	github.com/pion/mdns v0.0.12 // indirect
 	github.com/pion/mdns/v2 v2.1.0 // indirect
 	github.com/pion/randutil v0.1.0 // indirect
 	github.com/pion/rtcp v1.2.16 // indirect
 	github.com/pion/rtp v1.10.1 // indirect
 	github.com/pion/sctp v1.9.4 // indirect
 	github.com/pion/sdp/v3 v3.0.18 // indirect
-	github.com/pion/srtp/v2 v2.0.18 // indirect
 	github.com/pion/srtp/v3 v3.0.10 // indirect
 	github.com/pion/stun v0.6.1 // indirect
 	github.com/pion/stun/v3 v3.1.7 // indirect
 	github.com/pion/transport/v2 v2.2.4 // indirect
 	github.com/pion/transport/v4 v4.1.0 // indirect
-	github.com/pion/turn/v2 v2.1.3 // indirect
 	github.com/pion/turn/v4 v4.1.4 // indirect
-	github.com/pion/webrtc/v3 v3.2.40 // indirect
 	github.com/pires/go-proxyproto v0.16.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pkg/sftp v1.13.10 // indirect
