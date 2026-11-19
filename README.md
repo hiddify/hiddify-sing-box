@@ -157,7 +157,32 @@ Besides sing-box, this fork takes work from other forks and projects. Thank you 
 - [amnezia-vpn/amneziawg-go](https://github.com/amnezia-vpn/amneziawg-go): AmneziaWG.
 - [refraction-networking/utls](https://github.com/refraction-networking/utls) and
   [metacubex/utls](https://github.com/metacubex/utls): TLS fingerprints.
-- [Psiphon-Labs](https://github.com/Psiphon-Labs): Psiphon.
+- [Psiphon-Labs](https://github.com/Psiphon-Labs): Psiphon, with its
+  [psiphon-tls](https://github.com/Psiphon-Labs/psiphon-tls) and
+  [quic-go](https://github.com/Psiphon-Labs/quic-go) forks.
+- [CluvexStudio/psiphon-tunnel-core](https://github.com/CluvexStudio/psiphon-tunnel-core) (branch
+  `shirokhorshid`, after Shir o Khorshid): the Psiphon tunnel core built in, with the CDN fronted
+  protocols, the CDN fronting scan and its edge lists.
+- [CluvexStudio/Aether](https://github.com/CluvexStudio/Aether): the Psiphon protocol choices as
+  the first hop and behind a proxy, and the case for the CDN edge scanner.
+- [patterniha/MITM-DomainFronting](https://github.com/patterniha/MITM-DomainFronting): server names
+  in the CDN edge lists.
+- [bamsoftware dnstt](https://www.bamsoftware.com/software/dnstt/): the original DNSTT.
+- [enfein/mieru](https://github.com/enfein/mieru): Mieru.
+- [SUDOKU-ASCII/sudoku](https://github.com/SUDOKU-ASCII/sudoku): the Sudoku protocol.
+- [TrustTunnel/TrustTunnel](https://github.com/TrustTunnel/TrustTunnel) and
+  [xchacha20-poly1305/sing-trusttunnel](https://github.com/xchacha20-poly1305/sing-trusttunnel):
+  TrustTunnel.
+- [kulikov0/headless-client](https://github.com/kulikov0/headless-client) and
+  [Pion](https://github.com/pion): the call tunnel.
+- [ameshkov/dnscrypt](https://github.com/ameshkov/dnscrypt): DNSCrypt.
+- [pires/go-proxyproto](https://github.com/pires/go-proxyproto): the PROXY protocol.
+- [shadowsocks/simple-obfs](https://github.com/shadowsocks/simple-obfs): simple-obfs.
+- [cretz/bine](https://github.com/cretz/bine): the embedded Tor.
+- [xtaci/kcp-go](https://github.com/xtaci/kcp-go): mKCP.
+- [WireGuard](https://git.zx2c4.com/wireguard-go), [Tailscale](https://github.com/tailscale/tailscale),
+  [gVisor](https://github.com/google/gvisor), [quic-go](https://github.com/quic-go/quic-go) and
+  [miekg/dns](https://github.com/miekg/dns), which sing-box builds on too.
 - [net2share/vaydns](https://github.com/net2share/vaydns): DNSTT.
 - [masterking32/MasterDnsVPN](https://github.com/masterking32/MasterDnsVPN): MasterDNS.
 - [getlantern/soar](https://github.com/getlantern/soar): Soar.

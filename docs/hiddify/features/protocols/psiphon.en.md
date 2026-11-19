@@ -170,6 +170,7 @@ Parts of this feature come from these projects. Thanks to their authors.
 - [Psiphon-Labs/psiphon-tunnel-core](https://github.com/Psiphon-Labs/psiphon-tunnel-core): the official Psiphon tunnel core.
 - [CluvexStudio/psiphon-tunnel-core](https://github.com/CluvexStudio/psiphon-tunnel-core) (branch `shirokhorshid`): the fork built in, with the CDN fronted protocols, the CDN fronting scan and its edge lists.
 - [CluvexStudio/Aether](https://github.com/CluvexStudio/Aether): the protocol choices as first hop and behind a proxy.
+- [patterniha/MITM-DomainFronting](https://github.com/patterniha/MITM-DomainFronting): server names in the fork's CDN edge lists.
 
 Related projects:
 

@@ -103,6 +103,19 @@
 - [ameshkov/dnscrypt](https://github.com/ameshkov/dnscrypt): DNSCrypt.
 - [pires/go-proxyproto](https://github.com/pires/go-proxyproto): PROXY protocol.
 - [shadowsocks/simple-obfs](https://github.com/shadowsocks/simple-obfs): simple-obfs.
+- [CluvexStudio/psiphon-tunnel-core](https://github.com/CluvexStudio/psiphon-tunnel-core) (شاخهٔ `shirokhorshid`): هستهٔ تونل Psiphon که درون برنامه ساخته شده، با پروتکل‌های fronting روی CDN، اسکن fronting روی CDN و فهرست لبه‌هایش.
+- [CluvexStudio/Aether](https://github.com/CluvexStudio/Aether): انتخاب پروتکل‌های Psiphon در اولین گام و پشت پراکسی.
+- [patterniha/MITM-DomainFronting](https://github.com/patterniha/MITM-DomainFronting): نام‌های سرور در فهرست لبه‌های CDN.
+- [Psiphon-Labs/psiphon-tls](https://github.com/Psiphon-Labs/psiphon-tls) و [Psiphon-Labs/quic-go](https://github.com/Psiphon-Labs/quic-go): TLS و QUIC در Psiphon.
+- [Diniboy1123/usque](https://github.com/Diniboy1123/usque): WARP روی MASQUE.
+- [shtorm-7/connect-ip-go](https://github.com/shtorm-7/connect-ip-go)، [shtorm-7/sing-dns](https://github.com/shtorm-7/sing-dns) و [shtorm-7/dnscrypt](https://github.com/shtorm-7/dnscrypt): فورک‌هایی که sing-box-extended به کار می‌برد.
+- [starifly/sing-vmess](https://github.com/starifly/sing-vmess): رمزنگاری VLESS.
+- [refraction-networking/utls](https://github.com/refraction-networking/utls) و [metacubex/utls](https://github.com/metacubex/utls): اثرانگشت‌های TLS.
+- [GFW-knocker](https://github.com/GFW-knocker): بسته‌های noise در WireGuard.
+- [cretz/bine](https://github.com/cretz/bine): Tor درون برنامه.
+- [xtaci/kcp-go](https://github.com/xtaci/kcp-go): mKCP.
+- [Pion](https://github.com/pion): WebRTC برای تونل تماس.
+- [WireGuard](https://git.zx2c4.com/wireguard-go)، [Tailscale](https://github.com/tailscale/tailscale)، [gVisor](https://github.com/google/gvisor)، [quic-go](https://github.com/quic-go/quic-go) و [miekg/dns](https://github.com/miekg/dns): آنچه sing-box بر پایهٔ آن ساخته شده است.
 
 ## رفع اشکال‌ها
 

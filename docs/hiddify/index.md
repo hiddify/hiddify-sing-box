@@ -101,6 +101,19 @@ Hiddify's features build on these projects. Each feature page names what it take
 - [ameshkov/dnscrypt](https://github.com/ameshkov/dnscrypt): DNSCrypt.
 - [pires/go-proxyproto](https://github.com/pires/go-proxyproto): the PROXY protocol.
 - [shadowsocks/simple-obfs](https://github.com/shadowsocks/simple-obfs): simple-obfs.
+- [CluvexStudio/psiphon-tunnel-core](https://github.com/CluvexStudio/psiphon-tunnel-core) (branch `shirokhorshid`): the Psiphon tunnel core built in, with its CDN fronted protocols, CDN fronting scan and edge lists.
+- [CluvexStudio/Aether](https://github.com/CluvexStudio/Aether): Psiphon's protocol choices as the first hop and behind a proxy.
+- [patterniha/MITM-DomainFronting](https://github.com/patterniha/MITM-DomainFronting): server names in the CDN edge lists.
+- [Psiphon-Labs/psiphon-tls](https://github.com/Psiphon-Labs/psiphon-tls) and [Psiphon-Labs/quic-go](https://github.com/Psiphon-Labs/quic-go): Psiphon's TLS and QUIC.
+- [Diniboy1123/usque](https://github.com/Diniboy1123/usque): WARP over MASQUE.
+- [shtorm-7/connect-ip-go](https://github.com/shtorm-7/connect-ip-go), [shtorm-7/sing-dns](https://github.com/shtorm-7/sing-dns) and [shtorm-7/dnscrypt](https://github.com/shtorm-7/dnscrypt): the forks sing-box-extended uses.
+- [starifly/sing-vmess](https://github.com/starifly/sing-vmess): VLESS encryption.
+- [refraction-networking/utls](https://github.com/refraction-networking/utls) and [metacubex/utls](https://github.com/metacubex/utls): TLS fingerprints.
+- [GFW-knocker](https://github.com/GFW-knocker): the WireGuard noise packets.
+- [cretz/bine](https://github.com/cretz/bine): the embedded Tor.
+- [xtaci/kcp-go](https://github.com/xtaci/kcp-go): mKCP.
+- [Pion](https://github.com/pion): WebRTC for the call tunnel.
+- [WireGuard](https://git.zx2c4.com/wireguard-go), [Tailscale](https://github.com/tailscale/tailscale), [gVisor](https://github.com/google/gvisor), [quic-go](https://github.com/quic-go/quic-go) and [miekg/dns](https://github.com/miekg/dns): what sing-box builds on.
 
 ## Bug fixes
 

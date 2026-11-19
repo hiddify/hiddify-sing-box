@@ -165,6 +165,7 @@ fronting خود سایفون را می‌بندد، به‌ندرت همهٔ ل�
 - [Psiphon-Labs/psiphon-tunnel-core](https://github.com/Psiphon-Labs/psiphon-tunnel-core): هستهٔ رسمی تونل Psiphon.
 - [CluvexStudio/psiphon-tunnel-core](https://github.com/CluvexStudio/psiphon-tunnel-core) (شاخهٔ `shirokhorshid`): فورکی که درون برنامه ساخته شده، با پروتکل‌های fronting روی CDN، اسکن fronting روی CDN و فهرست لبه‌هایش.
 - [CluvexStudio/Aether](https://github.com/CluvexStudio/Aether): انتخاب پروتکل‌ها در اولین گام و پشت پراکسی.
+- [patterniha/MITM-DomainFronting](https://github.com/patterniha/MITM-DomainFronting): نام‌های سرور در فهرست لبه‌های CDN آن فورک.
 
 پروژه‌های مرتبط:
 
