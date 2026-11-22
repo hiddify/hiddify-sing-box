@@ -126,6 +126,33 @@ others are still tried now and then: when the network starts blocking the one in
 old one through again, the ratings follow without a reset. Endpoints are ranked, not drawn: the
 scan already probes 8 at a time and adds random addresses, and the best answer wins.
 
+### Last way first
+
+The scanner remembers the way through that worked last: for each tunnel the endpoint and the
+noise (kept when the endpoint's first handshake completes, or when a search found it), and in
+auto mode the tunnel that connected. The next start tries it before anything else, on any
+network:
+
+1. Auto mode takes the tunnel that connected last without a race, unless it failed to connect on
+   this network. The network is named meanwhile, for the tunnel ratings.
+2. The tunnel makes two handshakes with the last endpoint, after the last noise, each within 3
+   seconds, before the network is named or anything is scanned. When one answers, the endpoint
+   connects at once, and shows as ready as soon as its handshake completes.
+3. Then, in the background, the network is named, the answer counts there, and one scan round
+   runs. WARP moves to an endpoint the round found only when it is clearly better: a higher
+   score, or the same score and a handshake in less than two thirds of the time. The round does
+   not show as a search.
+4. When the last way does not answer, the start searches as before; in auto mode the tunnels
+   race again first.
+
+WARP over MASQUE does the same for each HTTP version: the endpoint its tunnel connected to last
+is checked with one TLS handshake (two tries) before the first scan, and used when it answers. A
+working MASQUE tunnel is not moved to a better endpoint: it takes the best one when it reconnects.
+
+The ways are saved with the scores in the cache file (`edge-scanner`), for 30 days. A noise the
+scanner may no longer use (`search_noise` turned off, a preset left out of `noise_presets`) is
+not tried.
+
 ### Search and deep search
 
 A search goes on round after round for `search_timeout` (3 minutes): the first round usually
@@ -208,11 +235,11 @@ MASQUE has no decoy packets: what a filter reads first is the TLS server name of
 | `speedtest` | `www.speedtest.net` |
 
 The configured `server_name` (or the default) and the presets are drawn by their rating, scanned in
-turn, and the first that gets an answer is used for the tunnel's connects, per HTTP version.
-Cloudflare's endpoint answers any server name, and the tunnel still pins the endpoint's key, so
-the name changes nothing but what the filter sees. `noise_presets` names the presets of both
-kinds: each tunnel takes its own, and a list with no MASQUE preset leaves MASQUE with its
-configured name.
+turn, and the first that gets an answer is used for the tunnel's connects, per HTTP version. It is
+kept with the last way. Cloudflare's endpoint answers any server name, and the tunnel still pins
+the endpoint's key, so the name changes nothing but what the filter sees. `noise_presets` names
+the presets of both kinds: each tunnel takes its own, and a list with no MASQUE preset leaves
+MASQUE with its configured name.
 
 ### Auto mode
 

@@ -67,6 +67,16 @@ server it knows is blocked and it cannot fetch a new list.
   that answers TLS may still not front Psiphon. Scores are kept in the cache file, and the
   detected network also names the tunnel core's network, so what worked on Wi-Fi is not tried
   first on mobile data.
+- **Last way first** (first hop only): the outbound remembers the way through of the tunnel that
+  came up last: its protocol, the CDN edge it fronted through when the protocol is a fronted one,
+  and the network. The first attempt of a search (at the start, and after a lost tunnel) starts
+  the tunnel core at once with it: that protocol first, a dial override for that edge, the
+  network's name, for at most 30 seconds, while the scanner names the network and scans the
+  edges in the background. When the tunnel comes up, the outbound is ready, and the scan's scores
+  serve the next attempts. When it does not, the attempt ends and the search goes on as above,
+  with the scan that ran meanwhile. A working tunnel is not dropped for a better edge: the tunnel
+  core takes it at its next connect. The tunnel core also tries the server it connected to last
+  first, by itself.
 - **Search and deep search** (first hop only): the scans and the tunnel core's attempts go on
   for the scanner's `search_timeout` (3 minutes); an attempt ends at the end of that time. When
   no tunnel comes up in it, the outbound stops trying and offers a deep search: the app asks the
