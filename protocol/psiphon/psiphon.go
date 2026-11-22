@@ -290,7 +290,7 @@ func NewPsiphon(ctx context.Context, l logger.ContextLogger, config *psiphon.Con
 // one check its own controller (hasTunnel).
 func (p *Psiphon) onNotice(event NoticeEvent, connectedSignal func()) {
 	p.logger.Debug(fmt.Sprint("Notice ", event.Type, " data ", event.Data))
-	if event.Type == "Info" && p.onInfo != nil {
+	if (event.Type == "Info" || event.Type == "ActiveTunnel") && p.onInfo != nil { //H: the scanner rates the protocol of a tunnel that came up
 		p.onInfo(event)
 	}
 	if event.Type != "Tunnels" {
