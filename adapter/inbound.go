@@ -122,7 +122,8 @@ type InboundContext struct {
 	DeferredIPCIDRMatchGroups    uint8
 	IgnoreDestinationIPCIDRMatch bool
 
-	RealOutbound string //H
+	RealOutbound       string //H
+	IPv6RouteLookahead bool   //H: set while ipv6_unavailable_via looks ahead at the route rules
 }
 
 func (c *InboundContext) SetRealOutbound(tag string) {
