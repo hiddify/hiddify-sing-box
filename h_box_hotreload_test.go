@@ -13,6 +13,7 @@ import (
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/monitoring"
 	"github.com/sagernet/sing-box/include"
+	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	R "github.com/sagernet/sing-box/route/rule"
 	"github.com/sagernet/sing/common/json"
@@ -396,4 +397,41 @@ func TestH_HotReloadInbounds(t *testing.T) {
 	require.Equal(t, []string{"socks-in"}, result.Inbounds.Removed)
 	require.True(t, listening(port2))
 	require.False(t, listening(port3))
+}
+
+// The log level is set on the running log by a hot reload; the rest of the log options still
+// cannot change. A trace session from the app's Report a problem, its end, or a level picked on
+// the logs page refused the reload, and the app restarted the core, and the VPN with it
+// (hiddify-app #2637: "hot reload cannot change: log").
+func TestH_HotReloadLogLevel(t *testing.T) {
+	ctx := include.Context(context.Background())
+	output := t.TempDir() + "/box.log"
+	withLog := func(log string) option.Options {
+		return hParseOptions(t, ctx, `{"log": `+log+`, "outbounds": [{"type": "direct", "tag": "direct"}]}`)
+	}
+	instance, err := box.New(box.Options{Context: ctx, Options: withLog(`{"level": "warn", "output": "` + output + `"}`)})
+	require.NoError(t, err)
+	defer instance.Close()
+	require.NoError(t, instance.Start())
+	direct := hOutbound(t, instance, "direct")
+
+	debug := withLog(`{"level": "debug", "output": "` + output + `"}`)
+	result, err := instance.HotReloadWithResult(context.Background(), &debug)
+	require.NoError(t, err)
+	require.True(t, result.LogLevel)
+	require.True(t, result.IsEmpty(), "nothing is rebuilt for a log level")
+	require.Equal(t, "debug", log.FormatLevel(instance.LogFactory().Level()))
+	require.Same(t, direct, hOutbound(t, instance, "direct"))
+
+	// unset is trace, as at a start
+	unset := withLog(`{"output": "` + output + `"}`)
+	require.NoError(t, instance.HotReload(context.Background(), &unset))
+	require.Equal(t, "trace", log.FormatLevel(instance.LogFactory().Level()))
+
+	moved := withLog(`{"level": "warn", "output": "` + output + `.2"}`)
+	require.ErrorContains(t, instance.HotReload(context.Background(), &moved), "hot reload cannot change: log")
+	require.Equal(t, "trace", log.FormatLevel(instance.LogFactory().Level()), "nothing is applied")
+
+	// options with only a level are as none
+	require.NoError(t, box.CheckHotReload(ctx, withLog(`{"level": "info"}`), hParseOptions(t, ctx, `{"outbounds": [{"type": "direct", "tag": "direct"}]}`)))
 }

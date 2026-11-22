@@ -9,6 +9,7 @@ import (
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/monitoring"
 	C "github.com/sagernet/sing-box/constant"
+	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -20,8 +21,8 @@ import (
 // H: hot reload: apply new options to a running box without restarting it.
 //
 // Reloadable: outbounds, endpoints, inbounds (TUN too: closed, then opened again), DNS
-// servers/rules/final and route rules/rule_set/final. Anything else must stay the same (see
-// CheckHotReload).
+// servers/rules/final, route rules/rule_set/final and the log level. Anything else must stay the
+// same (see CheckHotReload).
 
 // HotReloadChanges lists the tags a hot reload touched.
 type HotReloadChanges struct {
@@ -43,8 +44,10 @@ type HotReloadResult struct {
 	RouteFinal bool
 	DNSFinal   bool
 	KeepTop    bool // the keep top options of the monitoring changed
+	LogLevel   bool // the log level changed: set on the running log, nothing rebuilt
 }
 
+// IsEmpty says that nothing has to be rebuilt; a new log level is set either way.
 func (r HotReloadResult) IsEmpty() bool {
 	return r.Outbounds.IsEmpty() && r.DNSServers.IsEmpty() && r.Inbounds.IsEmpty() &&
 		!r.RouteRules && !r.DNSRules && !r.RouteFinal && !r.DNSFinal && !r.KeepTop
@@ -67,6 +70,9 @@ func (s *Box) HotReloadWithResult(ctx context.Context, options *option.Options) 
 	plan, err := planHotReload(s.ctx, s.runningOptions, *options)
 	if err != nil {
 		return HotReloadResult{}, err
+	}
+	if plan.result.LogLevel {
+		s.logFactory.SetLevel(plan.logLevel)
 	}
 	if !plan.result.IsEmpty() {
 		if err = s.applyHotReload(ctx, plan); err != nil {
@@ -93,6 +99,7 @@ func CheckHotReload(ctx context.Context, oldOptions, newOptions option.Options) 
 	for _, options := range []*option.Options{&oldRest, &newRest} {
 		options.Inbounds, options.Outbounds, options.Endpoints, options.DNS, options.Route = nil, nil, nil, nil, nil
 		options.Experimental = withoutKeepTop(options.Experimental)
+		options.Log = withoutLevel(options.Log)
 	}
 	keys, err := changedKeys(ctx, &oldRest, &newRest)
 	if err != nil {
@@ -487,7 +494,8 @@ type hotReloadPlan struct {
 	dnsServers  *hotReloadDiff
 	inbounds    *hotReloadDiff
 	newOptions  option.Options
-	ruleSetsNew bool // the route rule-sets changed, so DNS rules must be rebuilt too
+	ruleSetsNew bool      // the route rule-sets changed, so DNS rules must be rebuilt too
+	logLevel    log.Level // the new level, when result.LogLevel
 }
 
 func planHotReload(ctx context.Context, oldOptions, newOptions option.Options) (*hotReloadPlan, error) {
@@ -541,7 +549,43 @@ func planHotReload(ctx context.Context, oldOptions, newOptions option.Options) (
 	if plan.result.KeepTop, err = contentChanged(ctx, keepTopOptions(oldOptions), keepTopOptions(newOptions)); err != nil {
 		return nil, err
 	}
+	oldLevel, err := logLevel(oldOptions.Log)
+	if err != nil {
+		return nil, E.Cause(err, "running options")
+	}
+	if plan.logLevel, err = logLevel(newOptions.Log); err != nil {
+		return nil, err
+	}
+	plan.result.LogLevel = plan.logLevel != oldLevel
 	return plan, nil
+}
+
+// logLevel is the level a log of these options runs at, as log.New sets it: trace when unset.
+func logLevel(options *option.LogOptions) (log.Level, error) {
+	if options == nil || options.Level == "" {
+		return log.LevelTrace, nil
+	}
+	level, err := log.ParseLevel(options.Level)
+	if err != nil {
+		return 0, E.Cause(err, "parse log level")
+	}
+	return level, nil
+}
+
+// withoutLevel is the log options without the level, which a hot reload can change: a trace
+// session from the app's Report a problem, its end, or a level picked on the logs page used to
+// restart the core, and the VPN with it (hiddify-app #2637).
+// Log options that hold only a level count as none, as log.New reads them.
+func withoutLevel(options *option.LogOptions) *option.LogOptions {
+	if options == nil {
+		return nil
+	}
+	rest := *options
+	rest.Level = ""
+	if rest == (option.LogOptions{DisableColor: rest.DisableColor}) {
+		return nil
+	}
+	return &rest
 }
 
 // keepTopOptions are the keep top options of the monitoring, which a hot reload can change.
