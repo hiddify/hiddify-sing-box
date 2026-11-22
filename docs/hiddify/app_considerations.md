@@ -120,9 +120,15 @@ do about it. Items marked **Required** break or misbehave until they are handled
   so a hot reload after a subscription update keeps the unchanged proxies and their pings and
   tests only what changed; keep top keeps its pick while every kept proxy is unchanged and none
   timed out. A proxy that worked in this run skips the first mark: it keeps its ping
-  through a slow answer rather than flicker to unavailable after one second. The delay is
+  through a slow answer rather than flicker to unavailable after one second. A proxy with only
+  the previous run's ping that misses the first mark may lose new connections to another, but a
+  balancer closes its open connections only when its test ends failed. The delay is
   published before the IP
   lookup, so the IP arrives after the ping. Nothing to set; the core's defaults are these.
+- **A new log level is hot reloaded.** A config that changes only `log.level` now hot reloads
+  (`HotReloadResult.LogLevel`): Report a problem's verbose level, its end, or a level picked on
+  the logs page no longer restart the core and the VPN. The rest of `log` (output, timestamp,
+  disabled) still needs a restart.
 - **IPv6 for the apps is off by default, and verified per proxy when on.** hiddify-core answers
   the apps with `ipv4_only` DNS rules and rejects every IPv6 destination before the sniff rule
   (so before the handshake) unless the IPv6 mode turns IPv6 on; the app's routing page says why
