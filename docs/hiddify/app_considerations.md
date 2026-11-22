@@ -145,7 +145,9 @@ do about it. Items marked **Required** break or misbehave until they are handled
   once per run by the same URL over IPv6, cached per proxy), `route.ipv6_fallback` (an IPv6
   connection through a proxy not known yet is carried over IPv4 inside the connection and
   teaches the proxy's IPv6), `ipv6_by_outbound` on the DNS rules answering the apps and an
-  `ipv6_unavailable_via` reject rule on the main selector, both fail-open. A subscription turns
+  `ipv6_unavailable_via` reject rule (`no_drop`) on the main selector, both fail-open; the
+  reject refuses only IPv6 the route rules send through the selector, so direct rules keep the
+  device's native IPv6 (hiddify-app #2641). A subscription turns
   IPv6 on for its profile with an `ipv6-mode: prefer_ipv4` header (the app's override list), and
   a share link declares its proxy with `ipv6=1` or `ipv6=0` (ray2sing, `ipv6_declared`). No
   probe of a public address is made (`ipv6_probe` is retired): the verification uses the user's

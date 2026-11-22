@@ -63,11 +63,21 @@ It does not; it keeps a working proxy from looking broken.
 - `ipv6_by_outbound` on a DNS rule: while the named outbound is known to have no IPv6, the query
   runs with the `ipv4_only` strategy (AAAA gets an empty answer); otherwise the rule's own
   strategy applies.
-- `ipv6_unavailable_via` on a route rule: matches a connection to an IPv6 address while the
-  named outbound is known to have no IPv6. With `"action": "reject"` the TUN refuses it before
-  the handshake, the client gets a reset and tries IPv4. Put the rule before any `sniff` rule:
-  the TUN judges a TCP connection before its handshake only up to the first rule that needs the
-  stream.
+- `ipv6_unavailable_via` on a route rule: matches a connection to an IPv6 address that the
+  route rules send through the named outbound, while that outbound is known to have no IPv6.
+  With `"action": "reject"` the TUN refuses it before the handshake, the client gets a reset and
+  tries IPv4. Put the rule before any `sniff` rule: the TUN judges a TCP connection before its
+  handshake only up to the first rule that needs the stream.
+- Which outbound a connection goes through is judged where the item matches, before the
+  handshake: the first rule with a `route` or `bypass` action that matches it, else the final
+  outbound. Those rules see the address, port and process, and a domain only when the DNS or a
+  fake IP already gave one, not a sniffed one. A connection a rule sends direct, bypasses or
+  sends through another outbound keeps its IPv6: a domestic service the device reaches over its
+  own IPv6 is not refused because the proxy lacks it, which an app that resolves through its own
+  DNS (WeChat) never recovers from (hiddify-app #2641). One that a sniffed domain later sends
+  through the outbound is carried over IPv4 by `ipv6_fallback`.
+- Give the reject `"no_drop": true`: past 50 refusals in 30 s a reject otherwise drops silently,
+  and every IPv6 connection hangs until it times out instead of falling back.
 
 ## Configuration
 
@@ -81,7 +91,7 @@ It does not; it keeps a working proxy from looking broken.
   "route": {
     "ipv6_fallback": true,
     "rules": [
-      { "ip_version": 6, "ipv6_unavailable_via": "select", "action": "reject" },
+      { "ip_version": 6, "ipv6_unavailable_via": "select", "action": "reject", "no_drop": true },
       { "action": "sniff" }
     ]
   },
@@ -97,7 +107,7 @@ It does not; it keeps a working proxy from looking broken.
 | Field | Where | Type | Default | Meaning |
 |---|---|---|---|---|
 | `ipv6_by_outbound` | DNS rule action `route`, `route_options` | string | | An outbound, or a group; while it is known to have no IPv6, AAAA questions get an empty answer. |
-| `ipv6_unavailable_via` | route rule | string | | An outbound, or a group; the rule matches an IPv6 destination while it is known to have no IPv6. |
+| `ipv6_unavailable_via` | route rule | string | | An outbound, or a group; the rule matches an IPv6 destination the route rules send through it, while it is known to have no IPv6. |
 | `ipv6_fallback` | `route` | bool | `false` | A TCP connection to an IPv6 address through an outbound not known yet is carried over IPv4 (the sniffed domain) when the outbound gives nothing, and teaches the outbound's IPv6. |
 | `verify_ipv6` | `experimental.monitoring` | bool | `false` | After each outbound's URL test, the same URL is fetched over the host's IPv6 address through it, once per run; the answer is cached with the URL test results. |
 | `ipv6_declared` | `experimental.monitoring` | object, tag to bool | | Outbounds whose IPv6 the link declared (`ipv6=1`, `ipv6=0`); known from the start. |
