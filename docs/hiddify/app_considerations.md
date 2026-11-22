@@ -229,7 +229,9 @@ do about it. Items marked **Required** break or misbehave until they are handled
 - **Deep search: ask the user.** WARP (over WireGuard, AmneziaWG or MASQUE) and the unblocker's Psiphon
   implement `adapter.DeepSearcher`: when their search finds nothing within `search_timeout`
   (1 minute), `DeepSearchAvailable()` is true, and hiddify-core sends it as
-  `OutboundInfo.deep_search_available`. The app asks the user (it may take hours and use a lot of
+  `OutboundInfo.deep_search_available`. The offer coming or going calls
+  `adapter.DeepSearchChanged()`; hiddify-core listens with `adapter.SubscribeDeepSearch()` and
+  sends the proxy list again at once, since the monitoring may not test again for minutes. The app asks the user (it may take hours and use a lot of
   battery and CPU) and calls the `StartDeepSearch` RPC with the tag. The search options
   (`search_timeout`, which is also the deep search setting: below zero a deep search from the
   start, above 3 minutes a deep one with that limit; `deep_concurrency`, `block_bits_ipv4`,

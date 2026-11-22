@@ -3,6 +3,8 @@ package edgescan
 import (
 	"net/netip"
 	"sync"
+
+	"github.com/sagernet/sing-box/adapter"
 )
 
 // Status is what the scanner of an outbound is doing, for its display type. Scans may overlap
@@ -25,8 +27,24 @@ type Status struct {
 // Exhausted marks a search that found nothing within its time, or clears the mark.
 func (s *Status) Exhausted(exhausted bool) {
 	s.access.Lock()
+	offered := s.offeredLocked()
 	s.exhausted = exhausted
+	now := s.offeredLocked()
 	s.access.Unlock()
+	offerChanged(offered, now)
+}
+
+// offeredLocked is whether a deep search is offered; s.access must be held.
+func (s *Status) offeredLocked() bool {
+	return s.exhausted && !s.deep
+}
+
+// offerChanged tells the app, through adapter.DeepSearchChanged, when the offer of a deep search
+// changed: it is sent the proxy list again, without waiting for the monitoring's next test.
+func offerChanged(was, now bool) {
+	if now != was {
+		adapter.DeepSearchChanged()
+	}
 }
 
 // DeepSearchAvailable reports whether the last search found nothing within its time, and no
@@ -34,19 +52,23 @@ func (s *Status) Exhausted(exhausted bool) {
 func (s *Status) DeepSearchAvailable() bool {
 	s.access.Lock()
 	defer s.access.Unlock()
-	return s.exhausted && !s.deep
+	return s.offeredLocked()
 }
 
 // TryStartDeep marks a deep search asked for, and reports whether it was not already: one caller
 // starts it.
 func (s *Status) TryStartDeep() bool {
 	s.access.Lock()
-	defer s.access.Unlock()
 	if s.deep {
+		s.access.Unlock()
 		return false
 	}
+	offered := s.offeredLocked()
 	s.deep = true
 	s.exhausted = false
+	now := s.offeredLocked()
+	s.access.Unlock()
+	offerChanged(offered, now)
 	return true
 }
 
@@ -54,11 +76,14 @@ func (s *Status) TryStartDeep() bool {
 // only when it was a deep one: a deep search asked for while a normal one ran is kept for after.
 func (s *Status) Deep(deep bool) {
 	s.access.Lock()
+	offered := s.offeredLocked()
 	s.deep = deep
 	if deep {
 		s.exhausted = false
 	}
+	now := s.offeredLocked()
 	s.access.Unlock()
+	offerChanged(offered, now)
 }
 
 // IsDeep reports whether a deep search was asked for and has not ended.
