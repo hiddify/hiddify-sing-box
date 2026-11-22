@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -261,6 +262,57 @@ func TestH_SoarEndToEndSmartPool(t *testing.T) {
 	require.NoError(t, out.PostStart())
 	echoThrough(t, out)
 	require.Equal(t, 1, out.PoolResolvers())
+}
+
+// Closing a connection drops what the tunnel has not sent of it. The client's own Close still
+// sent the whole request first: connections their apps had given up kept the few bytes a query
+// carries, and their stream slots, from the ones still waited for (hiddify-app#2634). Here the
+// resolver stops answering, so the request cannot leave, and the only stream slot must be free
+// for the next connection the moment the first is closed.
+func TestH_SoarCloseDropsUnsentRequest(t *testing.T) {
+	t.Parallel()
+	pub, priv := testKey(t)
+	authority := startSoarServer(t, priv, startEcho(t))
+	var stalled atomic.Bool
+	handler := dns.HandlerFunc(func(w dns.ResponseWriter, r *dns.Msg) {
+		if stalled.Load() {
+			return
+		}
+		client := &dns.Client{Net: "udp", UDPSize: 4096, Timeout: 3 * time.Second}
+		if resp, _, err := client.Exchange(r, authority); err == nil {
+			_ = w.WriteMsg(resp)
+		}
+	})
+	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
+	require.NoError(t, err)
+	relay := &dns.Server{PacketConn: pc, Handler: handler, UDPSize: 4096}
+	go relay.ActivateAndServe()
+	t.Cleanup(func() { relay.Shutdown() })
+
+	out := newTestOutbound(t, option.SoarOptions{
+		Domain:     testZone,
+		PublicKey:  base64.StdEncoding.EncodeToString(pub),
+		Resolvers:  []string{pc.LocalAddr().String()},
+		SmartPool:  &option.SmartPoolOptions{},
+		MaxStreams: 1,
+	})
+	require.NoError(t, out.PreStart())
+	require.NoError(t, out.PostStart())
+	echoThrough(t, out) // the session is up, and its one stream given back
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	stalled.Store(true)
+	first, err := out.DialContext(ctx, N.NetworkTCP, M.ParseSocksaddr("example.com:443"))
+	require.NoError(t, err)
+	_, err = first.Write(make([]byte, 1700))
+	require.NoError(t, err)
+	_, err = out.DialContext(ctx, N.NetworkTCP, M.ParseSocksaddr("example.com:443"))
+	require.ErrorContains(t, err, "too many streams", "the first connection holds the only stream")
+	require.NoError(t, first.Close())
+	second, err := out.DialContext(ctx, N.NetworkTCP, M.ParseSocksaddr("example.com:443"))
+	require.NoError(t, err, "a closed connection still held its stream")
+	require.NoError(t, second.Close())
 }
 
 // Datagrams to the pool go through the loopback socket, the rest through the outside one, and

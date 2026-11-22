@@ -408,7 +408,23 @@ func (h *Outbound) DialContext(ctx context.Context, network string, destination 
 	if err != nil {
 		return nil, E.Cause(err, "soar connect to ", destination)
 	}
+	if stream, isStream := conn.(*soar.Conn); isStream {
+		return &abortOnClose{stream}, nil
+	}
 	return conn, nil
+}
+
+// abortOnClose is a tunnel connection whose Close drops what has not been sent. sing-box closes
+// a connection when both directions ended or one failed: nobody waits for the rest of the
+// request then, and the client's own Close would still send all of it, a TLS hello taking some
+// forty queries, for an app that gave up (hiddify-app#2634). An app's FIN is CloseWrite, which
+// still delivers everything written.
+type abortOnClose struct {
+	*soar.Conn
+}
+
+func (c *abortOnClose) Close() error {
+	return c.Conn.Abort()
 }
 
 func (h *Outbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
