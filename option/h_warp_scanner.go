@@ -24,12 +24,15 @@ type WARPScannerOptions struct {
 	// Concurrency is the number of probes run at once; 8 on Android and iOS, 32 elsewhere, when
 	// zero.
 	Concurrency int `json:"concurrency,omitempty"`
-	// SearchNoise also looks for noise that gets through (WireGuard and AmneziaWG): when no
-	// endpoint answers with the noise drawn first, the scan is tried again with the others, and
-	// the one that works gains a point on the network (see warpscan.Book.OrderMethods).
+	// SearchNoise also looks for noise that gets through: when no endpoint answers with the noise
+	// drawn first, the scan is tried again with the others, and the one that works gains a point
+	// on the network (see warpscan.Book.OrderMethods). WireGuard and AmneziaWG try the packets of
+	// warpscan.NoisePresets; MASQUE tries the TLS server names of warpscan.MASQUENoisePresets
+	// (www.speedtest.net) next to its configured one.
 	SearchNoise bool `json:"search_noise,omitempty"`
 	// NoisePresets are the presets tried, in a weighted random order by their rating on the
-	// network; all of warpscan.NoisePresets when empty.
+	// network; each tunnel takes the names of its own presets. All of warpscan.NoisePresets
+	// (WireGuard, AmneziaWG) and warpscan.MASQUENoisePresets (MASQUE) when empty.
 	NoisePresets badoption.Listable[string] `json:"noise_presets,omitempty"`
 	// EdgeSearchOptions: how long and how hard the search goes on.
 	EdgeSearchOptions

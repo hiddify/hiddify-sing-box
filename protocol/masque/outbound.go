@@ -91,6 +91,9 @@ func newWARPOutbound(ctx context.Context, logger log.ContextLogger, tag string, 
 	if _, err := tunnelMode(options); err != nil { // a wrong vhttp fails the config, not the start
 		return nil, err
 	}
+	if err := validateNoisePresets(options.Scanner); err != nil { //H
+		return nil, err //H
+	} //H
 	if profileKey == "" {
 		profileKey = options.UniqueIdentifier //H: unique_identifier, so renaming the outbound keeps the device
 	}
@@ -231,7 +234,8 @@ func (w *Outbound) startTunnel(appConfig *Config) error {
 	}
 	if scanner != nil { //H: scores and failover
 		tunnel.SetFailover(scanner.OnConnected, scanner.NextEndpoint)
-		w.tunnelAccess.Lock() //H
+		tunnel.SetTLSConfigFor(scanner.noises.TLSConfig) //H: the server name the scanner found
+		w.tunnelAccess.Lock()                            //H
 		w.scanner = scanner
 		w.tunnelAccess.Unlock() //H
 	}

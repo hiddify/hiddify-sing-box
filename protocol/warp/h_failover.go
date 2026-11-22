@@ -329,6 +329,9 @@ func (w *WARPEndpoint) noiseCandidates(failover *warpFailover, networkName strin
 	byMethod := map[string]string{warpscan.NoiseMethod(""): ""}
 	methods := []string{warpscan.NoiseMethod("")}
 	for _, preset := range presets {
+		if _, isWireGuard := warpscan.NoisePresetByName(preset); !isWireGuard {
+			continue // a MASQUE noise (a server name), for the MASQUE tunnel
+		}
 		method := warpscan.NoiseMethod(preset)
 		if _, seen := byMethod[method]; !seen {
 			byMethod[method] = preset

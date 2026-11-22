@@ -30,6 +30,9 @@ type TunnelOptions struct {
 	OnConnected func(endpoint net.Addr, http2 bool, elapsed time.Duration)
 	// NextEndpoint is asked for another endpoint after failed connects; nil keeps the endpoint.
 	NextEndpoint func(failed net.Addr, http2 bool) net.Addr
+	// TLSConfigFor is the TLS of the next connect of the HTTP version (the scanner's noise, a
+	// server name); nil is TLSConfig. //H
+	TLSConfigFor func(http2 bool) tls.Config //H
 	// OnRejected reports a connect the server refused because of the device (IsRejected). //H
 	OnRejected func(err error) //H
 	// ConnectURI is the URI template of the CONNECT-IP request; DefaultConnectURI when empty.

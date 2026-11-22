@@ -103,7 +103,7 @@ func NewWARPEndpoint(ctx context.Context, router adapter.Router, logger log.Cont
 	} //H
 	if options.Scanner != nil { //H
 		for _, name := range options.Scanner.NoisePresets { //H
-			if _, found := warpscan.NoisePresetByName(name); !found { //H
+			if !warpscan.IsNoisePreset(name) { //H: WireGuard's or MASQUE's
 				return nil, E.New("warp: unknown noise preset: ", name) //H
 			} //H
 		} //H

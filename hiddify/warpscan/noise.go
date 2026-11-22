@@ -1,6 +1,8 @@
 package warpscan
 
 import (
+	"strings"
+
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/wireguard-go/hiddify"
 )
@@ -79,4 +81,39 @@ func AWGProbeNoise(awg *option.AwgOptions) hiddify.NoiseOptions {
 		Count:   hiddify.Range{From: int32(awg.Jc), To: int32(awg.Jc)},
 		Size:    hiddify.Range{From: int32(awg.Jmin), To: int32(awg.Jmax)},
 	}}
+}
+
+// MASQUENoisePreset is a noise of a MASQUE tunnel: a TLS server name that gets the handshake
+// through where the default one (consumer-masque.cloudflareclient.com) is blocked. Cloudflare's
+// endpoint answers any name, and the tunnel pins the endpoint's key, not the name.
+type MASQUENoisePreset struct {
+	Name       string
+	ServerName string
+}
+
+// MASQUENoisePresets are the noises the MASQUE scanner tries with search_noise, in this order
+// when none is rated on the network.
+var MASQUENoisePresets = []MASQUENoisePreset{
+	{Name: "speedtest", ServerName: "www.speedtest.net"},
+}
+
+// MASQUENoisePresetByName returns the MASQUE preset called name, in any case.
+func MASQUENoisePresetByName(name string) (MASQUENoisePreset, bool) {
+	name = strings.ToLower(strings.TrimSpace(name))
+	for _, preset := range MASQUENoisePresets {
+		if preset.Name == name {
+			return preset, true
+		}
+	}
+	return MASQUENoisePreset{}, false
+}
+
+// IsNoisePreset reports whether name is a WireGuard or a MASQUE noise preset: noise_presets
+// names both, and each tunnel takes its own.
+func IsNoisePreset(name string) bool {
+	if _, found := NoisePresetByName(name); found {
+		return true
+	}
+	_, found := MASQUENoisePresetByName(name)
+	return found
 }

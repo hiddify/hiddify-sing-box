@@ -48,7 +48,8 @@ type masqueScanner struct {
 	options     option.MASQUEOutboundOptions
 	key         string
 	traceDialer N.Dialer
-	probes      map[bool]warpscan.Probe // per HTTP/2
+	probes      map[bool]warpscan.Probe // per HTTP/2, with the configured server name
+	noises      *masqueNoises           // the TLS and probes of the other server names, see h_noise.go
 
 	status *warpscan.Status
 
@@ -95,6 +96,7 @@ func newMASQUEScanner(ctx context.Context, logger log.ContextLogger, key string,
 			false: warpscan.MASQUEProbe(probeDialer, tlsConfig, false),
 			true:  warpscan.MASQUEProbe(probeDialer, tlsConfig, true),
 		},
+		noises: newMASQUENoises(probeDialer, tlsConfig),
 	}
 	// the store shared by the scanners that reach the network directly, where the scores kept
 	// under the profile's key before join the others
@@ -132,16 +134,18 @@ func (s *masqueScanner) save() {
 // tunnel's start waits for it.
 func (s *masqueScanner) Scan(http2 bool, exclude []netip.AddrPort) (net.Addr, error) {
 	s.status.Begin()
-	results, err := s.scanRound(s.ctx, http2, exclude, false)
+	results, noise, err := s.scanRound(s.ctx, http2, exclude, false)
 	if err != nil {
 		s.status.NotFound()
 		return nil, err
 	}
-	return s.use(results, http2), nil
+	return s.use(results, http2, noise), nil
 }
 
-func (s *masqueScanner) use(results []warpscan.Result, http2 bool) net.Addr {
+// use takes the best of results, found with noise.
+func (s *masqueScanner) use(results []warpscan.Result, http2 bool, noise string) net.Addr {
 	best := results[0]
+	s.useNoise(http2, noise)
 	s.status.Found(best.AddrPort)
 	s.logger.InfoContext(s.ctx, "WARP scanner: using ", best.AddrPort, versionSuffix(http2), " (score ", best.Score, ", ", best.RTT, ")")
 	return endpointAddr(best.AddrPort, http2)
@@ -156,18 +160,29 @@ func (s *masqueScanner) search(http2 bool, exclude []netip.AddrPort, deepAsked b
 	if !edgescan.Direct(s.ctx, s.options.Detour) {
 		timeout, deep = -1, false // behind another proxy: one round, as before (see edgescan.Search)
 	}
+	type found struct { // the endpoints and the noise they answered with
+		results []warpscan.Result
+		noise   string
+	}
 	run := func(ctx context.Context) (any, error) {
-		return edgescan.Search(ctx, s.logger, timeout, func(ctx context.Context) ([]warpscan.Result, error) {
-			return s.scanRound(ctx, http2, exclude, deep)
+		var noise string
+		results, err := edgescan.Search(ctx, s.logger, timeout, func(ctx context.Context) ([]warpscan.Result, error) {
+			results, roundNoise, err := s.scanRound(ctx, http2, exclude, deep)
+			if err == nil {
+				noise = roundNoise
+			}
+			return results, err
 		})
+		return found{results, noise}, err
 	}
 	s.status.Begin()
 	value, err := s.store.Do(s.ctx, s.searchKey(http2, deep), run)
-	results, _ := value.([]warpscan.Result)
-	results = excludeResults(results, exclude)
+	shared, _ := value.(found)
+	results := excludeResults(shared.results, exclude)
 	if err == nil && len(results) == 0 { // every answer of the shared search is excluded here
 		value, err = run(s.ctx)
-		results, _ = value.([]warpscan.Result)
+		shared, _ = value.(found)
+		results = shared.results
 	}
 	switch {
 	case err == nil && len(results) > 0:
@@ -175,7 +190,7 @@ func (s *masqueScanner) search(http2 bool, exclude []netip.AddrPort, deepAsked b
 		if deepAsked {
 			s.status.Deep(false)
 		}
-		return s.use(results, http2), nil
+		return s.use(results, http2, shared.noise), nil
 	case errors.Is(err, edgescan.ErrSearchExhausted):
 		s.status.NotFound()
 		if deepAsked {
@@ -215,8 +230,9 @@ func excludeResults(results []warpscan.Result, exclude []netip.AddrPort) []warps
 	return kept
 }
 
-// scanRound is one round of a search.
-func (s *masqueScanner) scanRound(ctx context.Context, http2 bool, exclude []netip.AddrPort, deep bool) ([]warpscan.Result, error) {
+// scanRound is one round of a search: with search_noise, one scan per noise until one gets an
+// answer (see scanNoises). It returns the noise the endpoints answered with.
+func (s *masqueScanner) scanRound(ctx context.Context, http2 bool, exclude []netip.AddrPort, deep bool) ([]warpscan.Result, string, error) {
 	network := s.currentNetwork()
 	ipv4, ipv6 := network.IPv4, network.IPv6
 	if s.options.UseIPv6 {
@@ -226,19 +242,22 @@ func (s *masqueScanner) scanRound(ctx context.Context, http2 bool, exclude []net
 	if http2 {
 		defaults.CIDRs = warpscan.MASQUEHTTP2CIDRs
 	}
-	results, err := warpscan.Scan(ctx, s.logger, warpscan.Request{
-		Deep:     deep,
-		Options:  s.options.Scanner,
-		Defaults: defaults,
-		IPv4:     ipv4,
-		IPv6:     ipv6,
-		Book:     s.book,
-		Network:  network.Name + versionSuffix(http2),
-		Exclude:  exclude,
-		Probe:    s.probes[http2],
-	})
+	networkName := network.Name + versionSuffix(http2)
+	results, noise, err := s.scanNoises(ctx, networkName, func(options *masqueScannerOptions, probe warpscan.Probe) ([]warpscan.Result, error) {
+		return warpscan.Scan(ctx, s.logger, warpscan.Request{
+			Deep:     deep,
+			Options:  options,
+			Defaults: defaults,
+			IPv4:     ipv4,
+			IPv6:     ipv6,
+			Book:     s.book,
+			Network:  networkName,
+			Exclude:  exclude,
+			Probe:    probe,
+		})
+	}, http2)
 	s.save()
-	return results, err
+	return results, noise, err
 }
 
 // OnConnected counts a connect of the tunnel as an answer of its endpoint.
@@ -265,14 +284,14 @@ func (s *masqueScanner) NextEndpoint(failed net.Addr, http2 bool) net.Addr {
 			exclude = append(exclude, addrPort)
 		}
 		s.status.Begin()
-		results, err := s.scanRound(s.ctx, http2, exclude, false)
+		results, noise, err := s.scanRound(s.ctx, http2, exclude, false)
 		if err != nil {
 			s.status.NotFound()
 			s.logger.WarnContext(s.ctx, err, ", keeping ", failed, "; searching on")
 			s.searchInBackground(http2, exclude, false)
 			return nil
 		}
-		next = s.use(results, http2)
+		next = s.use(results, http2, noise)
 	}
 	if ok {
 		s.book.Failure(s.currentNetwork().Name+versionSuffix(http2), addrPort, time.Now())

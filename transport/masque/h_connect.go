@@ -10,6 +10,7 @@ import (
 	connectip "github.com/Diniboy1123/connect-ip-go"
 	"github.com/sagernet/quic-go/http3"
 	E "github.com/sagernet/sing/common/exceptions"
+	"github.com/sagernet/sing/common/tls"
 )
 
 // HTTP versions of the tunnel (vhttp).
@@ -73,12 +74,17 @@ func (e *Tunnel) connectLeg(ctx context.Context, http2 bool) (*connection, net.A
 	if http2 && e.options.H2Endpoint != nil {
 		endpoint = e.options.H2Endpoint
 	}
+	tlsConfigFor := e.options.TLSConfigFor
 	e.endpointAccess.Unlock()
+	tlsConfig := e.options.TLSConfig
+	if tlsConfigFor != nil {
+		tlsConfig = tlsConfigFor(http2)
+	}
 	connectURI := e.options.ConnectURI
 	if connectURI == "" {
 		connectURI = DefaultConnectURI
 	}
-	udpConn, tr, ipConn, rsp, err := connectTunnel(ctx, e.options.Dialer, e.options.TLSConfig,
+	udpConn, tr, ipConn, rsp, err := connectTunnel(ctx, e.options.Dialer, tlsConfig,
 		DefaultQuicConfig(e.options.UDPKeepalivePeriod, e.options.UDPInitialPacketSize),
 		connectURI, endpoint, http2)
 	conn := &connection{udpConn, tr, ipConn, http2}
@@ -284,4 +290,11 @@ func (e *Tunnel) SetFailover(onConnected func(endpoint net.Addr, http2 bool, ela
 	defer e.endpointAccess.Unlock()
 	e.options.OnConnected = onConnected
 	e.options.NextEndpoint = nextEndpoint
+}
+
+// SetTLSConfigFor sets TLSConfigFor (see TunnelOptions) before the tunnel starts. //H
+func (e *Tunnel) SetTLSConfigFor(tlsConfigFor func(http2 bool) tls.Config) {
+	e.endpointAccess.Lock()
+	defer e.endpointAccess.Unlock()
+	e.options.TLSConfigFor = tlsConfigFor
 }
