@@ -67,9 +67,11 @@ func Rank(his *adapter.URLTestHistory) uint16 {
 }
 
 // memberDead says whether a member's last test failed. A member that has no result yet is
-// not dead: its connections may be fine, and it is tested soon.
+// not dead: its connections may be fine, and it is tested soon. Nor is one whose test missed only
+// its first mark (Tentative): an attempt may still answer, and on a slow network it does, so its
+// connections are closed only when the test ends failed (hiddify-app #2637).
 func memberDead(his *adapter.URLTestHistory) bool {
-	return his != nil && his.Delay >= monitoring.TimeoutDelay
+	return his != nil && his.Delay >= monitoring.TimeoutDelay && !his.Tentative
 }
 
 // memberGroup is the interrupt group of the member's connections, so a member that dies closes
@@ -130,6 +132,9 @@ func (s *Balancer) settle(history map[string]*adapter.URLTestHistory) {
 	}
 	s.settled.Store(true)
 	for tag, group := range s.members {
+		if his := history[tag]; his != nil && his.Tentative {
+			continue // its test still runs: update closes its connections if it ends failed
+		}
 		if !keep[tag] {
 			group.Interrupt(s.interruptExternalConnections)
 		}

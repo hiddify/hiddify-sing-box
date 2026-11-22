@@ -144,7 +144,10 @@ func (m *OutboundMonitoring) applyInterim(task *testTask, state *outboundState, 
 // one cached from the previous run) has nothing to keep: the miss is all this run knows of it,
 // and the groups see it, so lowest-delay leaves a cached pick that does not answer for one that
 // does. It used to keep the cached result, marked as fresh, and stay on a member the app showed
-// as not responding while others worked.
+// as not responding while others worked. That miss comes marked Tentative: the group may send new
+// connections elsewhere, but the member is not dead until its test ends failed, so its open
+// connections stay (hiddify-app #2637: a working proxy's connections were cut a second after
+// start, and it answered in 313 ms right after).
 func (m *OutboundMonitoring) confirmed(groupTag, outboundTag string, his *adapter.URLTestHistory) *adapter.URLTestHistory {
 	if groupTag == "" || his == nil {
 		return his
@@ -159,7 +162,9 @@ func (m *OutboundMonitoring) confirmed(groupTag, outboundTag string, his *adapte
 		return his
 	}
 	if !Worked(state.confirmed.Delay, state.confirmed.IsFromCache) {
-		return his
+		miss := *his
+		miss.Tentative = true
+		return &miss
 	}
 	last := state.confirmed
 	last.IsFromCache = false

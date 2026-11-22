@@ -228,6 +228,12 @@ func TestH_MonitoringMissOfACachedMemberIsSeenByTheGroups(t *testing.T) {
 	groupSees := func() uint16 { return m.OutboundsHistory("grp")["cached"].Delay }
 	require.Eventually(t, func() bool { return m.OutboundsHistory("")["cached"].Delay == TimeoutDelay }, time.Second, 5*time.Millisecond)
 	require.Equal(t, TimeoutDelay, groupSees(), "nothing of this run to keep: the group sees the miss")
+	require.True(t, m.OutboundsHistory("grp")["cached"].Tentative, "marked tentative, so the group does not close its connections on it (hiddify-app #2637)")
+	require.False(t, m.OutboundsHistory("")["cached"].Tentative, "the app's view is not marked")
+	require.Eventually(t, func() bool {
+		his := m.OutboundsHistory("grp")["cached"]
+		return his.Delay == TimeoutDelay && !his.Tentative
+	}, 5*time.Second, 10*time.Millisecond, "the test ending failed is a real failure for the group")
 }
 
 // A failed attempt is tried again at the next mark, and so until the last mark: a proxy that

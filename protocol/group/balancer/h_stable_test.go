@@ -212,6 +212,27 @@ func TestH_BalancerInterruptsOnlyDeadMember(t *testing.T) {
 	requireOpen(t, onA, "external connections are kept without interrupt_exist_connections")
 }
 
+// A staged test's miss at its first mark (Tentative) may move new connections, but it does not
+// close the member's open ones; only the test ending failed does. hiddify-app #2637: right after
+// start, the selected proxy missed the first mark, its connections were all cut, and it
+// answered in 313 ms a moment later.
+func TestH_BalancerKeepsConnectionsThroughATentativeMiss(t *testing.T) {
+	f := newStable(t, option.BalancerOutboundOptions{Strategy: StrategyLowestDelay, InterruptExistConnections: true})
+	f.lb.update(map[string]*adapter.URLTestHistory{"a": cached(80), "b": cached(300)})
+	require.Equal(t, "a", f.lb.Now())
+	onA := f.dial(t)
+
+	miss := timeout()
+	miss.Tentative = true
+	f.lb.update(map[string]*adapter.URLTestHistory{"a": miss, "b": cached(300)})
+	requireOpen(t, onA, "a tentative miss does not close the member's connections")
+	f.lb.settle(map[string]*adapter.URLTestHistory{"a": miss, "b": his(250)})
+	requireOpen(t, onA, "nor does the settle while the member's test still runs")
+
+	f.lb.update(map[string]*adapter.URLTestHistory{"a": timeout(), "b": his(250)})
+	requireClosed(t, onA, "the test ending failed closes them")
+}
+
 // The first tests after start may move the selection several times; the connections made
 // before them are moved once, when the settle window ends, and never again for speed.
 func TestH_BalancerSettlesOnce(t *testing.T) {

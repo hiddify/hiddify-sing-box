@@ -40,6 +40,10 @@ type URLTestHistory struct {
 	// LastGood: the last delay of a test that worked, kept when a later one fails: of the
 	// outbounds that fail, the ones that worked are tested first. //H
 	LastGood uint16 `json:"last_good,omitempty"` //H
+	// Tentative: Delay is a staged test's miss at its first mark, while an attempt may still
+	// answer. A group may prefer another member on it, but must not take the member for dead
+	// and close its connections. Only what monitoring hands a group; never stored. //H
+	Tentative bool `json:"-"` //H
 }
 
 type URLTestHistoryStorage interface {
