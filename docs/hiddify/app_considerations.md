@@ -228,7 +228,7 @@ do about it. Items marked **Required** break or misbehave until they are handled
   `establish_tunnel_timeout` 3 minutes.
 - **Deep search: ask the user.** WARP (over WireGuard, AmneziaWG or MASQUE) and the unblocker's Psiphon
   implement `adapter.DeepSearcher`: when their search finds nothing within `search_timeout`
-  (3 minutes), `DeepSearchAvailable()` is true, and hiddify-core sends it as
+  (1 minute), `DeepSearchAvailable()` is true, and hiddify-core sends it as
   `OutboundInfo.deep_search_available`. The app asks the user (it may take hours and use a lot of
   battery and CPU) and calls the `StartDeepSearch` RPC with the tag. The search options
   (`search_timeout`, which is also the deep search setting: below zero a deep search from the

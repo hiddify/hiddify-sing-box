@@ -10,8 +10,14 @@ import (
 	"github.com/sagernet/sing/common/logger"
 )
 
-// DefaultSearchTimeout is how long a search goes on before it offers a deep search.
-const DefaultSearchTimeout = 3 * time.Minute
+// DefaultSearchTimeout is how long a search goes on before it offers a deep search. It is short:
+// while the unblocker hop searches, the VPN is on and nothing loads, and users gave up before the
+// offer came (it was 3 minutes).
+const DefaultSearchTimeout = time.Minute
+
+// deepSearchAbove is the search_timeout above which a search is a deep one from the start, with
+// that limit.
+const deepSearchAbove = 3 * time.Minute
 
 // minRound spaces the rounds of a search, so a small space is not probed in a tight loop.
 var minRound = 5 * time.Second
@@ -21,9 +27,9 @@ var minRound = 5 * time.Second
 var ErrSearchExhausted = errors.New("search exhausted")
 
 // SearchLimit is how long a search of options goes on, 0 for no limit, and whether it is a deep
-// one (more workers, see Request.Deep). search_timeout is the one setting: 3 minutes by default;
-// a deep search has no limit (below zero) or a long one (above DefaultSearchTimeout). A deep
-// search the user asked for keeps a long search_timeout, and otherwise has no limit.
+// one (more workers, see Request.Deep). search_timeout is the one setting: 1 minute by default;
+// a deep search has no limit (below zero) or a long one (above deepSearchAbove, 3 minutes). A
+// deep search the user asked for keeps a long search_timeout, and otherwise has no limit.
 func SearchLimit(options *option.EdgeSearchOptions, deepAsked bool) (time.Duration, bool) {
 	timeout := DefaultSearchTimeout
 	if options != nil && options.SearchTimeout != 0 {
@@ -32,7 +38,7 @@ func SearchLimit(options *option.EdgeSearchOptions, deepAsked bool) (time.Durati
 	switch {
 	case timeout < 0:
 		return 0, true
-	case timeout > DefaultSearchTimeout:
+	case timeout > deepSearchAbove:
 		return timeout, true
 	case deepAsked:
 		return 0, true

@@ -339,7 +339,7 @@ Ranges take a number (`5`), a string (`"5-10"`) or an object (`{"from": 5, "to":
 | `concurrency` | number | `8` on Android and iOS, `32` elsewhere | Probes run at once. All the scans of the process together run at most 32 (phones) or 128 (desktops). |
 | `search_noise` | bool | `false` | Also look for noise that gets through. See below. |
 | `noise_presets` | list of strings | all presets | The presets `search_noise` tries, in order. |
-| `search_timeout` | duration | `3m` | How long a search goes on, round after round, before it gives up and offers a deep search. A deep search has no limit or a long one: below zero, a deep search from the start; above `3m`, a deep one with that limit. |
+| `search_timeout` | duration | `1m` | How long a search goes on, round after round, before it gives up and offers a deep search. A deep search has no limit or a long one: below zero, a deep search from the start; above `3m`, a deep one with that limit. |
 | `deep_concurrency` | number | twice `concurrency` | Probes a deep search runs at once. |
 | `block_bits_ipv4` | number | `24` | Size of the IPv4 blocks rated on each network. |
 | `block_bits_ipv6` | number | `48` | Size of the IPv6 blocks rated on each network. |

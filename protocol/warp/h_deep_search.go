@@ -17,8 +17,8 @@ import (
 	E "github.com/sagernet/sing/common/exceptions"
 )
 
-// A search for an endpoint goes on, round after round, for the scanner's search_timeout (3
-// minutes): the first round usually finds one, and on a network that filters most of them the
+// A search for an endpoint goes on, round after round, for the scanner's search_timeout (1
+// minute): the first round usually finds one, and on a network that filters most of them the
 // next rounds walk on through the ranges. When it finds nothing, the endpoint uses the profile's
 // endpoint as before, and offers a deep search (adapter.DeepSearcher): no time limit and more
 // workers, which the app starts when the user agrees. A search_timeout below zero, or above 3

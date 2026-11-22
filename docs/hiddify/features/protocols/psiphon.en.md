@@ -78,9 +78,10 @@ server it knows is blocked and it cannot fetch a new list.
   core takes it at its next connect. The tunnel core also tries the server it connected to last
   first, by itself.
 - **Search and deep search** (first hop only): the scans and the tunnel core's attempts go on
-  for the scanner's `search_timeout` (3 minutes); an attempt ends at the end of that time. When
-  no tunnel comes up in it, the outbound stops trying and offers a deep search: the app asks the
-  user, since it may go on for hours and use a lot of battery and CPU. A deep search gives the
+  for the scanner's `search_timeout` (1 minute); an attempt ends at the end of that time. When
+  no tunnel comes up in it, the outbound offers a deep search and goes on trying with its restart
+  backoff: the app asks the user, since a deep search may go on for hours and use a lot of
+  battery and CPU, and starts it at once, ending the attempt that runs. A deep search gives the
   tunnel core no time limit in its aggressive mode, with more workers, and the scans
   `deep_concurrency` probes. A new network starts a normal search again. `search_timeout` below
   zero is a deep search from the start, and above 3 minutes a deep one with that limit. Behind
@@ -160,7 +161,7 @@ server it knows is blocked and it cannot fetch a new list.
 | `candidates` | int | `2` | How many answering edges of each CDN go to the tunnel core; the scan stops once that many per CDN set answered. |
 | `count` | int | `256` | The most edges probed in one round of a scan. |
 | `concurrency` | int | `16` on Android and iOS, `48` elsewhere | Probes run at once. |
-| `search_timeout` | duration | `3m` | How long the search goes on before it offers a deep search. Below zero, a deep search from the start; above `3m`, a deep one with that limit. |
+| `search_timeout` | duration | `1m` | How long the search goes on before it offers a deep search. Below zero, a deep search from the start; above `3m`, a deep one with that limit. |
 | `deep_concurrency` | int | twice `concurrency` | Probes a deep search runs at once. |
 | `block_bits_ipv4` | int | `24` | Size of the IPv4 blocks rated on each network. |
 | `block_bits_ipv6` | int | `48` | Size of the IPv6 blocks rated on each network. |

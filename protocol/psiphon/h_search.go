@@ -10,9 +10,10 @@ import (
 )
 
 // As the first hop (with the scanner), Psiphon searches for a way through for the scanner's
-// search_timeout (3 minutes): edge scans and tunnel core attempts, one after the other. When no
-// tunnel comes up within it, the outbound stops trying and offers a deep search
-// (adapter.DeepSearcher), which the app starts when the user agrees: the tunnel core then tries
+// search_timeout (1 minute): edge scans and tunnel core attempts, one after the other. When no
+// tunnel comes up within it, the outbound offers a deep search (adapter.DeepSearcher) and goes on
+// trying as before, with the restart backoff; the app starts the deep search when the user
+// agrees, at once, ending the attempt that runs: the tunnel core then tries
 // with no time limit in its aggressive mode, with more workers, and the scans with
 // deep_concurrency. A search_timeout below zero, or above 3 minutes, is a deep search from the
 // start. A new network starts a normal search again. Behind another proxy there is no search
@@ -89,21 +90,12 @@ func (h *Outbound) searchExhausted(searchStart time.Time) bool {
 	return true
 }
 
-// waitSearch waits after a search gave up: for a deep search to be asked for, for another
-// network, or for restartMax, after which a normal search runs again (the deep search stays
-// offered), so a Psiphon that lost its tunnel to an outage comes back without the app; false
-// when the outbound closes.
-func (h *Outbound) waitSearch() bool {
-	select {
-	case <-h.ctx.Done():
-		return false
-	case <-h.reconnectCh:
-		if !h.scanner.status.IsDeep() {
-			h.scanner.status.Exhausted(false) // another network: a normal search
-		}
-		return true
-	case <-time.After(restartMax):
-		return true
+// searchWoken starts the search over when the loop is woken: by a deep search asked for, which
+// it runs, or by another network, where a normal search runs again and no deep search is offered
+// until it gives up too.
+func (h *Outbound) searchWoken() {
+	if h.scanner != nil && !h.scanner.status.IsDeep() {
+		h.scanner.status.Exhausted(false)
 	}
 }
 
@@ -122,6 +114,9 @@ func (h *Outbound) StartDeepSearch() error {
 		return nil // nothing gave up, or a deep search runs
 	}
 	h.logger.Info("psiphon: deep search")
+	if !h.psiphon.IsConnected() { // the attempt of the normal search ends now, not at its timeout
+		h.psiphon.stop()
+	}
 	h.requestReconnect()
 	return nil
 }

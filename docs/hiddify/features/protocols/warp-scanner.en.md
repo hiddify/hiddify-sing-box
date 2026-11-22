@@ -155,7 +155,7 @@ not tried.
 
 ### Search and deep search
 
-A search goes on round after round for `search_timeout` (3 minutes): the first round usually
+A search goes on round after round for `search_timeout` (1 minute): the first round usually
 finds an endpoint, and on a network that filters most of them the next rounds walk on through
 the ranges, each where the last stopped. A round that ends in less than 5 seconds waits for the
 rest of them, so a small space is not probed in a tight loop. When nothing answers in that time,
@@ -163,7 +163,7 @@ the endpoint uses the profile's endpoint as before, and offers a **deep search**
 the user, since it may go on for hours and use a lot of battery and CPU. A deep search has no
 time limit and runs `deep_concurrency` probes at once (twice `concurrency`); when it finds an
 endpoint, WARP switches to it. `search_timeout` is the one setting: below zero, the search is a
-deep one from the start (the endpoint starts with a 3 minute search, then goes on deep in the
+deep one from the start (the endpoint starts with a 1 minute search, then goes on deep in the
 background); above 3 minutes, a deep one with that limit. Phones scan with fewer workers than
 desktops: `concurrency` is 8 on Android and iOS and 32 elsewhere, and all the scans of the
 process together run at most 32 probes at once on a phone and 128 on a desktop, however many WARP

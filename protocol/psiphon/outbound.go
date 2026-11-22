@@ -396,19 +396,18 @@ func (h *Outbound) run() {
 		if h.ctx.Err() != nil {
 			return
 		}
-		if h.searchExhausted(searchStart) { //H: wait for a deep search or another network
-			if !h.waitSearch() {
-				return
-			}
-			searchStart, backoff = time.Now(), restartMin
-			continue
-		}
+		if h.searchExhausted(searchStart) { //H: a deep search is offered, and the normal search goes on
+			searchStart = time.Now() //H
+		} //H
 		h.logger.Warn("psiphon: ", err, ", starting again in ", backoff)
 		select {
 		case <-h.ctx.Done():
 			return
 		case <-time.After(backoff):
 		case <-h.reconnectCh: //H: a deep search asked for, or another network
+			h.searchWoken()                               //H
+			searchStart, backoff = time.Now(), restartMin //H
+			continue                                      //H
 		}
 		backoff = min(backoff*2, restartMax)
 	}

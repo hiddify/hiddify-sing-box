@@ -58,8 +58,8 @@ func TestH_Search(t *testing.T) {
 	require.Equal(t, 1, rounds, "behind another proxy: one round")
 }
 
-// search_timeout is the one setting: 3 minutes by default; a deep search has no limit, or a long
-// one.
+// search_timeout is the one setting: 1 minute by default; a deep search has no limit, or a long
+// one (above 3 minutes).
 func TestH_SearchLimit(t *testing.T) {
 	limit := func(timeout time.Duration, asked bool) (time.Duration, bool) {
 		return SearchLimit(&option.EdgeSearchOptions{SearchTimeout: badoption.Duration(timeout)}, asked)
@@ -69,10 +69,13 @@ func TestH_SearchLimit(t *testing.T) {
 		require.Equal(t, want, got, "%s asked=%v", timeout, asked)
 		require.Equal(t, wantDeep, deep, "%s asked=%v", timeout, asked)
 	}
+	require.Equal(t, time.Minute, DefaultSearchTimeout)
 	check(0, false, DefaultSearchTimeout, false)
 	check(0, true, 0, true)
 	check(time.Minute, false, time.Minute, false)
 	check(time.Minute, true, 0, true)
+	check(3*time.Minute, false, 3*time.Minute, false)
+	check(3*time.Minute+time.Second, false, 3*time.Minute+time.Second, true)
 	check(2*time.Hour, false, 2*time.Hour, true)
 	check(2*time.Hour, true, 2*time.Hour, true)
 	check(-1, false, 0, true)

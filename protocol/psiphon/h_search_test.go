@@ -23,7 +23,8 @@ func TestH_PsiphonSearch(t *testing.T) {
 	require.NotNil(t, out.scanner, "the first hop scans")
 	require.Equal(t, edgescan.PlatformDefault(16, 48), scannerDefaults.Concurrency)
 
-	start := time.Now().Add(-2*time.Minute - 50*time.Second)
+	require.Equal(t, time.Minute, edgescan.DefaultSearchTimeout)
+	start := time.Now().Add(-50 * time.Second)
 	out.limitSearch(start)
 	require.Equal(t, int(minAttempt/time.Second), *out.psiphon.config.EstablishTunnelTimeoutSeconds, "the attempt ends with the search")
 	require.False(t, out.psiphon.config.AggressiveEstablishment)
@@ -35,7 +36,10 @@ func TestH_PsiphonSearch(t *testing.T) {
 
 	require.NoError(t, out.StartDeepSearch())
 	require.False(t, adapter.DeepSearchAvailable(out), "it runs")
-	require.True(t, out.waitSearch(), "the deep search wakes the loop")
+	require.Len(t, out.reconnectCh, 1, "the deep search wakes the loop")
+	<-out.reconnectCh
+	out.searchWoken()
+	require.True(t, out.scanner.status.IsDeep(), "woken by the deep search, which it runs")
 	out.limitSearch(time.Now())
 	require.Equal(t, int(deepAttempt/time.Second), *out.psiphon.config.EstablishTunnelTimeoutSeconds, "no limit, in attempts that each scan first")
 	require.True(t, out.psiphon.config.AggressiveEstablishment)
@@ -44,7 +48,7 @@ func TestH_PsiphonSearch(t *testing.T) {
 	out.searchFound()
 	require.False(t, out.scanner.status.IsDeep())
 	out.limitSearch(time.Now())
-	require.InDelta(t, int(defaultEstablishTunnelTimeout/time.Second), *out.psiphon.config.EstablishTunnelTimeoutSeconds, 1)
+	require.InDelta(t, int(min(defaultEstablishTunnelTimeout, edgescan.DefaultSearchTimeout)/time.Second), *out.psiphon.config.EstablishTunnelTimeoutSeconds, 1, "a new search: an attempt is at most its time")
 	require.NoError(t, out.Close())
 }
 
@@ -132,8 +136,8 @@ func TestH_PsiphonDirectDetour(t *testing.T) {
 	require.False(t, scannerByDetour(proxy.ctx, proxy.options))
 }
 
-// After a search gave up, Psiphon tries again after restartMax by itself, the deep search still
-// offered; a deep search is only started once a search gave up, and once.
+// After a search gave up, Psiphon goes on trying with its backoff, the deep search still offered;
+// another network takes the offer back, for a normal search there first; a deep search is only started once a search gave up, and once.
 func TestH_PsiphonSearchKeepsTrying(t *testing.T) {
 	t.Parallel()
 	out := newTestOutbound(t, option.PsiphonOutboundOptions{DataDirectory: t.TempDir()})
@@ -146,5 +150,12 @@ func TestH_PsiphonSearchKeepsTrying(t *testing.T) {
 	require.Len(t, out.reconnectCh, 1, "one wake")
 	out.searchFound()
 	require.Empty(t, out.reconnectCh, "a wake asked for before the tunnel came up is done")
+
+	require.True(t, out.searchExhausted(time.Now().Add(-edgescan.DefaultSearchTimeout)))
+	out.InterfaceUpdated(out.ctx)
+	require.Len(t, out.reconnectCh, 1, "another network wakes the loop")
+	<-out.reconnectCh
+	out.searchWoken()
+	require.False(t, adapter.DeepSearchAvailable(out), "a normal search runs on the new network")
 	require.NoError(t, out.Close())
 }

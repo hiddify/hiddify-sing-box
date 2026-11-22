@@ -8,7 +8,7 @@ import "github.com/sagernet/sing/common/json/badoption"
 // address blocks it tries. Zero values keep the defaults.
 type EdgeSearchOptions struct {
 	// SearchTimeout is how long a search goes on, round after round, before it gives up and
-	// offers a deep search; 3m when zero. A deep search has no time limit: below zero, the search
+	// offers a deep search; 1m when zero. A deep search has no time limit: below zero, the search
 	// is one from the start, and above 3m it is a deep one with that limit (DeepConcurrency
 	// workers, and Psiphon's aggressive mode).
 	SearchTimeout badoption.Duration `json:"search_timeout,omitempty"`
