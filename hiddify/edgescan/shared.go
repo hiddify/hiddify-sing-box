@@ -32,6 +32,7 @@ type Store struct {
 	legacy    *Book // a single book saved before stores, given to the first kind that asks
 	merged    map[string]bool
 	flights   map[string]*flight
+	lastWays  map[string]LastWay // see LastWay
 
 	networkAccess sync.Mutex
 	network       *NetworkInfo
@@ -115,6 +116,8 @@ type savedStore struct {
 	Books   map[string]json.RawMessage `json:"k"`
 	// Adopted are the keys whose books joined the store (see Adopt), not read again
 	Adopted []string `json:"a,omitempty"`
+	// LastWays are the ways through that worked last, by key (see LastWay)
+	LastWays map[string]LastWay `json:"g,omitempty"`
 }
 
 func (s *Store) load(cacheFile adapter.CacheFile) {
@@ -130,6 +133,7 @@ func (s *Store) load(cacheFile adapter.CacheFile) {
 		for _, key := range content.Adopted {
 			s.merged[key] = true
 		}
+		s.lastWays = content.LastWays
 		for kind, raw := range content.Books {
 			book := NewBook()
 			if book.UnmarshalJSON(raw) == nil {
@@ -194,6 +198,14 @@ func (s *Store) Save() error {
 		return nil
 	}
 	content := savedStore{Version: storeVersion, Books: make(map[string]json.RawMessage, len(s.books))}
+	for key, way := range s.lastWays {
+		if time.Since(way.At) > Lifetime {
+			delete(s.lastWays, key)
+		}
+	}
+	if len(s.lastWays) > 0 {
+		content.LastWays = s.lastWays
+	}
 	for key := range s.merged {
 		content.Adopted = append(content.Adopted, key)
 	}

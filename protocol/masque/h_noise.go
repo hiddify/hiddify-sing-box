@@ -2,6 +2,7 @@ package masque
 
 import (
 	"context"
+	"net/netip"
 	"sync"
 	"time"
 
@@ -18,6 +19,9 @@ import (
 // endpoint answers, and the tunnel connects with it. "" is the configured server name.
 
 type masqueScannerOptions = option.WARPScannerOptions
+
+// lastWayNoise is the method of a last way (see edgescan.LastWay) that names its noise.
+const lastWayNoise = "noise"
 
 // configuredNoisePrior is the score the configured server name counts as on a network where it
 // was never tried: the user chose it, so it comes first more often than an untried preset.
@@ -252,4 +256,19 @@ func (s *masqueScanner) useNoise(http2 bool, noise string) {
 	if s.noises.use(http2, noise) {
 		s.logger.InfoContext(s.ctx, "WARP scanner: ", noiseName(noise), " gets through", versionSuffix(http2))
 	}
+}
+
+// probeLastWay checks addrPort with the noise of the last way, and puts that noise in use when it
+// answers.
+func (s *masqueScanner) probeLastWay(ctx context.Context, http2 bool, noise string, addrPort netip.AddrPort, try func(probe warpscan.Probe) (time.Duration, error)) (time.Duration, error) {
+	if noise != "" {
+		if _, found := warpscan.MASQUENoisePresetByName(noise); !found || s.options.Scanner == nil || !s.options.Scanner.SearchNoise {
+			noise = "" // a preset that is no longer offered
+		}
+	}
+	rtt, err := try(s.probe(http2, noise))
+	if err == nil {
+		s.useNoise(http2, noise)
+	}
+	return rtt, err
 }

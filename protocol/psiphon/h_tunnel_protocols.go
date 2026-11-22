@@ -104,6 +104,7 @@ func (h *Outbound) scanEdges() {
 	if h.scanner == nil {
 		return
 	}
+	h.scanner.beginAttempt()
 	network, results, err := h.scanner.Scan()
 	if !h.fixedNetworkID && network.Name != "" {
 		h.psiphon.config.NetworkID = network.Name

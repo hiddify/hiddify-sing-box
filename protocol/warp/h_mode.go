@@ -107,6 +107,9 @@ type warpSession struct {
 	// network is the network auto mode named for its tunnel ratings, which the scanner of the
 	// start takes over; guarded by w.mtx
 	network *warpscan.NetworkInfo
+	// lastTunnel: auto mode took the tunnel it connected with last, without a race (see
+	// h_last_way.go); guarded by w.mtx
+	lastTunnel bool
 }
 
 // end ends the session; w.mtx is held.
@@ -244,6 +247,7 @@ func (w *WARPEndpoint) confirmAuto(done <-chan struct{}, mode string) {
 	}
 	if adapter.IsReady(w) {
 		w.tunnelConnected(mode)
+		w.rememberTunnel(mode)
 		return
 	}
 	if !w.detourReady() { // nothing gets through a detour that is down: no tunnel is to blame
@@ -465,6 +469,18 @@ func (w *WARPEndpoint) chooseMode(session *warpSession) string {
 	}
 	if !w.waitDetour(done) { // the network and the race go through it
 		return ""
+	}
+	if w.scannerEnabled() {
+		if tunnel := w.lastTunnel(); tunnel != "" {
+			// the tunnel connected last: its start checks its last way, and races when that does
+			// not answer; the network is named meanwhile, for the ratings
+			if !w.publish(done, func() { session.lastTunnel = true }) {
+				return ""
+			}
+			go w.detectNetwork(session.ctx)
+			w.logger.InfoContext(w.ctx, "WARP auto mode: using ", tunnel, ", the tunnel that connected last")
+			return tunnel
+		}
 	}
 	detected := w.detectNetwork(session.ctx)
 	race := w.raceModes(done)

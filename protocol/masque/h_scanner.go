@@ -63,6 +63,13 @@ type masqueScanner struct {
 	// while it holds its lock, and gets the one it found at its next ask
 	searching map[bool]bool
 	found     map[bool]net.Addr
+	// lastTried: the last way of the HTTP version was checked (see Scan)
+	lastTried map[bool]bool
+}
+
+// wayKey is the key of the last way of the HTTP version in the store (see edgescan.LastWay).
+func wayKey(http2 bool) string {
+	return edgescan.KindWARPMASQUE + versionSuffix(http2)
 }
 
 // Close ends the searches.
@@ -86,6 +93,7 @@ func newMASQUEScanner(ctx context.Context, logger log.ContextLogger, key string,
 		ctx:         ctx,
 		cancel:      cancel,
 		searching:   make(map[bool]bool),
+		lastTried:   make(map[bool]bool),
 		found:       make(map[bool]net.Addr),
 		logger:      logger,
 		options:     options,
@@ -103,7 +111,13 @@ func newMASQUEScanner(ctx context.Context, logger log.ContextLogger, key string,
 	scanner.store = edgescan.OpenScannerStore(ctx, options.Detour, key+"/edge-scanner")
 	scanner.store.Adopt(edgescan.KindWARPMASQUE, key+"/warp-scanner")
 	scanner.book = scanner.store.Book(edgescan.KindWARPMASQUE)
-	scanner.DetectNetwork(false)
+	_, lastHTTP3 := scanner.store.LastWay(wayKey(false))
+	_, lastHTTP2 := scanner.store.LastWay(wayKey(true))
+	if lastHTTP3 || lastHTTP2 {
+		go scanner.DetectNetwork(false) // the last way is checked first, the network named meanwhile
+	} else {
+		scanner.DetectNetwork(false)
+	}
 	return scanner, nil
 }
 
@@ -118,10 +132,18 @@ func (s *masqueScanner) DetectNetwork(changed bool) {
 	s.access.Unlock()
 }
 
+// currentNetwork is the network, named first when the start took the last way and has not yet.
 func (s *masqueScanner) currentNetwork() warpscan.NetworkInfo {
 	s.access.Lock()
-	defer s.access.Unlock()
-	return s.network
+	network := s.network
+	s.access.Unlock()
+	if network.Name == "" {
+		s.DetectNetwork(false) // joins the naming that runs (see edgescan.Store.Network)
+		s.access.Lock()
+		network = s.network
+		s.access.Unlock()
+	}
+	return network
 }
 
 func (s *masqueScanner) save() {
@@ -132,7 +154,12 @@ func (s *masqueScanner) save() {
 
 // Scan finds the best answering endpoint of the HTTP version, without exclude, in one round: the
 // tunnel's start waits for it.
+// The first scan of each HTTP version checks the way that worked last (see edgescan.LastWay)
+// before anything else, and takes it when it answers.
 func (s *masqueScanner) Scan(http2 bool, exclude []netip.AddrPort) (net.Addr, error) {
+	if endpoint := s.tryLastWay(http2, exclude); endpoint != nil {
+		return endpoint, nil
+	}
 	s.status.Begin()
 	results, noise, err := s.scanRound(s.ctx, http2, exclude, false)
 	if err != nil {
@@ -261,12 +288,45 @@ func (s *masqueScanner) scanRound(ctx context.Context, http2 bool, exclude []net
 	return results, noise, err
 }
 
-// OnConnected counts a connect of the tunnel as an answer of its endpoint.
+// OnConnected counts a connect of the tunnel as an answer of its endpoint, and keeps it as the
+// last way of the HTTP version.
 func (s *masqueScanner) OnConnected(endpoint net.Addr, http2 bool, elapsed time.Duration) {
 	if addrPort, ok := addrPortOf(endpoint); ok {
-		s.book.Success(s.currentNetwork().Name+versionSuffix(http2), addrPort, elapsed, time.Now())
+		network := s.currentNetwork().Name
+		s.book.Success(network+versionSuffix(http2), addrPort, elapsed, time.Now())
+		s.store.RememberWay(wayKey(http2), edgescan.LastWay{Network: network, Target: edgescan.Target{AddrPort: addrPort}, Methods: map[string]string{lastWayNoise: s.noises.noise(http2)}})
 		s.save()
 	}
+}
+
+// tryLastWay checks the last way of the HTTP version, once per outbound, before its first scan:
+// the endpoint when it answers, nil otherwise.
+func (s *masqueScanner) tryLastWay(http2 bool, exclude []netip.AddrPort) net.Addr {
+	s.access.Lock()
+	tried := s.lastTried[http2]
+	s.lastTried[http2] = true
+	s.access.Unlock()
+	if tried {
+		return nil
+	}
+	way, found := s.store.LastWay(wayKey(http2))
+	if !found || !way.Target.AddrPort.IsValid() || slices.Contains(exclude, way.Target.AddrPort) {
+		return nil
+	}
+	if s.options.UseIPv6 && !way.Target.AddrPort.Addr().Is6() {
+		return nil
+	}
+	rtt, err := s.probeLastWay(s.ctx, http2, way.Method(lastWayNoise), way.Target.AddrPort, func(probe warpscan.Probe) (time.Duration, error) {
+		return edgescan.TryLastWay(s.ctx, probe, way.Target.AddrPort)
+	})
+	if err != nil {
+		s.logger.InfoContext(s.ctx, "WARP scanner: the last way, ", way.Target.AddrPort, versionSuffix(http2), ", does not answer: ", err, "; searching")
+		return nil
+	}
+	s.status.Begin() // Found counts one scan out
+	s.status.Found(way.Target.AddrPort)
+	s.logger.InfoContext(s.ctx, "WARP scanner: the last way answers, ", way.Target.AddrPort, versionSuffix(http2), " (", rtt, ")")
+	return endpointAddr(way.Target.AddrPort, http2)
 }
 
 // NextEndpoint looks for another endpoint than failed, and counts the failure once another one

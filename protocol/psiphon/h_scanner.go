@@ -69,6 +69,8 @@ type edgeScanner struct {
 	status  edgescan.Status
 	// seedSets are the sets of the seeds of the last scan, by address
 	seedSets map[netip.Addr]string
+	// lastEdge is the edge the tunnel core connected over in this attempt (see h_last_way.go)
+	lastEdge edgescan.Target
 }
 
 const (
@@ -558,6 +560,7 @@ func (s *edgeScanner) onNotice(event NoticeEvent) {
 	}
 	s.access.Lock()
 	network := s.network.Name
+	s.lastEdge = target
 	s.access.Unlock()
 	if network == "" {
 		return
@@ -573,10 +576,14 @@ func protocolMethod(name string) string { return "proto/" + name }
 // protocolConnected gives the protocol of a tunnel that came up a point on the network.
 func (s *edgeScanner) protocolConnected(event NoticeEvent) {
 	protocol, _ := event.Data["protocol"].(string)
+	if protocol == "" {
+		return
+	}
+	s.rememberWay(protocol)
 	s.access.Lock()
 	network := s.network.Name
 	s.access.Unlock()
-	if protocol == "" || network == "" {
+	if network == "" {
 		return
 	}
 	s.book.MethodSuccess(network, protocolMethod(protocol), time.Now())

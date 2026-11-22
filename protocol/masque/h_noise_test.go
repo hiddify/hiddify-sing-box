@@ -59,7 +59,7 @@ func TestH_MASQUESearchNoise(t *testing.T) {
 		probes:    map[bool]warpscan.Probe{false: probe(defaultServerName)},
 		noises:    noises,
 		network:   warpscan.NetworkInfo{Name: "wifi/IR", IPv4: true},
-		searching: map[bool]bool{}, found: map[bool]net.Addr{},
+		searching: map[bool]bool{}, found: map[bool]net.Addr{}, lastTried: map[bool]bool{},
 	}
 	require.Equal(t, defaultServerName, noises.TLSConfig(false).ServerName())
 
@@ -71,6 +71,16 @@ func TestH_MASQUESearchNoise(t *testing.T) {
 	score, _ := scanner.book.MethodScore("wifi/IR/h3", warpscan.NoiseMethod("speedtest"))
 	require.Positive(t, score)
 
+	// the next outbound checks the last way with its server name first
+	scanner.OnConnected(got, false, 50*time.Millisecond)
+	next := *scanner
+	next.noises = newMASQUENoises(nil, noises.base)
+	next.noises.probes[noiseProbeKey{"speedtest", false}] = probe("www.speedtest.net")
+	next.lastTried = map[bool]bool{}
+	probedNames = nil
+	require.NotNil(t, next.tryLastWay(false, nil))
+	require.Equal(t, []string{"www.speedtest.net"}, probedNames)
+	require.Equal(t, "www.speedtest.net", next.noises.TLSConfig(false).ServerName())
 }
 
 // Without search_noise, only the configured server name is tried.

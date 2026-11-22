@@ -71,6 +71,7 @@ type Outbound struct {
 	// establishTimeout is establish_tunnel_timeout, which a search shortens (see h_search.go)
 	establishTimeout time.Duration
 	options          option.PsiphonOutboundOptions // H: for the first hop by detour, see PreStart
+	lastWayPending   bool                          // H: the next attempt is the first of a search: it tries the last way (see h_last_way.go)
 }
 
 type tunnelOwner struct{ notify func() }
@@ -372,6 +373,7 @@ const (
 func (h *Outbound) run() {
 	backoff := restartMin
 	searchStart := time.Now() //H: see h_search.go
+	h.lastWayPending = true   //H
 	for {
 		// H: no network (no Wi-Fi, no mobile data, or paused): wait for one instead of trying,
 		// and the wait does not count toward the search
@@ -388,6 +390,7 @@ func (h *Outbound) run() {
 			h.psiphon.Wait()
 			err = E.New("the controller stopped")
 			searchStart = time.Now() //H: the tunnel was lost: a new search
+			h.lastWayPending = true  //H
 		}
 		h.psiphon.stop()
 		if h.ctx.Err() != nil {
@@ -412,6 +415,9 @@ func (h *Outbound) run() {
 }
 
 func (h *Outbound) connectOnce() error {
+	if h.tryLastWay() { //H
+		return nil //H
+	} //H
 	h.scanEdges()
 	return h.psiphon.Start()
 }

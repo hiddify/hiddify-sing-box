@@ -75,13 +75,18 @@ func (w *WARPEndpoint) connect(session *warpSession, config *C.WARPConfig) {
 	var (
 		current     netip.AddrPort
 		failover    *warpFailover
-		deepPending bool // a deep search from the start goes on once the endpoint runs
+		deepPending bool          // a deep search from the start goes on once the endpoint runs
+		tookLastWay bool          // the start took the last way (see h_last_way.go)
+		lastWayRTT  time.Duration // its handshake time
+		searchFound bool
 	)
 	if w.scannerEnabled() {
 		w.mtx.Lock()
 		network := session.network // named by auto mode
 		w.mtx.Unlock()
-		failover, err = w.newFailover(session.ctx, config, network)
+		way, hasWay := w.lastWay(w.activeMode())
+		// with a last way, the network is named after it is checked, not before
+		failover, err = w.newFailover(session.ctx, config, network, !hasWay)
 		if err != nil {
 			failover = nil
 			w.logger.WarnContext(w.ctx, "WARP scanner: ", err)
@@ -89,14 +94,31 @@ func (w *WARPEndpoint) connect(session *warpSession, config *C.WARPConfig) {
 			if !w.publish(done, func() { w.failover, session.failover = failover, failover }) {
 				return
 			}
-			results, err := w.searchWithin(session.ctx, failover, nil, true, false)
-			deepPending = err != nil && edgescan.ConfiguredDeep(searchOptions(w.options.Scanner))
-			if err != nil {
-				w.logger.WarnContext(w.ctx, err, ", using the profile's endpoint")
-			} else {
-				current = results[0].AddrPort
-				peerAddr, peerPort = current.Addr().String(), current.Port()
-				w.logger.InfoContext(w.ctx, "WARP scanner: using ", current, " (score ", results[0].Score, ", ", results[0].RTT, ")")
+			if hasWay {
+				if rtt, answered := w.tryLastWay(session.ctx, failover, way); answered {
+					current, tookLastWay, lastWayRTT = way.Target.AddrPort, true, rtt
+					peerAddr, peerPort = current.Addr().String(), current.Port()
+				} else if session.ctx.Err() != nil {
+					return
+				} else if w.mode == modeAuto && session.lastTunnel {
+					// auto mode took the last tunnel without a race: race now
+					w.raceNext.Store(true)
+					w.restart("auto mode: the last way of " + w.activeMode() + " does not answer")
+					return
+				} else {
+					w.nameNetwork(session.ctx, failover)
+				}
+			}
+			if !tookLastWay {
+				results, err := w.searchWithin(session.ctx, failover, nil, true, false)
+				deepPending = err != nil && edgescan.ConfiguredDeep(searchOptions(w.options.Scanner))
+				if err != nil {
+					w.logger.WarnContext(w.ctx, err, ", using the profile's endpoint")
+				} else {
+					current, searchFound = results[0].AddrPort, true
+					peerAddr, peerPort = current.Addr().String(), current.Port()
+					w.logger.InfoContext(w.ctx, "WARP scanner: using ", current, " (score ", results[0].Score, ", ", results[0].RTT, ")")
+				}
 			}
 		}
 	}
@@ -122,6 +144,11 @@ func (w *WARPEndpoint) connect(session *warpSession, config *C.WARPConfig) {
 	}) {
 		adapter.CloseLate(w.scope, inner) // the start ended meanwhile
 		return
+	}
+	if tookLastWay {
+		go w.searchBetter(session, failover, lastWayRTT)
+	} else if searchFound {
+		w.rememberWay(failover) // the endpoint the search found answered its handshake
 	}
 	if deepPending {
 		if err := w.StartDeepSearch(); err != nil {
@@ -183,8 +210,8 @@ func (w *WARPEndpoint) newInner(config *C.WARPConfig, peerAddr string, peerPort 
 }
 
 // newFailover sets up the scanner of a start; network is the network auto mode named for it, nil
-// to name it here.
-func (w *WARPEndpoint) newFailover(ctx context.Context, config *C.WARPConfig, network *warpscan.NetworkInfo) (*warpFailover, error) {
+// to name it here, unless detect is false: the start names it later (see nameNetwork).
+func (w *WARPEndpoint) newFailover(ctx context.Context, config *C.WARPConfig, network *warpscan.NetworkInfo, detect bool) (*warpFailover, error) {
 	probeDialer, err := dialer.NewWithOptions(dialer.Options{
 		Context:          w.ctx,
 		Options:          w.options.DialerOptions,
@@ -217,7 +244,7 @@ func (w *WARPEndpoint) newFailover(ctx context.Context, config *C.WARPConfig, ne
 	}
 	if network != nil {
 		failover.network = *network
-	} else {
+	} else if detect {
 		failover.detectNetwork(ctx)
 		detected := failover.currentNetwork()
 		w.ratedNetwork.Store(&detected)
@@ -565,11 +592,14 @@ func (w *WARPEndpoint) check(session *warpSession, networkChanged bool) {
 		return
 	}
 	network := failover.currentNetwork().Name
+	if network == "" { // a start that took the last way names it in the background
+		return
+	}
 	lastHandshake, tx := peerStatus(inner)
 	if !failover.recorded && lastHandshake.After(failover.connectedAt) {
 		failover.recorded = true
 		failover.book.Success(network, failover.current, 0, time.Now())
-		w.saveScores(failover)
+		w.rememberWay(failover)
 	}
 	stuck := tx > failover.lastTx && (lastHandshake.IsZero() || time.Since(lastHandshake) > staleHandshake)
 	failover.lastTx = tx
@@ -616,6 +646,7 @@ func (w *WARPEndpoint) check(session *warpSession, networkChanged bool) {
 	failover.connectedAt = time.Now()
 	failover.recorded = true // the scan counted its answer
 	failover.lastTx = 0
+	w.rememberWay(failover)
 	w.logger.InfoContext(w.ctx, "WARP: switched to ", best, " (score ", results[0].Score, ", ", results[0].RTT, ")")
 }
 

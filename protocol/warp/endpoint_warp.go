@@ -67,6 +67,7 @@ type WARPEndpoint struct {
 	mode          string        // H: the tunnel, see h_mode.go
 	active        atomic.Value  // H: in auto mode, the tunnel chosen
 	selecting     atomic.Bool   // H: auto mode races the tunnels
+	raceNext      atomic.Bool   // H: auto mode races at the next start, without the last tunnel (see h_last_way.go)
 	profiles      *warpProfiles // H: the devices, see h_profiles.go
 	profile       *warpProfile  // H: the device in use, guarded by mtx
 	recreated     sync.Map      // H: kinds registered anew for profile.recreate
