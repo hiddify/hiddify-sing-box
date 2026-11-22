@@ -125,6 +125,14 @@ do about it. Items marked **Required** break or misbehave until they are handled
   balancer closes its open connections only when its test ends failed. The delay is
   published before the IP
   lookup, so the IP arrives after the ping. Nothing to set; the core's defaults are these.
+- **The OOM killer in an iOS network extension.** A core that builds its own service (not the
+  command server) passes `libbox.OOMKillerOptions()` into `daemon.ServiceOptions`, registers one
+  `oomkiller.NewRecorder(libbox.OOMRecorderOptionsFor(...))` per process in each start's context,
+  and calls `libbox.PromoteOOMDraft()` after Setup; hiddify-core does this on iOS, with
+  `OomKillerEnabled` and the app's version in `SetupOptions`. `SetMemoryLimit` then keeps the OOM
+  killer's limit (40 MB of 50). `oom_reports/` go in the diagnostics zip. In low-memory builds
+  (iOS) a busy relayed connection no longer switches to batches of 64 KB buffers, and an idle one
+  holds none.
 - **A new log level is hot reloaded.** A config that changes only `log.level` now hot reloads
   (`HotReloadResult.LogLevel`): Report a problem's verbose level, its end, or a level picked on
   the logs page no longer restart the core and the VPN. The rest of `log` (output, timestamp,
