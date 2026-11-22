@@ -191,7 +191,9 @@ do about it. Items marked **Required** break or misbehave until they are handled
   - DNS group: `mode` `stable` and `fastest`, `error_ttl`, `win_ttl`.
   - URL test: `urls` (more test URLs) and `mode: "failover"`.
   - WARP: `scanner` (endpoint scanner with per-network scores) with `search_noise` (it also
-    looks for a noise preset that gets through, see the WARP page) and `noise_presets`;
+    looks for a noise preset that gets through, see the WARP page; for MASQUE it tries the TLS
+    server name `www.speedtest.net` next to the configured one) and `noise_presets` (WireGuard
+    and MASQUE preset names, such as `speedtest`, in one list);
     `noise.fake_packet.mode` `"quic"` and `"raw"`, `noise.fake_packet.packets` (AmneziaWG-style
     templates, for the "WG Mimic" DNS, QUIC and SIP configs); the `awg`
     block with AmneziaWG 3.x settings and the QUIC masquerade (`ip`, `id`, `ib`).

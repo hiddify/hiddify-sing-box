@@ -365,6 +365,11 @@ from WARP configs that work:
 The probe sends what the device sends: the configured noise, or with `awg` its junk and special
 packets.
 
+With MASQUE, the noise searched is the TLS server name: the configured `masque.server_name` and
+the `speedtest` preset (`www.speedtest.net`), for a filter that blocks the default
+`consumer-masque.cloudflareclient.com` (see
+[WARP scanner and noise](warp-scanner.en.md#masque-the-server-name-as-noise)).
+
 The default ranges are `162.159.192.0/24`, `162.159.193.0/24`, `162.159.195.0/24`,
 `188.114.96.0/24` to `188.114.99.0/24`, `2606:4700:d0::/64` and `2606:4700:d1::/64`, then the
 wider ranges WARP endpoints were also seen in: `162.159.192.0/21`, `188.114.96.0/20`,

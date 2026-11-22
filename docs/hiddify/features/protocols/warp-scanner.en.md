@@ -196,6 +196,24 @@ The probe always sends what the tunnel sends, so a noise that gets the probe thr
 tunnel through. Each search costs at most the number of presets times 16 probes, run 8 at once,
 beyond the first scan.
 
+#### MASQUE: the server name as noise
+
+MASQUE has no decoy packets: what a filter reads first is the TLS server name of its handshake,
+`consumer-masque.cloudflareclient.com` by default, and a filter that knows it can block it. With
+`search_noise`, the MASQUE scanner (of the `masque` outbound, and of the `warp` endpoint in
+`masque` and `auto` modes) tries other server names the same way it tries noises:
+
+| Preset | Server name |
+|---|---|
+| `speedtest` | `www.speedtest.net` |
+
+The configured `server_name` (or the default) and the presets are drawn by their rating, scanned in
+turn, and the first that gets an answer is used for the tunnel's connects, per HTTP version.
+Cloudflare's endpoint answers any server name, and the tunnel still pins the endpoint's key, so
+the name changes nothing but what the filter sees. `noise_presets` names the presets of both
+kinds: each tunnel takes its own, and a list with no MASQUE preset leaves MASQUE with its
+configured name.
+
 ### Auto mode
 
 With `"mode": "auto"`, WARP has a WireGuard, an AmneziaWG and a MASQUE device of its own, and
@@ -275,8 +293,8 @@ A DNS-looking noise for plain WireGuard, written by hand:
 | Field | Where | Meaning |
 |---|---|---|
 | `scanner.enabled` | warp | Scan for an endpoint that answers, and fail over. |
-| `scanner.search_noise` | warp | Also look for a noise preset that gets through. |
-| `scanner.noise_presets` | warp | The presets to try, in a weighted random order by their rating; all when empty. An unknown name is a config error. |
+| `scanner.search_noise` | warp, masque | Also look for a noise preset that gets through (for MASQUE, a server name). |
+| `scanner.noise_presets` | warp, masque | The presets to try, in a weighted random order by their rating; all when empty. WireGuard and MASQUE presets can be mixed. An unknown name is a config error. |
 | `noise.fake_packet.mode` | warp, wireguard | `""`, `raw` or `quic`. |
 | `noise.fake_packet.packets` | warp, wireguard | Templates sent first, in the AmneziaWG `i1`–`i5` syntax. |
 | `mode` | warp | `wg`, `awg`, `masque` or `auto`. |
