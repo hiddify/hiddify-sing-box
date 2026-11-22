@@ -61,6 +61,13 @@ It does not help when no resolver you can reach forwards queries for your zone.
   `routing_mark`) and the platform's protection, so on a VPN they do not loop back into the
   tunnel; queries to the pool on the loopback use a plain socket. `detour` is not supported.
 
+- **Many connections at once.** A query carries about 40 bytes where only 101-character names
+  pass, so the client does not slice them among the connections: a small send (a request, a TLS
+  hello) goes out whole before the next, the newest first when more wait than the tunnel
+  carries, and transfers share the rest. A connection that sing-box closes is dropped at once,
+  with what was not sent; one whose app closed its sending side before any answer is sent last.
+  The library is the Hiddify fork (`replace/soar`) for this.
+
 TCP only. UDP is not carried.
 
 ## Configuration
