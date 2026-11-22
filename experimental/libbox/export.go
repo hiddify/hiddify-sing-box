@@ -35,7 +35,9 @@ func SetMemoryLimit(enabled bool) {
 	if limit == 0 && C.IsIos {
 		limit = oomkiller.DefaultAppleNetworkExtensionMemoryLimit
 	}
-	if limit > 0 {
+	if limit > 0 && sOOMKillerEnabled { //H: the OOM killer's limit, as Setup set it: one source for it
+		debug.SetMemoryLimit(int64(oomkiller.RuntimeMemoryLimit(uint64(limit)))) //H
+	} else if limit > 0 { //H
 		debug.SetMemoryLimit(limit * 3 / 4)
 	} else {
 		debug.SetMemoryLimit(math.MaxInt64)
