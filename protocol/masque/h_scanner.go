@@ -209,10 +209,11 @@ func (s *masqueScanner) search(http2 bool, exclude []netip.AddrPort, deepAsked b
 // searchKey names a search for sharing: the network, the HTTP version and the scanner's options.
 func (s *masqueScanner) searchKey(http2 bool, deep bool) string {
 	content, _ := json.Marshal(struct {
-		Scanner any
-		IPv6    bool
-		Deep    bool
-	}{s.options.Scanner, s.options.UseIPv6, deep})
+		Scanner    any
+		IPv6       bool
+		Deep       bool
+		ServerName string `json:",omitempty"` // the probes' configured server name
+	}{s.options.Scanner, s.options.UseIPv6, deep, s.options.ServerName})
 	sum := sha256.Sum256(content)
 	return edgescan.KindWARPMASQUE + "|" + s.currentNetwork().Name + versionSuffix(http2) + "|" + hex.EncodeToString(sum[:8])
 }
