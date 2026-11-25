@@ -36,6 +36,8 @@ type endpointBase struct {
 	endpoint.Adapter
 	router adapter.Router
 	logger log.ContextLogger
+
+	peerUser func(address netip.Addr) string //H: the user owning a tunnel address, see h_peer_user.go
 }
 
 func (e *endpointBase) newConnection(ctx context.Context, endpoint adapter.Endpoint, localAddresses []netip.Prefix, conn net.Conn, source M.Socksaddr, destination M.Socksaddr, onClose N.CloseHandlerFunc) {
@@ -43,6 +45,7 @@ func (e *endpointBase) newConnection(ctx context.Context, endpoint adapter.Endpo
 	metadata.Inbound = endpoint.Tag()
 	metadata.InboundType = endpoint.Type()
 	metadata.Source = source
+	metadata.User = e.lookupPeerUser(source.Addr) //H
 	if isEndpointLocalAddress(localAddresses, destination.Addr) {
 		metadata.OriginDestination = destination
 		destination.Addr = loopbackAddressFor(destination.Addr)
@@ -58,6 +61,7 @@ func (e *endpointBase) newPacketConnection(ctx context.Context, endpoint adapter
 	metadata.Inbound = endpoint.Tag()
 	metadata.InboundType = endpoint.Type()
 	metadata.Source = source
+	metadata.User = e.lookupPeerUser(source.Addr) //H
 	if isEndpointLocalAddress(localAddresses, destination.Addr) {
 		metadata.OriginDestination = destination
 		destination.Addr = loopbackAddressFor(destination.Addr)
@@ -75,6 +79,7 @@ func (e *endpointBase) newDNSPacket(ctx context.Context, endpoint adapter.Endpoi
 	metadata.InboundType = endpoint.Type()
 	metadata.Network = N.NetworkUDP
 	metadata.Source = source
+	metadata.User = e.lookupPeerUser(source.Addr) //H
 	metadata.Destination = destination
 	metadata.Protocol = C.ProtocolDNS
 	e.logger.InfoContext(ctx, "inbound DNS packet from ", source)
@@ -97,13 +102,13 @@ func loopbackAddressFor(address netip.Addr) netip.Addr {
 	return netip.IPv6Loopback()
 }
 
-func judgeOpenVPNFlow(router adapter.Router, tag string, endpointType string, localAddresses []netip.Prefix, network uint8, source netip.AddrPort, destination netip.AddrPort, firstPacket []byte) tun.FlowVerdict {
+func judgeOpenVPNFlow(router adapter.Router, tag string, endpointType string, user string, localAddresses []netip.Prefix, network uint8, source netip.AddrPort, destination netip.AddrPort, firstPacket []byte) tun.FlowVerdict { //H: user
 	for _, localPrefix := range localAddresses {
 		if destination.Addr() == localPrefix.Addr() {
 			return tun.FlowVerdict{Action: tun.ActionAccept}
 		}
 	}
-	return adapter.JudgeFlow(router, adapter.InboundContext{Inbound: tag, InboundType: endpointType}, network, source, destination, firstPacket)
+	return adapter.JudgeFlow(router, adapter.InboundContext{Inbound: tag, InboundType: endpointType, User: user}, network, source, destination, firstPacket) //H: user
 }
 
 func keyDirectionValue(direction string) (int, error) {

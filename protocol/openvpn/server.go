@@ -87,6 +87,7 @@ func NewServerEndpoint(ctx context.Context, router adapter.Router, logger log.Co
 		dnsRouter:      service.FromContext[adapter.DNSRouter](ctx),
 		localAddresses: options.Address,
 	}
+	serverEndpoint.peerUser = serverEndpoint.serverPeerUser //H
 	serverOptions, err := buildServerOptions(options)
 	if err != nil {
 		cancelLoop()
@@ -668,7 +669,7 @@ func (s *ServerEndpoint) DetachReturn(returnPath tun.Return) error {
 }
 
 func (s *ServerEndpoint) JudgeFlow(network uint8, source netip.AddrPort, destination netip.AddrPort, firstPacket []byte) tun.FlowVerdict {
-	return judgeOpenVPNFlow(s.router, s.Tag(), s.Type(), s.localAddresses, network, source, destination, firstPacket)
+	return judgeOpenVPNFlow(s.router, s.Tag(), s.Type(), s.lookupPeerUser(source.Addr()), s.localAddresses, network, source, destination, firstPacket) //H: user
 }
 
 func (s *ServerEndpoint) NewDNSPacket(payload []byte, source M.Socksaddr, destination M.Socksaddr, writer N.PacketWriter) {

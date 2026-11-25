@@ -752,7 +752,7 @@ func (c *ClientEndpoint) DetachReturn(returnPath tun.Return) error {
 }
 
 func (c *ClientEndpoint) JudgeFlow(network uint8, source netip.AddrPort, destination netip.AddrPort, firstPacket []byte) tun.FlowVerdict {
-	return judgeOpenVPNFlow(c.router, c.Tag(), c.Type(), c.state.Load().localAddresses, network, source, destination, firstPacket)
+	return judgeOpenVPNFlow(c.router, c.Tag(), c.Type(), "", c.state.Load().localAddresses, network, source, destination, firstPacket) //H: user
 }
 
 func (c *ClientEndpoint) NewDNSPacket(payload []byte, source M.Socksaddr, destination M.Socksaddr, writer N.PacketWriter) {
