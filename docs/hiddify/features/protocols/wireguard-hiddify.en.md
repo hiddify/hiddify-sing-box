@@ -62,7 +62,8 @@ Noise also does not help when UDP is blocked.
 WireGuard accepts a packet from a peer only when its source address is in that peer's
 `allowed_ips`. So the source address of a connection tells which peer sent it. When a peer has a
 `name`, connections from its addresses get that user name, the same as a user of a VLESS or Trojan
-inbound. When `allowed_ips` of named peers overlap, the most specific prefix wins.
+inbound. So do flows forwarded packet by packet (ICMP, traffic to another endpoint) and DNS queries
+the endpoint hijacks. When `allowed_ips` of named peers overlap, the most specific prefix wins.
 
 ### Recovery (Hiddify's wireguard-go)
 

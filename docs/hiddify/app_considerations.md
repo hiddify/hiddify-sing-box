@@ -16,6 +16,13 @@ do about it. Items marked **Required** break or misbehave until they are handled
   with a library API in `lib/`. **Required:** hiddify-core's `go.mod` (and ray2sing's) need
   `replace masterdnsvpn-go => ./hiddify-sing-box/replace/MasterDnsVPN`, like the other
   `replace/` forks. No build tag.
+- **sing-openvpn fork.** `replace/sing-openvpn` (module `github.com/sagernet/sing-openvpn`, fork
+  `github.com/hiddify/sing-openvpn`, branch `v5`) tells the `openvpn-server` endpoint which user
+  owns each tunnel address, for per-user stats and `auth_user` rules. **Required:** hiddify-core's
+  `go.mod` needs `replace github.com/sagernet/sing-openvpn => ./hiddify-sing-box/replace/sing-openvpn`,
+  like the other forks. An OpenVPN server's client is counted as its auth-user-pass user name, or
+  else its certificate's common name; a panel that gives users one shared client certificate sets
+  `duplicate_cn`, or each new client replaces another's session.
 - **Build tags.** `with_masque` is now in the core Makefile and in hiddify-core's Makefile
   (hiddify-core commit `6bea470`). Four new features are behind tags that are **off** by default:
   `with_kcp` (mKCP), `with_sudoku` (Sudoku), `with_bond` (Bond) and `with_call` (call tunnel). A
