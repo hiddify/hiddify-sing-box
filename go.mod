@@ -340,3 +340,5 @@ replace github.com/metacubex/utls => github.com/Leadaxe/utls-lx v1.8.8-0.2026101
 replace github.com/sagernet/sing => ./replace/sing
 
 replace github.com/Psiphon-Labs/psiphon-tunnel-core => github.com/CluvexStudio/psiphon-tunnel-core v0.0.0-20260828000332-83aa73b9b982
+
+replace github.com/sagernet/sing-openvpn => ./replace/sing-openvpn
