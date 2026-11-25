@@ -362,6 +362,18 @@ do about it. Items marked **Required** break or misbehave until they are handled
 
 ## Behaviour the app should know about
 
+- **A download test catches proxies frozen after a few kilobytes.** `monitoring.download_test_url`
+  (empty by default) makes every URL test also download that address through the outbound; a
+  body that stops (no byte for `url_test_timeout`, or cut) fails it. No body (a non-200 answer,
+  none in time, no connection) tells nothing and the URL test result stands, so a Cloudflare
+  outage or rate limit cannot take every proxy out. The delay shows only once both tests passed,
+  so a tap on a proxy may take a few seconds longer. Some censors (Russia, about 16 KB) freeze
+  a connection once its first kilobytes have passed: the URL test's HEAD passes, the proxy shows
+  a delay and stays selected, while pages and videos hang. hiddify-core sets it from the
+  `url-test-download-size` setting (kilobytes, 0 off) to Cloudflare's `__down?bytes=` endpoint.
+  Each test moves that many bytes per outbound: the app should offer small sizes and keep it off
+  by default, since it costs mobile data.
+
 - **Keep top is the core's own now, and the proxy list is always whole.** hiddify-core no longer
   drops proxies from the config and hot reloads to keep the fastest few. With `keep-top`,
   `keep-top-countries` or keep-top answering set, it marks the profile's proxies `lazy`, whatever

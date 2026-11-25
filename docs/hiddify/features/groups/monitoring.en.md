@@ -25,6 +25,18 @@ It does not. It finds out which outbounds work, so groups can avoid the blocked 
 - Every outbound and endpoint is tested, except groups. A test opens the URL test address
   through the outbound and measures the delay, as the URL test group does. A test that fails or
   takes longer than `url_test_timeout` marks the outbound as failed.
+- With `download_test_url` set, a test that answered also downloads that address through the
+  outbound (not through `direct`, `block` or `dns`). It fails when the body stops: no byte for
+  `url_test_timeout`, the connection cut, or the whole download taking three times that; a slow
+  outbound whose bytes keep coming passes. The URL test moves a few bytes, so
+  it passes over a connection that a censor freezes once its first kilobytes have passed (about
+  16 KB, seen in Russia), while every page and video through that outbound hangs. The download
+  catches it, and groups move to an outbound that works. The delay shows only once both passed.
+- The download test fails an outbound only when its body began and stopped. No body tells
+  nothing of the outbound: an answer other than 200 (a rate limit, a redirect), no answer in
+  time, or no connection (the server is down, or blocked at the exit); the URL test result
+  stands. A proxy whose exit is itself behind such a censor fails it, which is right: its
+  connections to the rest of the world freeze too.
 - A group's result is the result of its selected member. When it has none, it is the best
   result among its members.
 - After a successful test, monitoring asks an IP information service, through the same outbound,
@@ -161,6 +173,7 @@ api.my-ip.io: it answers the address and the country only, with no rate limit.
 | `urls` | list of strings | `["https://www.gstatic.com/generate_204"]` | Test addresses, in order of preference. |
 | `ipinfo_url` | string | `""` | An IP information service to try first, for example from your subscription. |
 | `verify_ipv6` | bool | `false` | After each outbound's URL test, the same URL is fetched once more over the host's IPv6 address through it, once per run, to learn whether the outbound carries IPv6; see [IPv6 by outbound](../dns/ipv6-by-outbound.en.md). |
+| `download_test_url` | string | `""` | After each outbound's URL test, this address is downloaded through it; a body that stops (no byte for `url_test_timeout`, cut, or three of them for all of it) fails the outbound, no body tells nothing. It catches connections frozen after their first kilobytes. Every test moves the whole body: a few dozen kilobytes are enough. Empty is off. |
 | `ipv6_declared` | object, tag to bool | | Outbounds whose IPv6 the link declared (`ipv6=1`, `ipv6=0`); known from the start. |
 | `ipv6_probe` | | | Retired, no effect. |
 | `workers` | int | `10` | Tests that run at once. |
