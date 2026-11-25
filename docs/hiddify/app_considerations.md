@@ -17,7 +17,7 @@ do about it. Items marked **Required** break or misbehave until they are handled
   `replace masterdnsvpn-go => ./hiddify-sing-box/replace/MasterDnsVPN`, like the other
   `replace/` forks. No build tag.
 - **sing-openvpn fork.** `replace/sing-openvpn` (module `github.com/sagernet/sing-openvpn`, fork
-  `github.com/hiddify/sing-openvpn`, branch `v5`) tells the `openvpn-server` endpoint which user
+  `github.com/hiddify/sing-openvpn`, branch `main`) tells the `openvpn-server` endpoint which user
   owns each tunnel address, for per-user stats and `auth_user` rules. **Required:** hiddify-core's
   `go.mod` needs `replace github.com/sagernet/sing-openvpn => ./hiddify-sing-box/replace/sing-openvpn`,
   like the other forks. An OpenVPN server's client is counted as its auth-user-pass user name, or
