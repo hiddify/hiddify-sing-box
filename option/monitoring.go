@@ -24,6 +24,14 @@ type MonitoringOptions struct {
 	// and serves dns rule ipv6_by_outbound and rule ipv6_unavailable_via. Off by default: only
 	// worth it when the apps get IPv6 at all.
 	VerifyIPv6 bool `json:"verify_ipv6,omitempty"` //H
+	// H: after an outbound's URL test answers, this URL is downloaded through it. A body that
+	// stops (no byte for the URL test timeout, cut, or all of it taking three) fails the
+	// outbound: the URL test's request carries a few bytes, so it passes over a connection that a
+	// censor freezes once its first kilobytes have passed, and this download does not. No body
+	// (an answer other than 200, none in time, no connection) tells nothing: the URL test result
+	// stands. direct, block and dns outbounds are not downloaded through. Empty, the default,
+	// skips it. Each test moves the whole body: a few dozen kilobytes catch a freeze.
+	DownloadTestURL string `json:"download_test_url,omitempty"` //H
 	// H: outbounds whose IPv6 is declared, by tag (a link's ipv6=1 or ipv6=0): known from the
 	// start, until a verification or their own connections say otherwise.
 	IPv6Declared map[string]bool `json:"ipv6_declared,omitempty"` //H

@@ -25,10 +25,10 @@ func (m *OutboundMonitoring) handResult(task *testTask, outcome testOutcome) {
 	}
 }
 
-// testHardLimit is how long a worker waits for one test: the URL test and the IP lookup, each
-// with its own deadline, and one more test after a network reset. An outbound whose dial ignores
-// its deadline would otherwise hold the worker, and the cycle waiting for the result, for good;
-// a few of them, and nothing is tested again.
+// testHardLimit is how long a worker waits for one test: the URL test, the download test (when
+// set) and the IP lookup, each with its own deadline, and one more test after a network reset. An
+// outbound whose dial ignores its deadline would otherwise hold the worker, and the cycle waiting
+// for the result, for good; a few of them, and nothing is tested again.
 func (m *OutboundMonitoring) testHardLimit(task *testTask) time.Duration {
 	test := m.urlTestTimeout
 	if task.staged {
@@ -38,7 +38,11 @@ func (m *OutboundMonitoring) testHardLimit(task *testTask) time.Duration {
 	if state, ok := m.reg().outbounds[task.outboundTag]; ok {
 		factor = m.timeoutFactor(state.outbound)
 	}
-	return factor * (2*test + m.urlTestTimeout + 2*networkResetWait)
+	limit := 2*test + m.urlTestTimeout + 2*networkResetWait
+	if m.downloadTestURL != "" {
+		limit += 2 * 3 * m.urlTestTimeout // the download test of each of the two attempts, see downloadTest
+	}
+	return factor * limit
 }
 
 // settle records a test's result, once: the first of its result and of giving up on it counts,

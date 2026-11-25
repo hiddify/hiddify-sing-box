@@ -83,6 +83,7 @@ type OutboundMonitoring struct {
 	ipv6Access       sync.Mutex                // H: guards ipv6
 	ipv6             map[string]*ipv6Knowledge // H: what is known of each outbound's IPv6, see h_ipv6.go
 	verifyIPv6       bool                      // H: option.MonitoringOptions.VerifyIPv6
+	downloadTestURL  string                    // H: option.MonitoringOptions.DownloadTestURL
 	ipv6Declared     map[string]bool           // H: option.MonitoringOptions.IPv6Declared
 	currentLinkIndex atomic.Uint32
 	access           sync.Mutex
@@ -332,6 +333,7 @@ func NewOutboundMonitoring(ctx context.Context, logger log.ContextLogger, option
 		ipInfoURL:       options.IpInfoURL,
 		ipv6:            make(map[string]*ipv6Knowledge), //H
 		verifyIPv6:      options.VerifyIPv6,              //H
+		downloadTestURL: options.DownloadTestURL,         //H
 		ipv6Declared:    options.IPv6Declared,            //H
 		pause:           service.FromContext[pause.Manager](ctx),
 		started:         false,
@@ -729,8 +731,9 @@ func (m *OutboundMonitoring) executeTask(task *testTask) {
 
 }
 
-// tester runs the URL test and, when it answers, the IP lookup. The delay goes to interim as
-// soon as the URL test answers, before the lookup, which can take as long again. worked says
+// tester runs the URL test and, when it answers, the download test (when set) and the IP
+// lookup. The delay goes to interim once the URL test and the download test pass, before the
+// lookup, which can take as long again. worked says
 // whether the outbound has a working result of this run, see stagedURLTest. //H
 func (m *OutboundMonitoring) tester(parent context.Context, tag string, interim func(adapter.URLTestHistory, bool), staged bool, worked bool) (adapter.URLTestHistory, error) {
 	out, ok := m.reg().outbounds[tag]
@@ -768,6 +771,13 @@ func (m *OutboundMonitoring) tester(parent context.Context, tag string, interim 
 	case <-parent.Done():
 		return his, parent.Err()
 	default:
+	}
+	if m.downloadTestURL != "" { //H: before interim, so a frozen outbound never shows as working
+		if err = m.downloadTest(parent, tag, out.outbound, factor); err != nil {
+			his.Delay = TimeoutDelay
+			m.logger.Warn("MONITORING result ", tag, ": failed the download test: ", err)
+			return his, err
+		}
 	}
 	if interim != nil { //H
 		interim(his, false)
@@ -837,7 +847,7 @@ func (m *OutboundMonitoring) runCycle() {
 		outcomes := m.runStage(cycleID, tags)
 		success := 0
 		for _, result := range outcomes {
-			if result.err == nil {
+			if result.err == nil || isDownloadTestError(result.err) { //H: its URL test answered
 				success++
 			}
 		}
