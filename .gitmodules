@@ -45,4 +45,4 @@
 [submodule "replace/sing-openvpn"]
 	path = replace/sing-openvpn
 	url = https://github.com/hiddify/sing-openvpn.git
-	branch = v5
+	branch = main
